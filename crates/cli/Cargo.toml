@@ -11,6 +11,7 @@ kotonoha-lock.workspace = true
 kotonoha-resolver.workspace = true
 kotonoha-intent.workspace = true
 kotonoha-graph.workspace = true
+kotonoha-codegen.workspace = true
 serde_json.workspace = true
 
 [[bin]]

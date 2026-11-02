@@ -12,6 +12,7 @@
 | P-KNOWLEDGE | `{知識}を表示` | query | 知識の結果一覧。対象データの read |
 | P-KNOWLEDGE-N | `{知識}を{N}件表示` | query | 件数だけ N に上書き(1〜10000)。他の意味は変えない(TC-002) |
 | P-NAV | `{データ}を選ぶと {画面} へ` | navigation(event=tap) | 同じ画面に P-LIST の D が必要。遷移先の入力が D になる |
+| P-FORM | `{動作}のフォームを表示` | display(ui=form, event=submit) | 動作の引数を入力項目にしたフォーム(ADR-0115) |
 | P-BUTTON | `「ラベル」を押すと {動作}(引数, …)` | display(ui=button, event=tap) | 引数は厳密層の式。スコープは画面の入力 D(変数名 = データ名)。呼出は不可 |
 
 補足:

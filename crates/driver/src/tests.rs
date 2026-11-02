@@ -142,7 +142,7 @@ fn lock_roundtrip_and_mutation_tests() {
     let m = stale(SHOP.replace("件数 = 20", "件数 = 10"));
     assert!(m.iter().any(|x| x.contains("knowledge_hash")), "{m:#?}");
     // スキーマ変更
-    let m = stale(SHOP.replace("    在庫: 整数\n", "    在庫: 整数\n    説明: 文字列\n"));
+    let m = stale(SHOP.replace("    在庫: 整数\n", "    在庫: 整数\n    説明: 選択<文字列>\n"));
     assert!(m.iter().any(|x| x.contains("schema_hash")), "{m:#?}");
     // コメントだけの変更でも source_hash は変わる(意味は同じでも再承認が必要)
     let m = stale(SHOP.replace("アプリ「商店」", "アプリ「商店」 # 変更"));
@@ -153,29 +153,57 @@ fn lock_roundtrip_and_mutation_tests() {
 }
 
 #[test]
-fn tc013_mobile_and_unimplemented_targets_stop_with_tgt001() {
-    let p = shop();
+fn tc013_unsupported_types_stop_every_target_with_tgt001() {
+    // 小数は精度方針(ADR-0106)が未決定のため、どのターゲットも生成しない
+    let src = SHOP.replace("    在庫: 整数\n", "    在庫: 整数\n    重さ: 選択<小数>\n");
+    let p = project_from_sources("商店", &[("src/app.koto", &src)], &["web", "backend", "ios", "android"]);
     let a = analyze(&p, &none());
+    assert!(a.ok(), "{:#?}", a.diags.items);
     for t in ["ios", "android", "web", "backend"] {
-        let e = build_target(&p, &a, t).err().unwrap_or_else(|| panic!("{t} は未対応機能を含むはず"));
-        assert!(e.iter().all(|d| d.code == Code::TGT001), "{t}");
+        let e = build_target(&p, &a, t).err().unwrap_or_else(|| panic!("{t} は小数を生成できないはず"));
+        assert!(e.iter().all(|d| d.code == Code::TGT001), "{t}: {e:#?}");
     }
     let p2 = with_src(SHOP);
-    assert!(build_target(&p2, &a, "ios").is_err(), "targets にないターゲット");
+    let a2 = analyze(&p2, &none());
+    assert_eq!(build_target(&p2, &a2, "ios").err().unwrap()[0].code, Code::TGT001, "targets にないターゲット");
 }
 
 #[test]
-fn backend_lowers_knowledge_queries_when_everything_is_supported() {
-    // 画面を持たない(=backend が対応済みの機能だけの)プロジェクト
-    let only_knowledge: String = RANKING.split("\n画面 ").next().unwrap().to_string();
-    let p = with_src(&only_knowledge);
+fn all_targets_generate_and_share_one_api_contract() {
+    // インターフェース整合性: 全ターゲットの api.json が同一で、クライアントが使う動作はすべて契約にある
+    let p = shop();
+    let a = analyze(&p, &none());
+    let mut contracts = Vec::new();
+    for t in ["backend", "web", "ios", "android"] {
+        let out = build_target(&p, &a, t).unwrap_or_else(|e| panic!("{t}: {e:#?}"));
+        let api = out.files.iter().find(|f| f.0 == "api.json").unwrap().1.clone();
+        contracts.push(api);
+        let v: serde_json::Value = serde_json::from_str(&contracts[0]).unwrap();
+        let actions: Vec<String> = v["endpoints"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|e| e["method"] == "POST")
+            .map(|e| e["segments"][2].as_str().unwrap().to_string())
+            .collect();
+        let code: String = out.files.iter().filter(|f| f.0.contains("generated")).map(|f| f.1.as_str()).collect();
+        for name in ["注文する", "商品登録"] {
+            assert!(actions.contains(&name.to_string()));
+            assert!(code.contains(&format!("\"{name}\"")), "{t} が {name} を呼んでいない");
+        }
+    }
+    assert!(contracts.windows(2).all(|w| w[0] == w[1]), "ターゲット間で API 契約が異なる");
+}
+
+#[test]
+fn backend_also_lowers_knowledge_queries() {
+    let p = with_src(RANKING);
     let a = analyze(&p, &none());
     assert!(a.ok(), "{:#?}", a.diags.items);
-    // 知識はノードではないので backend はクエリを生成できる(Web は vag だけでも未対応機能なし)
     let out = build_target(&p, &a, "backend").unwrap();
-    let names: Vec<&str> = out.files.iter().map(|f| f.0.as_str()).collect();
-    assert_eq!(names, ["vag.json", "queries/売れ筋商品.sqlite.sql", "queries/売れ筋商品.postgres.sql"]);
-    assert_eq!(out.files[1].1, include_str!("../../../examples/ranking/expected/ranking.sqlite.sql"));
+    let sql = out.files.iter().find(|f| f.0 == "queries/売れ筋商品.sqlite.sql").unwrap();
+    assert_eq!(sql.1, include_str!("../../../examples/ranking/expected/ranking.sqlite.sql"));
+    assert!(out.files.iter().any(|f| f.0 == "src/app.generated.ts"));
 }
 
 #[test]

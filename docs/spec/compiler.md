@@ -40,7 +40,7 @@ UTF-8 ソース(複数ファイル、パス順)
 | driver | パイプライン統合・プロジェクト読込 | (新設) |
 | cli | `koto` | cli |
 
-未作成(未着手のため): `adapters/{db,auth}`, `targets/{web,backend,ios,android}` の生成器本体, `runtime/*`, `stdlib/*`。
+生成器は `crates/codegen/src/{appir,backend,web,ios,android,ts,sql}.rs`、生成物に同梱するランタイムは `runtime/{backend,web,ios,android}/`。`stdlib/*` は未作成。
 
 ## 3. CLI 契約(実装状況)
 | コマンド | 状況 |
@@ -51,19 +51,19 @@ UTF-8 ソース(複数ファイル、パス順)
 | `koto resolve [--adapter offline\|fixture]` | 実装(AI プロバイダなし) |
 | `koto approve <id> <n> --approver …` / `--write-lock` | 実装(署名なし) |
 | `koto graph [--draft] [--canonical]` | 実装 |
-| `koto build --target … [--locked]` | 検証と対応検査まで実装。生成は backend の SQL のみ |
+| `koto build --target … [--locked] [--out dir]` | 実装(4 ターゲット) |
 | `koto test` | **未実装**(終了コード 7) |
 | `koto doctor` | 実装 |
 | `koto ast <file>` | 開発用 |
 共通: `-C <dir>`、`--json`(機械可読診断)。
 
 ## 4. ターゲット機能名(`supports(node_kind, feature)`)
-| node_kind | feature | web | backend | ios | android |
-|---|---|---|---|---|---|
-| screen | screen.page | – | – | – | – |
-| display | ui.list / ui.detail / ui.button | – | – | – | – |
-| query | query.ranking | – | ✔(SQL のみ) | – | – |
-| navigation | nav.select | – | – | – | – |
-| action | action.strict | – | – | – | – |
-| validation | policy.public_read / policy.auth_required | – | – | – | – |
-未対応が 1 つでもあれば TGT001 で停止する(黙って欠落させない)。backend は画面ノードを生成しないが、現在は「画面を含むプロジェクト全体の生成」を対象とするため TGT001 になる(ターゲット別の対象ノード範囲は M2 で決める: 残課題 R-05)。
+現在の機能集合(screen.page / ui.list / ui.detail / ui.button / ui.form / query.ranking / nav.select / action.strict / policy.*)は**全ターゲットが対応**する。backend は UI ノードを「データ API の提供」として、クライアントは action を「API 呼出」として扱う。表にない機能は TGT001。型レベルの未対応(小数など)は各生成器が TGT001 を返す。
+
+| ターゲット | 検証状況 |
+|---|---|
+| backend | 生成 → 起動 → API 結合テスト(tests/e2e/backend.test.ts) |
+| web | 生成 → npm install → ビルド → 起動 → Playwright E2E(tests/e2e/web.test.ts) |
+| ios | 生成のみ。コンパイルは CI ジョブ `ios-build` で確認予定(K-01) |
+| android | 生成のみ。ビルドは CI ジョブ `android-build` で確認予定(K-01) |
+構成の全体は [docs/architecture.md](../architecture.md)。

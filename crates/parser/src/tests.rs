@@ -55,27 +55,19 @@ fn parses_shop_example() {
             Decl::Contract(_) => "contract",
         })
         .collect();
-    assert_eq!(
-        kinds,
-        vec![
-            "app",
-            "type",
-            "enum",
-            "enum",
-            "data",
-            "data",
-            "data",
-            "adapter",
-            "adapter",
-            "screen",
-            "screen",
-            "action",
-            "knowledge",
-            "screen",
-            "contract"
-        ]
-    );
-    let Decl::Action(a) = &f.items[11].decl else { panic!() };
+    // 宣言の種類がすべて現れ、先頭はアプリ宣言
+    assert_eq!(kinds[0], "app");
+    for k in ["type", "enum", "data", "adapter", "screen", "action", "knowledge", "contract"] {
+        assert!(kinds.contains(&k), "{k}");
+    }
+    let a = f
+        .items
+        .iter()
+        .find_map(|i| match &i.decl {
+            Decl::Action(a) if a.name.name == "注文する" => Some(a),
+            _ => None,
+        })
+        .unwrap();
     assert_eq!(a.name.name, "注文する");
     assert_eq!(a.params.len(), 2);
     let (caps, _) = a.requires().unwrap();
@@ -117,7 +109,14 @@ fn ast_roundtrip_is_fixpoint_on_examples() {
 #[test]
 fn spans_point_at_source() {
     let f = parse_ok(SHOP);
-    let Decl::Data(d) = &f.items[4].decl else { panic!() };
+    let d = f
+        .items
+        .iter()
+        .find_map(|i| match &i.decl {
+            Decl::Data(d) if d.name.name == "商品" => Some(d),
+            _ => None,
+        })
+        .unwrap();
     assert_eq!(d.name.name, "商品");
     let fld = &d.fields[2];
     assert_eq!(&SHOP[fld.name.span.start as usize..fld.name.span.end as usize], "価格");

@@ -482,14 +482,14 @@ fn cmd_build(o: &mut Opts) -> Result<i32, String> {
 fn cmd_doctor(o: &Opts) -> i32 {
     let info = json!({
         "compiler_version": drv::COMPILER_VERSION,
-        "implemented": ["lexer", "parser", "ast-printer", "type-check(strict layer)", "knowledge-registry(ranking)", "intent-patterns", "effects/capabilities", "vag", "lock", "approval-records(unsigned)", "resolver(offline/fixture)", "sql-lowering(ranking: sqlite/postgres)"],
+        "implemented": ["lexer", "parser", "ast-printer", "type-check(strict layer)", "knowledge-registry(ranking)", "intent-patterns", "effects/capabilities", "vag", "lock", "approval-records(unsigned)", "resolver(offline/fixture)", "sql-lowering(ranking: sqlite/postgres)", "app-ir + api-contract", "backend(node/ts/sqlite)", "web(react ssr)", "ios(swiftui, 未検証)", "android(compose, 未検証)"],
         "targets": {
-            "web": "未実装(ADR-004 UI フレームワーク未決定)",
-            "backend": "知識クエリの SQL 低水準化のみ。HTTP/認可/CRUD 生成は未実装",
-            "ios": "契約のみ(P1)",
-            "android": "契約のみ(P1)"
+            "web": kotonoha_codegen::verification_status(kotonoha_codegen::TargetKind::Web),
+            "backend": kotonoha_codegen::verification_status(kotonoha_codegen::TargetKind::Backend),
+            "ios": kotonoha_codegen::verification_status(kotonoha_codegen::TargetKind::Ios),
+            "android": kotonoha_codegen::verification_status(kotonoha_codegen::TargetKind::Android)
         },
-        "blockers": ["ADR-001 ライセンス", "ADR-002 認証プロバイダー", "ADR-004 UI 生成フレームワーク", "ADR-005 モバイル最低 OS", "ADR-006 AI プロバイダー", "ADR-007 承認署名基盤", "ADR-008 ビルド互換性"],
+        "blockers": ["ADR-001 ライセンス", "ADR-002 認証プロバイダー(暫定: HS256 JWT)", "ADR-004 UI 生成フレームワーク(暫定: React SSR + esbuild)", "ADR-005 モバイル最低 OS", "ADR-006 AI プロバイダー", "ADR-007 承認署名基盤", "ADR-008 ビルド互換性"],
     });
     if o.json {
         println!("{}", serde_json::to_string_pretty(&info).unwrap());

@@ -137,6 +137,7 @@ dependencies = [
 name = "kotonoha-cli"
 version = "0.1.0"
 dependencies = [
+ "kotonoha-codegen",
  "kotonoha-diag",
  "kotonoha-driver",
  "kotonoha-graph",
@@ -153,9 +154,11 @@ dependencies = [
  "kotonoha-ast",
  "kotonoha-diag",
  "kotonoha-graph",
+ "kotonoha-intent",
  "kotonoha-knowledge",
  "kotonoha-parser",
  "kotonoha-types",
+ "kotonoha-validator",
  "rusqlite",
  "serde",
  "serde_json",

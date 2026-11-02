@@ -114,6 +114,20 @@ pub fn build_vag(inp: &GraphInput, status: Status) -> Value {
                             json!({"event": "tap", "data": data, "to": format!("screen.{screen}")}),
                         )
                     }
+                    IntentKind::Form { action } => {
+                        edges.insert((i.id.clone(), format!("action.{action}"), "invokes".into()));
+                        edges.insert((sid.clone(), format!("action.{action}"), "invokes".into()));
+                        (
+                            "display",
+                            format!("{action}のフォーム"),
+                            vec![],
+                            vec![],
+                            vec![],
+                            vec![],
+                            vec![],
+                            json!({"ui": "form", "event": "submit", "action": format!("action.{action}")}),
+                        )
+                    }
                     IntentKind::ButtonInvoke { label, action, args } => {
                         edges.insert((i.id.clone(), format!("action.{action}"), "invokes".into()));
                         edges.insert((sid.clone(), format!("action.{action}"), "invokes".into()));

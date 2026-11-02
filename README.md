@@ -3,9 +3,8 @@
 日本語+最小限の記号で「目的」を書き、必要な箇所だけ「厳密な処理」を定義する、意図駆動型・検証可能なアプリケーション言語。
 コンパイラ `koto` は Rust で実装している。
 
-> **現状(Phase 0 + M0/M1 の一部)**: 字句・構文・型・知識・意図・効果/権限の検査、Verified Application Graph(VAG)、
-> 承認記録とロック、売れ筋知識の SQL 低水準化までが動く。**Web/Backend/iOS/Android のアプリ生成はまだ無い**
-> (`koto build` は未対応機能を TGT001 で報告して停止する)。詳細は [docs/status.md](docs/status.md)。
+> **現状**: KOTONOHA ソースから **Backend(Node.js/TypeScript/SQLite)と Web(React SSR)を生成し、起動して E2E テストで動作を確認済み**。
+> iOS(SwiftUI)・Android(Compose)はコードを生成するが、この開発環境ではコンパイル未確認。詳細は [docs/status.md](docs/status.md)、構成は [docs/architecture.md](docs/architecture.md)。
 
 ## 使い方
 ```bash
@@ -14,6 +13,12 @@ cargo build
 ./target/debug/koto -C examples/shop graph          # VAG を出力
 ./target/debug/koto -C examples/shop --json check   # 機械可読診断
 ./target/debug/koto doctor                          # 実装状況と未決定事項
+
+# 生成して動かす
+./target/debug/koto -C examples/shop build --target backend --out /tmp/shop-be
+./target/debug/koto -C examples/shop build --target web --out /tmp/shop-web
+cd /tmp/shop-be && KOTONOHA_JWT_SECRET=$(openssl rand -hex 32) npm start &
+cd /tmp/shop-web && npm install && npm run build && npm start   # http://127.0.0.1:3000
 ```
 
 ```kotonoha
@@ -44,4 +49,5 @@ cargo build
 ```bash
 cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings && cargo test
 python3 tools/validate_schemas.py target/debug/koto
+node --no-warnings --test tests/e2e/backend.test.ts tests/e2e/web.test.ts
 ```

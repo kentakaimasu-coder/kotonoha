@@ -94,8 +94,19 @@ fn lock_stale_and_target_unsupported_exit_codes() {
     let d = project("lock_stale", SHOP, r#""web","backend","ios","android""#);
     assert_eq!(koto(&d, &["build", "--target", "backend", "--locked"]).0, 5, "ロックなし");
     assert_eq!(koto(&d, &["approve", "--write-lock"]).0, 0);
-    assert_eq!(koto(&d, &["build", "--target", "ios", "--locked"]).0, 6, "TC-013");
-    assert_eq!(koto(&d, &["build", "--target", "android"]).0, 6);
+    let out = d.join("out-ios");
+    assert_eq!(
+        koto(&d, &["build", "--target", "ios", "--locked", "--out", out.to_str().unwrap()]).0,
+        0,
+        "ロック一致なら生成できる"
+    );
+    assert!(out.join("Sources/Screens.generated.swift").exists());
+    let dec = project(
+        "tgt_unsupported",
+        &SHOP.replace("    在庫: 整数\n", "    在庫: 整数\n    重さ: 選択<小数>\n"),
+        r#""android""#,
+    );
+    assert_eq!(koto(&dec, &["build", "--target", "android"]).0, 6, "TC-013 未対応の型");
     std::fs::write(d.join("src/app.koto"), SHOP.replace("件数 = 20", "件数 = 30")).unwrap();
     let (c, _, err) = koto(&d, &["build", "--target", "backend", "--locked"]);
     assert_eq!(c, 5, "TC-010 知識変更でロック失効: {err}");

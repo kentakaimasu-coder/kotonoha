@@ -134,8 +134,13 @@ pub fn window_ms(spec: &RankingSpec, base_ms: i64) -> Option<(i64, i64)> {
 
 /// SQLite 用の DDL(テストフィクスチャと将来の Backend 生成で使う)。
 pub fn sqlite_ddl(data: &DataInfo, env: &kotonoha_types::Env) -> Result<String, Diagnostic> {
+    sqlite_ddl_for(&data.name, &data.fields, &env.enums)
+}
+
+/// `CREATE TABLE IF NOT EXISTS`(起動時に適用。差分マイグレーションは未実装: K-05)
+pub fn sqlite_ddl_for(name: &str, fields: &[(String, Type)], enums: &std::collections::BTreeMap<String, Vec<String>>) -> Result<String, Diagnostic> {
     let mut cols = Vec::new();
-    for (n, t) in &data.fields {
+    for (n, t) in fields {
         let (base, nullable) = match t {
             Type::Option(inner) => (inner.as_ref(), true),
             other => (other, false),
@@ -146,12 +151,18 @@ pub fn sqlite_ddl(data: &DataInfo, env: &kotonoha_types::Env) -> Result<String, 
             Type::Money(c) => {
                 return Err(Diagnostic::error(
                     Code::GEN001,
-                    data.span,
+                    Default::default(),
                     format!("金額<{c}> の格納精度は未決定です(ADR-0106)"),
                 ))
             }
             Type::Str | Type::Id | Type::Url | Type::Email | Type::Enum(_) => "TEXT",
-            other => return Err(Diagnostic::error(Code::GEN001, data.span, format!("型 {other} の SQLite 格納形式は未定義です"))),
+            other => {
+                return Err(Diagnostic::error(
+                    Code::GEN001,
+                    Default::default(),
+                    format!("型 {other} の SQLite 格納形式は未定義です"),
+                ))
+            }
         };
         let mut col = format!("{} {ty}", quote_ident(n)?);
         if !nullable {
@@ -161,10 +172,10 @@ pub fn sqlite_ddl(data: &DataInfo, env: &kotonoha_types::Env) -> Result<String, 
             col.push_str(" PRIMARY KEY");
         }
         if let Type::Enum(e) = base {
-            let vs: Vec<String> = env.enums[e].iter().map(|v| format!("'{}'", v.replace('\'', "''"))).collect();
+            let vs: Vec<String> = enums[e].iter().map(|v| format!("'{}'", v.replace('\'', "''"))).collect();
             col.push_str(&format!(" CHECK ({} IN ({}))", quote_ident(n)?, vs.join(", ")));
         }
         cols.push(col);
     }
-    Ok(format!("CREATE TABLE {} (\n    {}\n);", quote_ident(&data.name)?, cols.join(",\n    ")))
+    Ok(format!("CREATE TABLE IF NOT EXISTS {} (\n    {}\n);", quote_ident(name)?, cols.join(",\n    ")))
 }

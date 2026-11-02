@@ -347,7 +347,20 @@ pub fn build_target(p: &Project, a: &Analysis, target: &str) -> Result<BuildOutp
     if !unsupported.is_empty() {
         return Err(unsupported);
     }
-    let mut files = vec![("vag.json".to_string(), serde_json::to_string_pretty(&a.vag).unwrap() + "\n")];
+    let ir = kotonoha_codegen::appir::build_ir(&kotonoha_codegen::appir::IrInput {
+        env: &a.env,
+        registry: &a.registry,
+        intents: &a.intents,
+        validation: &a.validation,
+        asts: &a.asts,
+    });
+    let generated = match kind {
+        kotonoha_codegen::TargetKind::Backend => kotonoha_codegen::backend::generate(&ir, &a.vag)?,
+        kotonoha_codegen::TargetKind::Web => kotonoha_codegen::web::generate(&ir)?,
+        kotonoha_codegen::TargetKind::Ios => kotonoha_codegen::ios::generate(&ir)?,
+        kotonoha_codegen::TargetKind::Android => kotonoha_codegen::android::generate(&ir)?,
+    };
+    let mut files: Vec<(String, String)> = generated.into_iter().map(|f| (f.path, f.content)).collect();
     if kind == kotonoha_codegen::TargetKind::Backend {
         for (name, k) in &a.registry.entries {
             let Knowledge::Ranking(spec) = k;

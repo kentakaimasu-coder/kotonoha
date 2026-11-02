@@ -19,6 +19,36 @@
       "to": "screen.商品詳細"
     },
     {
+      "from": "screen.商品管理",
+      "kind": "invokes",
+      "to": "action.商品登録"
+    },
+    {
+      "from": "screen.商品管理",
+      "kind": "contains",
+      "to": "screen.商品管理#180a09dd902a"
+    },
+    {
+      "from": "screen.商品管理",
+      "kind": "contains",
+      "to": "screen.商品管理#18343dc67c44"
+    },
+    {
+      "from": "screen.商品管理",
+      "kind": "contains",
+      "to": "screen.商品管理#73166055d2f1"
+    },
+    {
+      "from": "screen.商品管理#18343dc67c44",
+      "kind": "invokes",
+      "to": "action.商品登録"
+    },
+    {
+      "from": "screen.商品管理#73166055d2f1",
+      "kind": "navigates",
+      "to": "screen.商品詳細"
+    },
+    {
       "from": "screen.商品詳細",
       "kind": "invokes",
       "to": "action.注文する"
@@ -26,12 +56,12 @@
     {
       "from": "screen.商品詳細",
       "kind": "contains",
-      "to": "screen.商品詳細#16bf8338c619"
+      "to": "screen.商品詳細#69974fc3b5ed"
     },
     {
       "from": "screen.商品詳細",
       "kind": "contains",
-      "to": "screen.商品詳細#69974fc3b5ed"
+      "to": "screen.商品詳細#6b86af91b5e2"
     },
     {
       "from": "screen.商品詳細#69974fc3b5ed",
@@ -82,6 +112,46 @@
     {
       "auth": "required",
       "capabilities": [
+        "商品.create"
+      ],
+      "effects": [
+        "data.write"
+      ],
+      "id": "action.商品登録",
+      "inputs": [
+        "文字列",
+        "金額<JPY>",
+        "整数"
+      ],
+      "kind": "action",
+      "knowledge_refs": [],
+      "outputs": [
+        "結果<識別子, 登録失敗>"
+      ],
+      "params": [
+        {
+          "name": "名前",
+          "type": "文字列"
+        },
+        {
+          "name": "価格",
+          "type": "金額<JPY>"
+        },
+        {
+          "name": "在庫",
+          "type": "整数"
+        }
+      ],
+      "source_span": {
+        "column": 1,
+        "file": "src/app.koto",
+        "line": 65
+      },
+      "title": "商品登録"
+    },
+    {
+      "auth": "required",
+      "capabilities": [
         "商品.read",
         "商品.update",
         "注文.create"
@@ -113,7 +183,7 @@
       "source_span": {
         "column": 1,
         "file": "src/app.koto",
-        "line": 48
+        "line": 54
       },
       "title": "注文する"
     },
@@ -133,7 +203,7 @@
       "source_span": {
         "column": 5,
         "file": "src/app.koto",
-        "line": 76
+        "line": 94
       },
       "title": "商品は誰でも閲覧可"
     },
@@ -153,7 +223,7 @@
       "source_span": {
         "column": 5,
         "file": "src/app.koto",
-        "line": 77
+        "line": 95
       },
       "title": "未認証なら注文不可"
     },
@@ -175,7 +245,7 @@
       "source_span": {
         "column": 1,
         "file": "src/app.koto",
-        "line": 40
+        "line": 46
       },
       "title": "商品一覧"
     },
@@ -204,7 +274,7 @@
       "source_span": {
         "column": 5,
         "file": "src/app.koto",
-        "line": 41
+        "line": 47
       },
       "title": "商品の一覧"
     },
@@ -230,7 +300,108 @@
       "source_span": {
         "column": 5,
         "file": "src/app.koto",
-        "line": 42
+        "line": 48
+      },
+      "title": "商品選択→商品詳細"
+    },
+    {
+      "capabilities": [
+        "商品.read"
+      ],
+      "effects": [
+        "data.read"
+      ],
+      "id": "screen.商品管理",
+      "inputs": [],
+      "kind": "screen",
+      "knowledge_refs": [],
+      "mode": "厳密",
+      "outputs": [
+        "一覧<商品>"
+      ],
+      "source_span": {
+        "column": 1,
+        "file": "src/app.koto",
+        "line": 72
+      },
+      "title": "商品管理"
+    },
+    {
+      "capabilities": [
+        "商品.read"
+      ],
+      "detail": {
+        "data": "商品",
+        "ui": "list"
+      },
+      "effects": [
+        "data.read"
+      ],
+      "id": "screen.商品管理#180a09dd902a",
+      "inputs": [],
+      "kind": "display",
+      "knowledge_refs": [],
+      "outputs": [
+        "一覧<商品>"
+      ],
+      "resolution": {
+        "via": "pattern"
+      },
+      "sentence": "商品を一覧表示",
+      "source_span": {
+        "column": 5,
+        "file": "src/app.koto",
+        "line": 74
+      },
+      "title": "商品の一覧"
+    },
+    {
+      "capabilities": [],
+      "detail": {
+        "action": "action.商品登録",
+        "event": "submit",
+        "ui": "form"
+      },
+      "effects": [],
+      "id": "screen.商品管理#18343dc67c44",
+      "inputs": [],
+      "kind": "display",
+      "knowledge_refs": [],
+      "outputs": [],
+      "resolution": {
+        "via": "pattern"
+      },
+      "sentence": "商品登録のフォームを表示",
+      "source_span": {
+        "column": 5,
+        "file": "src/app.koto",
+        "line": 73
+      },
+      "title": "商品登録のフォーム"
+    },
+    {
+      "capabilities": [],
+      "detail": {
+        "data": "商品",
+        "event": "tap",
+        "to": "screen.商品詳細"
+      },
+      "effects": [],
+      "id": "screen.商品管理#73166055d2f1",
+      "inputs": [
+        "商品"
+      ],
+      "kind": "navigation",
+      "knowledge_refs": [],
+      "outputs": [],
+      "resolution": {
+        "via": "pattern"
+      },
+      "sentence": "商品を選ぶと 商品詳細 へ",
+      "source_span": {
+        "column": 5,
+        "file": "src/app.koto",
+        "line": 75
       },
       "title": "商品選択→商品詳細"
     },
@@ -252,42 +423,9 @@
       "source_span": {
         "column": 1,
         "file": "src/app.koto",
-        "line": 44
+        "line": 50
       },
       "title": "商品詳細"
-    },
-    {
-      "capabilities": [
-        "商品.read"
-      ],
-      "detail": {
-        "data": "商品",
-        "fields": [
-          "名前",
-          "価格"
-        ],
-        "ui": "detail"
-      },
-      "effects": [
-        "data.read"
-      ],
-      "id": "screen.商品詳細#16bf8338c619",
-      "inputs": [
-        "商品"
-      ],
-      "kind": "display",
-      "knowledge_refs": [],
-      "outputs": [],
-      "resolution": {
-        "via": "pattern"
-      },
-      "sentence": "商品の名前と価格を表示",
-      "source_span": {
-        "column": 5,
-        "file": "src/app.koto",
-        "line": 45
-      },
-      "title": "商品の名前と価格"
     },
     {
       "capabilities": [],
@@ -314,9 +452,43 @@
       "source_span": {
         "column": 5,
         "file": "src/app.koto",
-        "line": 46
+        "line": 52
       },
       "title": "購入"
+    },
+    {
+      "capabilities": [
+        "商品.read"
+      ],
+      "detail": {
+        "data": "商品",
+        "fields": [
+          "名前",
+          "価格",
+          "在庫"
+        ],
+        "ui": "detail"
+      },
+      "effects": [
+        "data.read"
+      ],
+      "id": "screen.商品詳細#6b86af91b5e2",
+      "inputs": [
+        "商品"
+      ],
+      "kind": "display",
+      "knowledge_refs": [],
+      "outputs": [],
+      "resolution": {
+        "via": "pattern"
+      },
+      "sentence": "商品の名前と価格と在庫を表示",
+      "source_span": {
+        "column": 5,
+        "file": "src/app.koto",
+        "line": 51
+      },
+      "title": "商品の名前と価格と在庫"
     },
     {
       "capabilities": [
@@ -338,7 +510,7 @@
       "source_span": {
         "column": 1,
         "file": "src/app.koto",
-        "line": 72
+        "line": 90
       },
       "title": "売れ筋"
     },
@@ -371,7 +543,7 @@
       "source_span": {
         "column": 5,
         "file": "src/app.koto",
-        "line": 73
+        "line": 91
       },
       "title": "売れ筋商品"
     }
@@ -398,6 +570,28 @@
           }
         ],
         "returns": "商品",
+        "target": "商品"
+      },
+      {
+        "capability": "商品.create",
+        "effect": "data.write",
+        "name": "商品を新規登録",
+        "op": "登録",
+        "params": [
+          {
+            "name": "名前",
+            "type": "文字列"
+          },
+          {
+            "name": "価格",
+            "type": "金額<JPY>"
+          },
+          {
+            "name": "在庫",
+            "type": "整数"
+          }
+        ],
+        "returns": "識別子",
         "target": "商品"
       },
       {
@@ -503,6 +697,12 @@
         "variants": [
           "確定",
           "取消"
+        ]
+      },
+      {
+        "name": "登録失敗",
+        "variants": [
+          "在庫不正"
         ]
       }
     ]

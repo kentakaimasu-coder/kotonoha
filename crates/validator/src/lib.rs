@@ -246,7 +246,8 @@ mod tests {
         );
         let (_, d) = run(&src);
         assert_eq!(errs(&d), [Code::SEC001]);
-        assert_eq!(d.iter().find(|x| x.is_error()).unwrap().span.line, 56, "最初の書込み(在庫の更新)の位置");
+        let want = src.lines().position(|l| l.trim() == "商品.在庫 = 商品.在庫 - 数量").unwrap() as u32 + 1;
+        assert_eq!(d.iter().find(|x| x.is_error()).unwrap().span.line, want, "最初の書込み(在庫の更新)の位置");
     }
 
     #[test]

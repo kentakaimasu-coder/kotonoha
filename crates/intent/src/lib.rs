@@ -52,6 +52,9 @@ pub enum IntentKind {
         #[serde(serialize_with = "ser_args")]
         args: Vec<Expr>,
     },
+    /// P-FORM `{動作}のフォームを表示`(ADR-0115 提案)
+    #[serde(rename = "form")]
+    Form { action: String },
     /// C-PUBLIC `{データ}は誰でも閲覧可`
     #[serde(rename = "public_read")]
     PublicRead { data: String },
@@ -448,6 +451,13 @@ impl Ctx<'_> {
             }
         }
         if let Some(x) = s.strip_suffix("を表示") {
+            // P-FORM
+            if let Some(a) = x.strip_suffix("のフォーム") {
+                if self.env.actions.contains_key(a) {
+                    return Match::Ok(IntentKind::Form { action: a.into() });
+                }
+                return Match::Invalid(Diagnostic::error(Code::REF001, span, format!("動作 `{a}` は定義されていません")));
+            }
             if self.reg.resolve(x).is_some() {
                 return self.knowledge_match(x, None, span);
             }

@@ -515,6 +515,15 @@ fn check_adapter(sig: &AdapterSig, a: &AdapterDecl, env: &Env, diags: &mut Vec<D
                 }
             }
             if sig.op == OpKind::Create {
+                let missing: Vec<&str> = data
+                    .fields
+                    .iter()
+                    .filter(|(n, t)| n != "ID" && !matches!(t, Type::Option(_)) && !sig.params.iter().any(|(pn, _)| pn == n))
+                    .map(|(n, _)| n.as_str())
+                    .collect();
+                if !missing.is_empty() {
+                    bad(format!("操作 登録 の引数に必須フィールド {} がありません", missing.join(", ")), diags);
+                }
                 if sig.params.iter().any(|(n, _)| n == "ID") {
                     bad("操作 登録 では ID は生成されるため引数にできません(ADR-0104)".into(), diags);
                 }

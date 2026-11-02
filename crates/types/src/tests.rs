@@ -147,4 +147,9 @@ fn spec_sample_undefined_names_are_ref001() {
     assert!(msgs.iter().any(|m| m.contains("REF001") && m.contains("注文失敗")), "{msgs:#?}");
     assert!(msgs.iter().any(|m| m.contains("REF001") && m.contains("商品をIDで取得")), "{msgs:#?}");
     assert!(msgs.iter().any(|m| m.contains("REF001") && m.contains("資源 `注文`")), "{msgs:#?}");
+
+    let (_, d) = check_src(
+        "アプリ「t」\nデータ A:\n    ID: 識別子\n    名前: 文字列\n    備考: 選択<文字列>\nアダプタ g(備考: 選択<文字列>) -> 識別子:\n    操作 = 登録(A)\n",
+    );
+    assert_eq!(errors(&d), [Code::TYP001], "必須フィールド 名前 が無い 登録");
 }

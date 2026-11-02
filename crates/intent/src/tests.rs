@@ -30,7 +30,7 @@ fn shop_intents_resolve() {
     assert!(matches!(&list.intents[1].kind, IntentKind::NavigateOnSelect { data, screen } if data == "商品" && screen == "商品詳細"));
     let detail = &m.screens[1];
     assert_eq!(detail.input.as_deref(), Some("商品"));
-    assert!(matches!(&detail.intents[0].kind, IntentKind::ShowFields { fields, .. } if fields == &["名前", "価格"]));
+    assert!(matches!(&detail.intents[0].kind, IntentKind::ShowFields { fields, .. } if fields == &["名前", "価格", "在庫"]));
     assert!(matches!(&detail.intents[1].kind, IntentKind::ButtonInvoke { label, action, args } if label == "購入" && action == "注文する" && args.len() == 2));
     assert_eq!(m.contracts.len(), 2);
     assert!(m.unresolved.is_empty());
@@ -115,11 +115,11 @@ fn spec_sample_contract_is_unresolved() {
 
 #[test]
 fn screen_reference_errors() {
-    let s = SHOP.replace("商品の名前と価格を表示", "商品の名前と色を表示");
+    let s = SHOP.replace("商品の名前と価格と在庫を表示", "商品の名前と色を表示");
     assert_eq!(codes(&run(&s, &[]).1), [Code::REF001]);
     let s = SHOP.replace("商品を選ぶと 商品詳細 へ", "商品を選ぶと 存在しない画面 へ");
     // 遷移先が無い + 商品詳細の表示対象が決まらない
-    assert_eq!(codes(&run(&s, &[]).1), [Code::REF001, Code::REF001, Code::REF001]); // 遷移先なし + 表示対象/ボタン引数の 商品 が決まらない
+    assert_eq!(codes(&run(&s, &[]).1), [Code::REF001; 4]); // 遷移先なし×2画面 + 表示対象/ボタン引数の 商品 が決まらない
     let s = SHOP.replace("注文する(商品.ID, 1)", "注文する(商品.ID, \"1\")");
     assert_eq!(codes(&run(&s, &[]).1), [Code::TYP001]);
     let s = SHOP.replace("注文する(商品.ID, 1)", "存在しない動作(1)");

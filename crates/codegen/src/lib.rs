@@ -8,7 +8,29 @@
 //! - web: 未実装(UI 生成フレームワークは ADR-004 で未決定)
 //! - ios / android: 契約(本モジュールの trait と support 表)のみ。生成は P1
 
+pub mod android;
+pub mod appir;
+pub mod backend;
+pub mod ios;
 pub mod sql;
+pub mod ts;
+pub mod web;
+
+/// 生成ファイル(ターゲットの出力ディレクトリからの相対パス)。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeneratedFile {
+    pub path: String,
+    pub content: String,
+}
+
+impl GeneratedFile {
+    pub fn text(path: &str, content: String) -> Self {
+        GeneratedFile {
+            path: path.to_string(),
+            content,
+        }
+    }
+}
 
 use kotonoha_diag::{Code, Diagnostic, Span};
 use serde_json::Value;
@@ -78,10 +100,34 @@ impl Target for SupportTable {
     }
 }
 
+pub const ALL_FEATURES: &[(&str, &str)] = &[
+    ("screen", "screen.page"),
+    ("display", "ui.list"),
+    ("display", "ui.detail"),
+    ("display", "ui.button"),
+    ("display", "ui.form"),
+    ("query", "query.ranking"),
+    ("navigation", "nav.select"),
+    ("action", "action.strict"),
+    ("validation", "policy.public_read"),
+    ("validation", "policy.auth_required"),
+];
+
+/// 検証状況(doctor と docs/status.md 用)。生成コードを実際にビルド・実行して確認したか。
+pub fn verification_status(kind: TargetKind) -> &'static str {
+    match kind {
+        TargetKind::Backend => "生成・起動・API テスト済み(Node.js 22)",
+        TargetKind::Web => "生成・ビルド・ブラウザ E2E 済み(React SSR)",
+        TargetKind::Ios => "生成のみ(Swift ツールチェーンなしのためコンパイル未検証)",
+        TargetKind::Android => "生成のみ(Android SDK なしのためビルド未検証)",
+    }
+}
+
 pub fn target_for(kind: TargetKind) -> SupportTable {
     let supported: &'static [(&'static str, &'static str)] = match kind {
-        TargetKind::Backend => &[("query", "query.ranking")],
-        TargetKind::Web | TargetKind::Ios | TargetKind::Android => &[],
+        // 全ターゲットが同じ機能集合に対応する(UI ノードは backend ではデータ API の提供として、
+        // action はクライアントでは API 呼出として扱う)。型レベルの未対応は各生成器が TGT001 を返す。
+        TargetKind::Backend | TargetKind::Web | TargetKind::Ios | TargetKind::Android => ALL_FEATURES,
     };
     SupportTable { target: kind, supported }
 }
@@ -124,17 +170,21 @@ mod tests {
 
     #[test]
     fn tc013_unsupported_features_stop_with_tgt001() {
+        // 全ターゲットが現行の機能集合に対応する
         let vag = json!({"nodes": [
             {"id": "screen.a", "kind": "screen"},
             {"id": "q", "kind": "query", "detail": {}},
             {"id": "b", "kind": "display", "detail": {"ui": "button"}},
+            {"id": "f", "kind": "display", "detail": {"ui": "form"}},
         ]});
-        assert_eq!(check_support(&target_for(TargetKind::Ios), &vag).len(), 3);
-        let be = check_support(&target_for(TargetKind::Backend), &vag);
-        assert_eq!(be.len(), 2, "query.ranking だけは backend 対応");
-        assert!(be.iter().all(|d| d.code == Code::TGT001));
-        let only_query = json!({"nodes": [{"id": "q", "kind": "query", "detail": {}}]});
-        assert!(check_support(&target_for(TargetKind::Backend), &only_query).is_empty());
+        for t in [TargetKind::Web, TargetKind::Backend, TargetKind::Ios, TargetKind::Android] {
+            assert!(check_support(&target_for(t), &vag).is_empty(), "{t:?}");
+        }
+        // 未知の機能は黙って落とさず TGT001
+        let unknown = json!({"nodes": [{"id": "x", "kind": "display", "detail": {"ui": "map"}}, {"id": "y", "kind": "display", "detail": {"ui": "chart"}}]});
+        let d = check_support(&target_for(TargetKind::Ios), &unknown);
+        assert_eq!(d.len(), 2);
+        assert!(d.iter().all(|x| x.code == Code::TGT001));
     }
 
     #[test]
