@@ -1,0 +1,23 @@
+[package]
+name = "kotonoha-driver"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kotonoha-diag.workspace = true
+kotonoha-ast.workspace = true
+kotonoha-lexer.workspace = true
+kotonoha-parser.workspace = true
+kotonoha-types.workspace = true
+kotonoha-knowledge.workspace = true
+kotonoha-intent.workspace = true
+kotonoha-validator.workspace = true
+kotonoha-graph.workspace = true
+kotonoha-lock.workspace = true
+kotonoha-resolver.workspace = true
+kotonoha-codegen.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+unicode-normalization.workspace = true

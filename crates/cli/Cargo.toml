@@ -1,0 +1,21 @@
+[package]
+name = "kotonoha-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kotonoha-diag.workspace = true
+kotonoha-driver.workspace = true
+kotonoha-lock.workspace = true
+kotonoha-resolver.workspace = true
+kotonoha-intent.workspace = true
+kotonoha-graph.workspace = true
+serde_json.workspace = true
+
+[[bin]]
+name = "koto"
+path = "src/main.rs"
+
+[dev-dependencies]
+serde_json.workspace = true

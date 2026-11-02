@@ -1,0 +1,9 @@
+[package]
+name = "kotonoha-ast"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kotonoha-diag.workspace = true
+serde.workspace = true

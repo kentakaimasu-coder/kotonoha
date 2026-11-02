@@ -1,0 +1,16 @@
+[package]
+name = "kotonoha-validator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kotonoha-diag.workspace = true
+kotonoha-ast.workspace = true
+kotonoha-types.workspace = true
+kotonoha-intent.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+kotonoha-parser.workspace = true
+kotonoha-knowledge.workspace = true

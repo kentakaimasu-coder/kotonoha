@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kotonoha.invalid/schemas/lock.schema.json",
+  "title": "kotonoha.lock.json",
+  "description": "技術仕様書 §13。target は複数ターゲット対応のため targets 配列(ADR-0109 提案)。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["lock_version", "compiler_version", "source_hash", "knowledge_hash", "schema_hash", "graph_hash", "targets", "approved_interpretations", "approval_reference"],
+  "properties": {
+    "lock_version": {"const": "1"},
+    "compiler_version": {"type": "string"},
+    "source_hash": {"$ref": "#/$defs/sha256"},
+    "knowledge_hash": {"$ref": "#/$defs/sha256"},
+    "schema_hash": {"$ref": "#/$defs/sha256"},
+    "graph_hash": {"$ref": "#/$defs/sha256"},
+    "targets": {"type": "array", "items": {"enum": ["web", "backend", "ios", "android"]}},
+    "approved_interpretations": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false, "required": ["intent_id", "sentence_hash", "canonical", "record_hash"],
+      "properties": {"intent_id": {"type": "string"}, "sentence_hash": {"$ref": "#/$defs/sha256"}, "canonical": {"type": "string"}, "record_hash": {"$ref": "#/$defs/sha256"}}}},
+    "approval_reference": {"type": "object", "additionalProperties": false, "required": ["kind", "records_hash"],
+      "properties": {"kind": {"enum": ["local-unsigned"]}, "records_hash": {"$ref": "#/$defs/sha256"}}}
+  },
+  "$defs": {"sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+}

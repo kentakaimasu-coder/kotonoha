@@ -1,0 +1,512 @@
+{
+  "application": {
+    "name": "商店"
+  },
+  "edges": [
+    {
+      "from": "screen.商品一覧",
+      "kind": "contains",
+      "to": "screen.商品一覧#180a09dd902a"
+    },
+    {
+      "from": "screen.商品一覧",
+      "kind": "contains",
+      "to": "screen.商品一覧#73166055d2f1"
+    },
+    {
+      "from": "screen.商品一覧#73166055d2f1",
+      "kind": "navigates",
+      "to": "screen.商品詳細"
+    },
+    {
+      "from": "screen.商品詳細",
+      "kind": "invokes",
+      "to": "action.注文する"
+    },
+    {
+      "from": "screen.商品詳細",
+      "kind": "contains",
+      "to": "screen.商品詳細#16bf8338c619"
+    },
+    {
+      "from": "screen.商品詳細",
+      "kind": "contains",
+      "to": "screen.商品詳細#69974fc3b5ed"
+    },
+    {
+      "from": "screen.商品詳細#69974fc3b5ed",
+      "kind": "invokes",
+      "to": "action.注文する"
+    },
+    {
+      "from": "screen.売れ筋",
+      "kind": "contains",
+      "to": "screen.売れ筋#582ba100e9d0"
+    }
+  ],
+  "knowledge": [
+    {
+      "aliases": [
+        "ヒット商品"
+      ],
+      "filter": "状態 == \"確定\"",
+      "limit": 20,
+      "metric": {
+        "agg": "sum",
+        "field": "売上金額",
+        "output": "売上金額",
+        "ty": "金額<JPY>"
+      },
+      "name": "売れ筋商品",
+      "order": [
+        {
+          "column": "売上金額",
+          "dir": "desc"
+        },
+        {
+          "column": "商品ID",
+          "dir": "asc"
+        }
+      ],
+      "shape": "ranking",
+      "source": "注文明細",
+      "tax": "included",
+      "time_field": "確定日時",
+      "time_zone": "Asia/Tokyo",
+      "unit": "商品ID",
+      "unit_ty": "識別子",
+      "window_days": 30
+    }
+  ],
+  "nodes": [
+    {
+      "auth": "required",
+      "capabilities": [
+        "商品.read",
+        "商品.update",
+        "注文.create"
+      ],
+      "effects": [
+        "data.read",
+        "data.write"
+      ],
+      "id": "action.注文する",
+      "inputs": [
+        "識別子",
+        "整数"
+      ],
+      "kind": "action",
+      "knowledge_refs": [],
+      "outputs": [
+        "結果<識別子, 注文失敗>"
+      ],
+      "params": [
+        {
+          "name": "商品ID",
+          "type": "識別子"
+        },
+        {
+          "name": "数量",
+          "type": "整数"
+        }
+      ],
+      "source_span": {
+        "column": 1,
+        "file": "src/app.koto",
+        "line": 48
+      },
+      "title": "注文する"
+    },
+    {
+      "capabilities": [],
+      "detail": {
+        "data": "商品",
+        "policy": "public_read"
+      },
+      "effects": [],
+      "id": "contract#351509df421b",
+      "inputs": [],
+      "kind": "validation",
+      "knowledge_refs": [],
+      "outputs": [],
+      "sentence": "商品は誰でも閲覧可",
+      "source_span": {
+        "column": 5,
+        "file": "src/app.koto",
+        "line": 76
+      },
+      "title": "商品は誰でも閲覧可"
+    },
+    {
+      "capabilities": [],
+      "detail": {
+        "data": "注文",
+        "policy": "auth_required"
+      },
+      "effects": [],
+      "id": "contract#c7119e7149a7",
+      "inputs": [],
+      "kind": "validation",
+      "knowledge_refs": [],
+      "outputs": [],
+      "sentence": "未認証なら注文不可",
+      "source_span": {
+        "column": 5,
+        "file": "src/app.koto",
+        "line": 77
+      },
+      "title": "未認証なら注文不可"
+    },
+    {
+      "capabilities": [
+        "商品.read"
+      ],
+      "effects": [
+        "data.read"
+      ],
+      "id": "screen.商品一覧",
+      "inputs": [],
+      "kind": "screen",
+      "knowledge_refs": [],
+      "mode": "厳密",
+      "outputs": [
+        "一覧<商品>"
+      ],
+      "source_span": {
+        "column": 1,
+        "file": "src/app.koto",
+        "line": 40
+      },
+      "title": "商品一覧"
+    },
+    {
+      "capabilities": [
+        "商品.read"
+      ],
+      "detail": {
+        "data": "商品",
+        "ui": "list"
+      },
+      "effects": [
+        "data.read"
+      ],
+      "id": "screen.商品一覧#180a09dd902a",
+      "inputs": [],
+      "kind": "display",
+      "knowledge_refs": [],
+      "outputs": [
+        "一覧<商品>"
+      ],
+      "resolution": {
+        "via": "pattern"
+      },
+      "sentence": "商品を一覧表示",
+      "source_span": {
+        "column": 5,
+        "file": "src/app.koto",
+        "line": 41
+      },
+      "title": "商品の一覧"
+    },
+    {
+      "capabilities": [],
+      "detail": {
+        "data": "商品",
+        "event": "tap",
+        "to": "screen.商品詳細"
+      },
+      "effects": [],
+      "id": "screen.商品一覧#73166055d2f1",
+      "inputs": [
+        "商品"
+      ],
+      "kind": "navigation",
+      "knowledge_refs": [],
+      "outputs": [],
+      "resolution": {
+        "via": "pattern"
+      },
+      "sentence": "商品を選ぶと 商品詳細 へ",
+      "source_span": {
+        "column": 5,
+        "file": "src/app.koto",
+        "line": 42
+      },
+      "title": "商品選択→商品詳細"
+    },
+    {
+      "capabilities": [
+        "商品.read"
+      ],
+      "effects": [
+        "data.read"
+      ],
+      "id": "screen.商品詳細",
+      "inputs": [
+        "商品"
+      ],
+      "kind": "screen",
+      "knowledge_refs": [],
+      "mode": "厳密",
+      "outputs": [],
+      "source_span": {
+        "column": 1,
+        "file": "src/app.koto",
+        "line": 44
+      },
+      "title": "商品詳細"
+    },
+    {
+      "capabilities": [
+        "商品.read"
+      ],
+      "detail": {
+        "data": "商品",
+        "fields": [
+          "名前",
+          "価格"
+        ],
+        "ui": "detail"
+      },
+      "effects": [
+        "data.read"
+      ],
+      "id": "screen.商品詳細#16bf8338c619",
+      "inputs": [
+        "商品"
+      ],
+      "kind": "display",
+      "knowledge_refs": [],
+      "outputs": [],
+      "resolution": {
+        "via": "pattern"
+      },
+      "sentence": "商品の名前と価格を表示",
+      "source_span": {
+        "column": 5,
+        "file": "src/app.koto",
+        "line": 45
+      },
+      "title": "商品の名前と価格"
+    },
+    {
+      "capabilities": [],
+      "detail": {
+        "action": "action.注文する",
+        "args": [
+          "商品.ID",
+          "1"
+        ],
+        "event": "tap",
+        "label": "購入",
+        "ui": "button"
+      },
+      "effects": [],
+      "id": "screen.商品詳細#69974fc3b5ed",
+      "inputs": [],
+      "kind": "display",
+      "knowledge_refs": [],
+      "outputs": [],
+      "resolution": {
+        "via": "pattern"
+      },
+      "sentence": "「購入」を押すと 注文する(商品.ID, 1)",
+      "source_span": {
+        "column": 5,
+        "file": "src/app.koto",
+        "line": 46
+      },
+      "title": "購入"
+    },
+    {
+      "capabilities": [
+        "注文明細.read"
+      ],
+      "effects": [
+        "data.read"
+      ],
+      "id": "screen.売れ筋",
+      "inputs": [],
+      "kind": "screen",
+      "knowledge_refs": [
+        "売れ筋商品"
+      ],
+      "mode": "厳密",
+      "outputs": [
+        "一覧<記録{商品ID: 識別子, 売上金額: 金額<JPY>}>"
+      ],
+      "source_span": {
+        "column": 1,
+        "file": "src/app.koto",
+        "line": 72
+      },
+      "title": "売れ筋"
+    },
+    {
+      "capabilities": [
+        "注文明細.read"
+      ],
+      "detail": {
+        "knowledge": "売れ筋商品",
+        "limit": 20,
+        "limit_override": null,
+        "ui": "list"
+      },
+      "effects": [
+        "data.read"
+      ],
+      "id": "screen.売れ筋#582ba100e9d0",
+      "inputs": [],
+      "kind": "query",
+      "knowledge_refs": [
+        "売れ筋商品"
+      ],
+      "outputs": [
+        "一覧<記録{商品ID: 識別子, 売上金額: 金額<JPY>}>"
+      ],
+      "resolution": {
+        "via": "pattern"
+      },
+      "sentence": "売れ筋商品を表示",
+      "source_span": {
+        "column": 5,
+        "file": "src/app.koto",
+        "line": 73
+      },
+      "title": "売れ筋商品"
+    }
+  ],
+  "policy": {
+    "auth_required": [
+      "注文"
+    ],
+    "public_read": [
+      "商品"
+    ]
+  },
+  "schema": {
+    "adapters": [
+      {
+        "capability": "商品.read",
+        "effect": "data.read",
+        "name": "商品をIDで取得",
+        "op": "取得",
+        "params": [
+          {
+            "name": "ID",
+            "type": "識別子"
+          }
+        ],
+        "returns": "商品",
+        "target": "商品"
+      },
+      {
+        "capability": "注文.create",
+        "effect": "data.write",
+        "name": "注文を登録",
+        "op": "登録",
+        "params": [
+          {
+            "name": "商品ID",
+            "type": "識別子"
+          },
+          {
+            "name": "数量",
+            "type": "整数"
+          }
+        ],
+        "returns": "識別子",
+        "target": "注文"
+      }
+    ],
+    "aliases": [
+      {
+        "name": "注文ID",
+        "type": "識別子"
+      }
+    ],
+    "data": [
+      {
+        "fields": [
+          {
+            "name": "ID",
+            "type": "識別子"
+          },
+          {
+            "name": "名前",
+            "type": "文字列"
+          },
+          {
+            "name": "価格",
+            "type": "金額<JPY>"
+          },
+          {
+            "name": "在庫",
+            "type": "整数"
+          }
+        ],
+        "name": "商品"
+      },
+      {
+        "fields": [
+          {
+            "name": "ID",
+            "type": "識別子"
+          },
+          {
+            "name": "商品ID",
+            "type": "識別子"
+          },
+          {
+            "name": "数量",
+            "type": "整数"
+          }
+        ],
+        "name": "注文"
+      },
+      {
+        "fields": [
+          {
+            "name": "ID",
+            "type": "識別子"
+          },
+          {
+            "name": "商品ID",
+            "type": "識別子"
+          },
+          {
+            "name": "売上金額",
+            "type": "金額<JPY>"
+          },
+          {
+            "name": "状態",
+            "type": "注文状態"
+          },
+          {
+            "name": "確定日時",
+            "type": "日時"
+          }
+        ],
+        "name": "注文明細"
+      }
+    ],
+    "enums": [
+      {
+        "name": "注文失敗",
+        "variants": [
+          "数量不正",
+          "在庫不足"
+        ]
+      },
+      {
+        "name": "注文状態",
+        "variants": [
+          "確定",
+          "取消"
+        ]
+      }
+    ]
+  },
+  "schema_version": "1.0",
+  "status": "validated"
+}

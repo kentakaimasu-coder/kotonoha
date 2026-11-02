@@ -1,0 +1,13 @@
+[package]
+name = "kotonoha-parser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kotonoha-diag.workspace = true
+kotonoha-ast.workspace = true
+kotonoha-lexer.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

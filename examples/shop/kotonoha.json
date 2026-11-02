@@ -1,0 +1,5 @@
+{
+  "name": "商店",
+  "sources": ["src/app.koto"],
+  "targets": ["web", "backend"]
+}

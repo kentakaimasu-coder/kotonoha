@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kotonoha.invalid/schemas/vag.schema.json",
+  "title": "KOTONOHA Verified Application Graph v1",
+  "description": "技術仕様書 §6。正式定義は docs/spec/vag.md。status=validated は全検査通過時のみ。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "application", "schema", "knowledge", "policy", "nodes", "edges", "status"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "application": {
+      "type": "object", "additionalProperties": false, "required": ["name"],
+      "properties": {"name": {"type": "string"}}
+    },
+    "schema": {
+      "type": "object", "additionalProperties": false, "required": ["enums", "aliases", "data", "adapters"],
+      "properties": {
+        "enums": {"type": "array", "items": {
+          "type": "object", "additionalProperties": false, "required": ["name", "variants"],
+          "properties": {"name": {"type": "string"}, "variants": {"type": "array", "items": {"type": "string"}}}}},
+        "aliases": {"type": "array", "items": {
+          "type": "object", "additionalProperties": false, "required": ["name", "type"],
+          "properties": {"name": {"type": "string"}, "type": {"type": "string"}}}},
+        "data": {"type": "array", "items": {
+          "type": "object", "additionalProperties": false, "required": ["name", "fields"],
+          "properties": {"name": {"type": "string"}, "fields": {"type": "array", "items": {"$ref": "#/$defs/named_type"}}}}},
+        "adapters": {"type": "array", "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "op", "target", "params", "returns", "capability", "effect"],
+          "properties": {
+            "name": {"type": "string"},
+            "op": {"enum": ["取得", "一覧", "登録", "更新", "削除"]},
+            "target": {"type": "string"},
+            "params": {"type": "array", "items": {"$ref": "#/$defs/named_type"}},
+            "returns": {"type": "string"},
+            "capability": {"$ref": "#/$defs/capability"},
+            "effect": {"$ref": "#/$defs/effect"}}}}
+      }
+    },
+    "knowledge": {"type": "array", "items": {"$ref": "#/$defs/ranking"}},
+    "policy": {
+      "type": "object", "additionalProperties": false, "required": ["public_read", "auth_required"],
+      "properties": {
+        "public_read": {"type": "array", "items": {"type": "string"}},
+        "auth_required": {"type": "array", "items": {"type": "string"}}}
+    },
+    "nodes": {"type": "array", "items": {"$ref": "#/$defs/node"}},
+    "edges": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false, "required": ["from", "to", "kind"],
+      "properties": {
+        "from": {"type": "string"}, "to": {"type": "string"},
+        "kind": {"enum": ["contains", "navigates", "invokes"]}}}},
+    "status": {"enum": ["validated", "draft"]}
+  },
+  "$defs": {
+    "named_type": {"type": "object", "additionalProperties": false, "required": ["name", "type"],
+      "properties": {"name": {"type": "string"}, "type": {"type": "string"}}},
+    "effect": {"enum": ["data.read", "data.write", "network.send", "filesystem.read", "filesystem.write", "device.camera", "device.location", "device.notifications"]},
+    "capability": {"type": "string", "pattern": "^[^.]+\\.(read|create|update|delete)$"},
+    "span": {"type": "object", "additionalProperties": false, "required": ["file", "line", "column"],
+      "properties": {"file": {"type": "string"}, "line": {"type": "integer", "minimum": 1}, "column": {"type": "integer", "minimum": 1}}},
+    "resolution": {"oneOf": [
+      {"type": "object", "additionalProperties": false, "required": ["via"], "properties": {"via": {"const": "pattern"}}},
+      {"type": "object", "additionalProperties": false, "required": ["via", "canonical", "approval_hash"],
+        "properties": {"via": {"const": "approved"}, "canonical": {"type": "string"}, "approval_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}}
+    ]},
+    "ranking": {
+      "type": "object", "additionalProperties": false,
+      "required": ["shape", "name", "aliases", "source", "window_days", "time_field", "time_zone", "metric", "unit", "unit_ty", "order", "limit", "tax", "filter"],
+      "properties": {
+        "shape": {"const": "ranking"},
+        "name": {"type": "string"},
+        "aliases": {"type": "array", "items": {"type": "string"}},
+        "source": {"type": "string"},
+        "window_days": {"type": "integer", "minimum": 1, "maximum": 3650},
+        "time_field": {"type": "string"},
+        "time_zone": {"enum": ["Asia/Tokyo", "UTC"]},
+        "metric": {"type": "object", "additionalProperties": false, "required": ["agg", "field", "output", "ty"],
+          "properties": {"agg": {"enum": ["sum", "count"]}, "field": {"type": ["string", "null"]}, "output": {"type": "string"}, "ty": {"type": "string"}}},
+        "unit": {"type": "string"},
+        "unit_ty": {"type": "string"},
+        "order": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["column", "dir"],
+          "properties": {"column": {"type": "string"}, "dir": {"enum": ["asc", "desc"]}}}},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "tax": {"enum": ["included", "excluded"]},
+        "filter": {"type": ["string", "null"]}
+      }
+    },
+    "node": {
+      "type": "object",
+      "required": ["id", "kind", "title", "inputs", "outputs", "effects", "capabilities", "knowledge_refs", "source_span"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "kind": {"enum": ["screen", "action", "query", "display", "navigation", "validation"]},
+        "title": {"type": "string"},
+        "sentence": {"type": "string"},
+        "mode": {"enum": ["厳密", "柔軟(確認)", "柔軟(自動)"]},
+        "auth": {"const": "required"},
+        "inputs": {"type": "array", "items": {"type": "string"}},
+        "outputs": {"type": "array", "items": {"type": "string"}},
+        "params": {"type": "array", "items": {"$ref": "#/$defs/named_type"}},
+        "effects": {"type": "array", "items": {"$ref": "#/$defs/effect"}, "uniqueItems": true},
+        "capabilities": {"type": "array", "items": {"$ref": "#/$defs/capability"}, "uniqueItems": true},
+        "knowledge_refs": {"type": "array", "items": {"type": "string"}},
+        "source_span": {"$ref": "#/$defs/span"},
+        "resolution": {"$ref": "#/$defs/resolution"},
+        "detail": {"type": "object"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

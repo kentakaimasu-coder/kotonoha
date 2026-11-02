@@ -1,0 +1,14 @@
+[package]
+name = "kotonoha-intent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kotonoha-diag.workspace = true
+kotonoha-ast.workspace = true
+kotonoha-parser.workspace = true
+kotonoha-types.workspace = true
+kotonoha-knowledge.workspace = true
+serde.workspace = true
+sha2.workspace = true

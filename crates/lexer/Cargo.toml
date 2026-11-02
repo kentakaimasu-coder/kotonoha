@@ -1,0 +1,9 @@
+[package]
+name = "kotonoha-lexer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kotonoha-diag.workspace = true
+unicode-normalization.workspace = true

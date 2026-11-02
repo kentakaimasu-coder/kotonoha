@@ -1,0 +1,18 @@
+[package]
+name = "kotonoha-codegen"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kotonoha-diag.workspace = true
+kotonoha-ast.workspace = true
+kotonoha-types.workspace = true
+kotonoha-knowledge.workspace = true
+kotonoha-graph.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+rusqlite.workspace = true
+kotonoha-parser.workspace = true

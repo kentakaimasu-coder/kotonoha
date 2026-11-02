@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kotonoha.invalid/schemas/approvals.schema.json",
+  "title": "kotonoha.approvals.json",
+  "description": "承認記録。record_hash は record_hash 以外のフィールドの正規 JSON の SHA-256。真正性(署名)は ADR-007 未決定のため含まない。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["approvals_version", "records"],
+  "properties": {
+    "approvals_version": {"const": "1"},
+    "records": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["intent_id", "sentence", "sentence_hash", "canonical", "approver", "approved_at", "note", "record_hash"],
+      "properties": {
+        "intent_id": {"type": "string"}, "sentence": {"type": "string"},
+        "sentence_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "canonical": {"type": "string"}, "approver": {"type": "string", "minLength": 1},
+        "approved_at": {"type": "string"}, "note": {"type": "string"},
+        "record_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}}}
+  }
+}

@@ -1,0 +1,13 @@
+[package]
+name = "kotonoha-types"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kotonoha-diag.workspace = true
+kotonoha-ast.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+kotonoha-parser.workspace = true

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kotonoha.invalid/schemas/intent-candidate.schema.json",
+  "title": "KOTONOHA 意図解釈候補(resolver アダプタ出力)",
+  "description": "技術仕様書 §7。アダプタ出力は未信頼データ。crates/resolver の validate_candidate がこのスキーマと同じ規則を強制する。unresolved が空でない候補は承認不可。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["intent_id", "sentence_hash", "interpretations", "assumptions", "unresolved", "required_effects", "evidence_refs"],
+  "properties": {
+    "intent_id": {"type": "string", "pattern": "^[^#]+#[0-9a-f]{12}(~[0-9]+)?$"},
+    "sentence_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "interpretations": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false, "required": ["canonical", "rationale"],
+      "properties": {
+        "canonical": {"type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[^\\n]*$"},
+        "rationale": {"type": "string"}}}},
+    "assumptions": {"type": "array", "items": {"type": "string"}},
+    "unresolved": {"type": "array", "items": {"type": "string"}},
+    "required_effects": {"type": "array", "items": {"enum": ["data.read", "data.write", "network.send", "filesystem.read", "filesystem.write", "device.camera", "device.location", "device.notifications"]}},
+    "evidence_refs": {"type": "array", "items": {"type": "string"}}
+  }
+}

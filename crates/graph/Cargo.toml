@@ -1,0 +1,17 @@
+[package]
+name = "kotonoha-graph"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kotonoha-diag.workspace = true
+kotonoha-ast.workspace = true
+kotonoha-types.workspace = true
+kotonoha-knowledge.workspace = true
+kotonoha-intent.workspace = true
+kotonoha-validator.workspace = true
+kotonoha-parser.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
