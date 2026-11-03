@@ -111,6 +111,7 @@ pub const ALL_FEATURES: &[(&str, &str)] = &[
     ("action", "action.strict"),
     ("validation", "policy.public_read"),
     ("validation", "policy.auth_required"),
+    ("validation", "policy.owner_read"),
 ];
 
 /// 検証状況(doctor と docs/status.md 用)。生成コードを実際にビルド・実行して確認したか。

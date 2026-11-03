@@ -153,3 +153,13 @@ fn spec_sample_undefined_names_are_ref001() {
     );
     assert_eq!(errors(&d), [Code::TYP001], "必須フィールド 名前 が無い 登録");
 }
+
+#[test]
+fn principal_builtin_is_an_id_and_cannot_be_assigned() {
+    assert!(
+        action("        x > 0 を確認 または 失敗(\"数量不正\")\n        本人 を返す\n").is_empty(),
+        "本人 は 識別子"
+    );
+    assert_eq!(action("        本人 = id\n        id を返す\n"), [Code::TYP002]);
+    assert_eq!(action("        y = 本人 + 1\n        id を返す\n"), [Code::TYP001]);
+}

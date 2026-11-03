@@ -23,6 +23,8 @@ pub struct AccessPolicy {
     pub public_read: BTreeSet<String>,
     /// 認証必須と明示された資源(約束 C-AUTH。デフォルト拒否のため既定でも認証必須)
     pub auth_required: BTreeSet<String>,
+    /// 行レベル認可: データ → 本人の主体 ID を入れるフィールド(約束 C-OWNER)
+    pub owner_read: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -162,6 +164,7 @@ pub fn validate(env: &Env, facts: &BTreeMap<String, Facts>, intents: &IntentMode
 
     // 約束
     let mut public_span: BTreeMap<String, Span> = BTreeMap::new();
+    let mut owner_span: BTreeMap<String, Span> = BTreeMap::new();
     for c in &intents.contracts {
         match &c.kind {
             IntentKind::PublicRead { data } => {
@@ -170,6 +173,25 @@ pub fn validate(env: &Env, facts: &BTreeMap<String, Facts>, intents: &IntentMode
             }
             IntentKind::AuthRequired { data } => {
                 v.policy.auth_required.insert(data.clone());
+            }
+            IntentKind::OwnerRead { data, field } => {
+                if let Some(prev) = v.policy.owner_read.insert(data.clone(), field.clone()) {
+                    if &prev != field {
+                        diags.push(Diagnostic::error(
+                            Code::AMB002,
+                            c.span,
+                            format!("{data} の本人判定フィールドが複数あります({prev} と {field})"),
+                        ));
+                    }
+                }
+                if v.policy.public_read.contains(data) {
+                    diags.push(Diagnostic::error(
+                        Code::AMB002,
+                        c.span,
+                        format!("約束が矛盾しています: {data} は「誰でも閲覧可」かつ「本人のものだけ閲覧可」です"),
+                    ));
+                }
+                owner_span.insert(data.clone(), c.span);
             }
             _ => {}
         }
@@ -183,6 +205,17 @@ pub fn validate(env: &Env, facts: &BTreeMap<String, Facts>, intents: &IntentMode
             )
             .hint("どちらの約束を優先するか決めてください"),
         );
+    }
+    for d in v.policy.public_read.iter() {
+        if let Some(sp) = owner_span.get(d) {
+            if !diags.iter().any(|x| x.span == *sp && x.code == Code::AMB002) {
+                diags.push(Diagnostic::error(
+                    Code::AMB002,
+                    *sp,
+                    format!("約束が矛盾しています: {d} は「誰でも閲覧可」かつ「本人のものだけ閲覧可」です"),
+                ));
+            }
+        }
     }
     (v, diags)
 }
@@ -274,6 +307,15 @@ mod tests {
         );
         let (_, d) = run(&src);
         assert_eq!(errs(&d), [Code::SEC002, Code::SEC002]);
+    }
+
+    #[test]
+    fn owner_and_public_read_conflict_is_amb002() {
+        let src = SHOP.replace("    未認証なら注文不可\n", "    未認証なら注文不可\n    注文は誰でも閲覧可\n");
+        assert!(errs(&run(&src).1).contains(&Code::AMB002));
+        let (v, d) = run(SHOP);
+        assert!(d.is_empty());
+        assert_eq!(v.policy.owner_read.get("注文").map(String::as_str), Some("注文者"));
     }
 
     #[test]

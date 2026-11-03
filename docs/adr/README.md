@@ -6,8 +6,8 @@
 | ADR | 題目 | 状態 | ブロックしているもの |
 |---|---|---|---|
 | [ADR-001](ADR-001-license.md) | ライセンス | 未決定 | 公開配布 |
-| [ADR-002](ADR-002-auth-provider.md) | 認証プロバイダー | 未決定(暫定: HS256 JWT) | 本番の IdP 連携 |
-| [ADR-003](ADR-003-database.md) | DB 方針 | 提案 | マイグレーション生成 |
+| [ADR-002](ADR-002-auth-provider.md) | 認証プロバイダー | 未決定(暫定: HS256 + JWKS + Web OIDC) | IdP の選定・モバイル OIDC |
+| [ADR-003](ADR-003-database.md) | DB 方針 | 提案(SQLite / PostgreSQL 実装済み) | |
 | [ADR-004](ADR-004-ui-framework.md) | UI 生成フレームワーク | 未決定(暫定: React SSR + esbuild) | |
 | [ADR-005](ADR-005-mobile-min-os.md) | モバイル最低 OS | 未決定 | FR-013/014(P1) |
 | [ADR-006](ADR-006-ai-provider.md) | AI プロバイダーと送信方針 | 未決定 | AI による候補生成 |
@@ -30,4 +30,5 @@
 | [ADR-0115](ADR-0115-form-pattern.md) | フォーム文型 P-FORM | 提案 | |
 | [ADR-0116](ADR-0116-display-fields.md) | 一覧の表示列 | 提案 | |
 | [ADR-0117](ADR-0117-wire-format.md) | ワイヤ形式と共通 API 契約 | 提案 | |
-| [ADR-0118](ADR-0118-capability-granularity.md) | Capability の粒度(問題提起) | 未決定 | 権限設計の確定 |
+| [ADR-0118](ADR-0118-capability-granularity.md) | 動作単位の許可・行レベル認可 | 提案(実装済み) | |
+| [ADR-0119](ADR-0119-principal-builtin.md) | 組込み値 `本人` | 提案 | |

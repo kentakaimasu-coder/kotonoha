@@ -28,6 +28,26 @@ pub enum Access {
     Public,
     /// 認証済みで、全 Capability を保持していること
     Caps(Vec<Capability>),
+    /// 認証済みの本人の行だけ(約束 C-OWNER)
+    Owner,
+}
+
+impl Access {
+    /// 共通 API 契約・backend ルートでの表現
+    pub fn to_json(&self, grant: Option<&str>, owner: Option<&str>) -> Value {
+        let mut v = match self {
+            Access::Public => json!({"public": true, "capabilities": []}),
+            Access::Caps(c) => json!({"public": false, "capabilities": c.iter().map(|x| x.vag()).collect::<Vec<_>>()}),
+            Access::Owner => json!({"public": false, "capabilities": []}),
+        };
+        if let Some(g) = grant {
+            v["grant"] = json!(g);
+        }
+        if let Some(o) = owner {
+            v["owner"] = json!(o);
+        }
+        v
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -51,6 +71,22 @@ pub struct Endpoint {
 }
 
 impl Endpoint {
+    /// 動作単位の許可名(`動作.名前`: ADR-0118)
+    pub fn grant(&self) -> Option<String> {
+        match &self.kind {
+            EndpointKind::Action { action } => Some(format!("動作.{action}")),
+            _ => None,
+        }
+    }
+    pub fn owner(&self) -> Option<&str> {
+        match (&self.kind, &self.access) {
+            (EndpointKind::ListData { data } | EndpointKind::GetData { data }, Access::Owner) => Some(data),
+            _ => None,
+        }
+    }
+    pub fn access_json(&self) -> Value {
+        self.access.to_json(self.grant().as_deref(), self.owner())
+    }
     /// 表示用パス(`/api/data/商品/{id}`)
     pub fn path_display(&self) -> String {
         let mut p = String::new();
@@ -141,7 +177,9 @@ fn display_fields(env: &Env, d: &str) -> Vec<(String, Type)> {
 }
 
 fn read_access(policy: &AccessPolicy, data: &str) -> Access {
-    if policy.public_read.contains(data) {
+    if policy.owner_read.contains_key(data) {
+        Access::Owner
+    } else if policy.public_read.contains(data) {
         Access::Public
     } else {
         Access::Caps(vec![Capability::new(data, Verb::Read)])
@@ -206,7 +244,7 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
                     action: action.clone(),
                     params: env.actions.get(action).map(|a| a.params.clone()).unwrap_or_default(),
                 }),
-                IntentKind::NavigateOnSelect { .. } | IntentKind::PublicRead { .. } | IntentKind::AuthRequired { .. } => {}
+                IntentKind::NavigateOnSelect { .. } | IntentKind::PublicRead { .. } | IntentKind::AuthRequired { .. } | IntentKind::OwnerRead { .. } => {}
             }
         }
         screens.push(ScreenIr {
@@ -360,6 +398,18 @@ pub fn check_ir(ir: &AppIr) -> Vec<Diagnostic> {
             check(format!("データ {} のフィールド {n}", e.name), t, &mut d);
         }
     }
+    for (spec, _) in &ir.queries {
+        if ir.policy.owner_read.contains_key(&spec.source) {
+            d.push(Diagnostic::error(
+                Code::TGT001,
+                spec.span,
+                format!(
+                    "知識 {} は本人限定のデータ {} を集計します。行レベル認可と集計の関係が未定義のため生成できません(ADR-0118)",
+                    spec.name, spec.source
+                ),
+            ));
+        }
+    }
     for a in &ir.actions {
         for (n, t) in &a.params {
             if matches!(t, Type::Data(_) | Type::List(_) | Type::Array(_) | Type::Record(_) | Type::Result(..)) {
@@ -381,10 +431,6 @@ pub fn check_ir(ir: &AppIr) -> Vec<Diagnostic> {
 
 /// 共通 API 契約(api.json)。全ターゲットの生成物に同梱し、クライアント/サーバーの整合を検査できるようにする。
 pub fn api_contract(ir: &AppIr) -> Value {
-    let access = |a: &Access| match a {
-        Access::Public => json!({"public": true, "capabilities": []}),
-        Access::Caps(c) => json!({"public": false, "capabilities": c.iter().map(|x| x.vag()).collect::<Vec<_>>()}),
-    };
     json!({
         "contract_version": "1",
         "application": ir.name,
@@ -394,7 +440,7 @@ pub fn api_contract(ir: &AppIr) -> Value {
         })).collect::<Vec<_>>(),
         "enums": ir.enums.iter().map(|(n, v)| json!({"name": n, "variants": v})).collect::<Vec<_>>(),
         "endpoints": ir.endpoints.iter().map(|e| {
-            let mut v = json!({"id": e.id, "method": e.method, "path": e.path_display(), "segments": e.segments, "has_id": e.has_id, "access": access(&e.access)});
+            let mut v = json!({"id": e.id, "method": e.method, "path": e.path_display(), "segments": e.segments, "has_id": e.has_id, "access": e.access_json()});
             match &e.kind {
                 EndpointKind::ListData { data } => { v["response"] = json!({"kind": "list", "of": {"kind": "entity", "name": data}}); }
                 EndpointKind::GetData { data } => { v["response"] = json!({"kind": "entity", "name": data}); }

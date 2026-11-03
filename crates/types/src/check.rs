@@ -15,6 +15,8 @@ pub struct Facts {
     pub action_calls: Vec<(String, Span)>,
     /// (データ名, フィールド名, 位置)
     pub mutations: Vec<(String, String, Span)>,
+    /// `本人` を参照したか
+    pub uses_principal: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -32,12 +34,18 @@ pub struct Checker<'e> {
     pub facts: Facts,
     ret: Option<Type>,
     in_tx: u32,
+    /// 組込み値 `本人`(現在の主体 ID)を使えるか。動作の中だけ(ADR-0119)
+    allow_principal: bool,
 }
+
+/// 組込み値: 現在の認証済み主体の ID(識別子)。動作の中でだけ使える。
+pub const PRINCIPAL_WORD: &str = "本人";
 
 /// 動作を検査する。
 pub fn check_action(env: &Env, a: &ActionDecl) -> (Facts, Vec<Diagnostic>) {
     let sig = env.actions.get(&a.name.name);
     let mut c = Checker::new(env);
+    c.allow_principal = true;
     c.ret = sig.and_then(|s| s.ret.clone());
     let mut top = BTreeMap::new();
     if let Some(sig) = sig {
@@ -122,6 +130,7 @@ impl<'e> Checker<'e> {
             facts: Facts::default(),
             ret: None,
             in_tx: 0,
+            allow_principal: false,
         }
     }
 
@@ -243,6 +252,11 @@ impl<'e> Checker<'e> {
     fn assign(&mut self, target: &Place, value: &Expr, span: Span) {
         let name = &target.root.name;
         if target.fields.is_empty() {
+            if name == PRINCIPAL_WORD {
+                let d = self.err(Code::TYP002, target.root.span, "`本人` は組込みの値なので代入できません");
+                self.diags.push(d);
+                return;
+            }
             if self.env.adapters.contains_key(name) || self.env.actions.contains_key(name) {
                 let d = self.err(
                     Code::REF002,
@@ -374,6 +388,10 @@ impl<'e> Checker<'e> {
                 Some(l) => {
                     let t = l.ty.clone();
                     self.lift(t, expected)
+                }
+                None if n == PRINCIPAL_WORD && self.allow_principal => {
+                    self.facts.uses_principal = true;
+                    self.lift(Type::Id, expected)
                 }
                 None => {
                     let mut d = self.err(Code::REF001, e.span, format!("`{n}` は定義されていません"));

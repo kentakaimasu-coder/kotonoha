@@ -9,7 +9,7 @@
 | application | `{name}` |
 | schema | `enums` `aliases` `data` `adapters`(schema_hash の対象) |
 | knowledge | 確定済みの知識(knowledge_hash の対象) |
-| policy | `public_read` / `auth_required`(約束から導出) |
+| policy | `public_read` / `auth_required` / `owner_read`(データ → 本人判定フィールド)(約束から導出) |
 | nodes | 下記。`id` 順にソート |
 | edges | `{from, to, kind}`。kind = contains / navigates / invokes。(from,to,kind) 順にソート |
 | status | `validated`(全検査通過)/ `draft`(参考出力。ロック・ビルド不可) |
@@ -24,7 +24,7 @@
 | query | `{意図ID}` | sentence, resolution, detail.knowledge / limit / limit_override |
 | navigation | `{意図ID}` | sentence, resolution, detail.event = tap, detail.to |
 | action | `action.{名前}` | params[], auth = required |
-| validation | `contract#{ハッシュ}` | sentence, detail.policy / data |
+| validation | `contract#{ハッシュ}` | sentence, detail.policy(public_read / auth_required / owner_read)/ data / field |
 
 `resolution` は `{via: "pattern"}` または `{via: "approved", canonical, approval_hash}`。
 

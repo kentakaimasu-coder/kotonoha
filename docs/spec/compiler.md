@@ -52,7 +52,8 @@ UTF-8 ソース(複数ファイル、パス順)
 | `koto approve <id> <n> --approver …` / `--write-lock` | 実装(署名なし) |
 | `koto graph [--draft] [--canonical]` | 実装 |
 | `koto build --target … [--locked] [--out dir]` | 実装(4 ターゲット) |
-| `koto test` | **未実装**(終了コード 7) |
+| `koto test [--keep]` | 実装: backend を生成し、API 契約から導いた契約テストと業務規則の雛形(todo)を実行。失敗は終了コード 1 |
+| `koto impact <名前> \| --base <vag.json>` | 実装: 影響を受けるノードの列挙(AT-08) |
 | `koto doctor` | 実装 |
 | `koto ast <file>` | 開発用 |
 共通: `-C <dir>`、`--json`(機械可読診断)。
@@ -64,6 +65,6 @@ UTF-8 ソース(複数ファイル、パス順)
 |---|---|
 | backend | 生成 → 起動 → API 結合テスト(tests/e2e/backend.test.ts) |
 | web | 生成 → npm install → ビルド → 起動 → Playwright E2E(tests/e2e/web.test.ts) |
-| ios | 生成のみ。コンパイルは CI ジョブ `ios-build` で確認予定(K-01) |
-| android | 生成のみ。ビルドは CI ジョブ `android-build` で確認予定(K-01) |
+| ios | 生成 + 構文検査(tree-sitter、tools/mobile-syntax)。コンパイルは CI ジョブ `ios-build`(未実行) |
+| android | 生成 + 構文検査 + 非 UI 層の kotlinc コンパイルと実 API 応答の解析(tools/verify_android_jvm.sh)。Compose 画面のビルドは CI `android-build`(未実行) |
 構成の全体は [docs/architecture.md](../architecture.md)。

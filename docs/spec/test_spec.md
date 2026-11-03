@@ -8,7 +8,11 @@ cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 cargo test                                   # 全ユニット・ゴールデン・結合テスト
 python3 tools/validate_schemas.py target/debug/koto   # 生成物の JSON Schema 検証
-node --no-warnings --test tests/e2e/backend.test.ts tests/e2e/web.test.ts   # 生成物を起動しての結合・E2E(Playwright が必要)
+node --no-warnings --test tests/e2e/backend.test.ts tests/e2e/backend_security.test.ts tests/e2e/postgres.test.ts tests/e2e/web.test.ts tests/e2e/oidc.test.ts
+#   生成物を起動しての結合・E2E(cd tests/e2e && npm install が必要。PostgreSQL は KOTONOHA_TEST_PG_URL を設定したときだけ)
+./target/debug/koto -C examples/shop test   # API 契約から導いた契約テスト(FR-019)
+tools/mobile-syntax/run.sh                   # 生成 Swift / Kotlin の構文検査
+tools/verify_android_jvm.sh                  # Android 非 UI 層の kotlinc コンパイルと実 API 応答の解析
 UPDATE_GOLDEN=1 cargo test -p kotonoha-driver # ゴールデン VAG の更新(差分をレビューすること)
 ```
 
@@ -25,7 +29,13 @@ UPDATE_GOLDEN=1 cargo test -p kotonoha-driver # ゴールデン VAG の更新(�
 | 負例 | 各クレート | 未承認・型不一致・権限不足・ターゲット未対応で必ず失敗(NFR-001) |
 | Integration(生成 backend) | `tests/e2e/backend.test.ts` | 認可 401/403、偽造トークン、取引とロールバック、入力検証、SQL インジェクション、売れ筋、秘密情報の非混入 |
 | E2E(生成 web) | `tests/e2e/web.test.ts` | SSR 表示、遷移、ボタン → 表示更新、XSS、フォーム、CSRF、CSP |
-| モバイル | CI `ios-build` / `android-build` | **未実行**(K-01) |
+| 結合(権限・運用) | `tests/e2e/backend_security.test.ts` | 動作単位の許可、行レベル認可、JWKS RS256/ES256・alg 混同・iss/aud、ロール対応、ページング、レート制限、差分マイグレーション |
+| PostgreSQL | `tests/e2e/postgres.test.ts` | 一覧・同時注文(SERIALIZABLE)・集計・CHECK 制約・マイグレーション |
+| OIDC | `tests/e2e/oidc.test.ts` | 模擬 IdP で認可コード + PKCE → JWKS 検証 → ロールで購入、state 不一致の拒否 |
+| アクセシビリティ | `tests/e2e/web.test.ts` | axe-core(WCAG 2.2 A/AA)で 5 画面の違反ゼロ |
+| 契約テスト | `koto test` | API 契約の公開範囲・401・403・400 |
+| 生成コードのゴールデン | driver `generated_code_matches_golden_snapshots` | 4 ターゲットの生成コード |
+| モバイル | `tools/mobile-syntax`, `tools/verify_android_jvm.sh` | 構文検査・Android 非 UI 層のコンパイル。Compose 画面と iOS のビルドは CI(未実行: K-01) |
 
 ## 3. 受入テストケース対応
 | TC | 内容 | 状況 | テスト |
@@ -51,7 +61,7 @@ UPDATE_GOLDEN=1 cargo test -p kotonoha-driver # ゴールデン VAG の更新(�
 | AT-06 同じロックから AI オフラインで同じ IR | ✅ |
 | AT-07 売れ筋の正しい SQL と期待結果 | ✅(フィクスチャの業務仮定は未承認) |
 | AT-01〜04, AT-10 | ✅ E2E |
-| AT-08 | ❌ 未実装 |
+| AT-08 | ✅ `koto impact`(cli `init_doctor_test_and_impact_commands`) |
 | AT-09 | ⚠ 生成のみ |
 
 ## 4. 要件対応(FR / NFR / SEC)
@@ -67,12 +77,14 @@ UPDATE_GOLDEN=1 cargo test -p kotonoha-driver # ゴールデン VAG の更新(�
 | FR-008 | ✅ | |
 | FR-009〜012 | ✅ | Web/Backend 生成と E2E。差分マイグレーションは未実装(K-05) |
 | FR-013/014 | ⚠ | 生成のみ(K-01) |
-| FR-016 | △ | VAG に依存辺はあるが影響列挙コマンドは未実装 |
+| FR-016 | ✅ | `koto impact <名前>` / `--base <旧 VAG>` |
+| FR-019 | ✅ | 契約テストの生成と実行(`koto test`)・業務規則の雛形 |
 | FR-018 | △ | VAG ノードに source_span。生成コードとの対応は未実装 |
 | FR-020 | ✅ | |
 | NFR-001 | ✅ | 負例テスト |
 | NFR-002 | ✅ | AI 接続コードが存在しない |
 | NFR-003 | ❌ 未計測 | 分岐網羅率の計測(cargo-llvm-cov 等)は CI 未導入 |
+| NFR-005 | △ | axe-core 自動監査で違反ゼロ。手動監査は未実施 |
 | NFR-004 | △ | 1,000 行全段検査 < 5 秒のテストのみ。差分検査・基準機は未決定 |
 | NFR-009 | △ | CI マトリクス(Linux/macOS/Windows)を定義。実機確認は Linux のみ |
 | SEC-01 | ✅ | デフォルト拒否(静的 + 実行時) |
@@ -83,3 +95,4 @@ UPDATE_GOLDEN=1 cargo test -p kotonoha-driver # ゴールデン VAG の更新(�
 | SEC-04 | ✅ クエリ生成 | バインド変数のみ |
 | SEC-08 | ✅ | 候補の厳格スキーマ検査 + 文型での再照合 |
 | SEC-09 | △ | 改ざん検出のみ。署名は未実装 |
+| SEC-02 | ✅ | JWT(HS256 / JWKS RS256・ES256)。IdP 選定は ADR-002 |

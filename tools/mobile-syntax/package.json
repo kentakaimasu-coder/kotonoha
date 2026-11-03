@@ -1,0 +1,6 @@
+{
+  "name": "kotonoha-mobile-syntax",
+  "private": true,
+  "description": "生成した Swift / Kotlin の構文検査(tree-sitter)。Swift・Android SDK が無い環境での最低限の検証",
+  "dependencies": { "web-tree-sitter": "0.22.6", "tree-sitter-wasms": "0.1.13" }
+}

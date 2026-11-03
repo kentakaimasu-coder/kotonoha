@@ -149,3 +149,41 @@ test("AT-10 生成フロントエンドに認証情報を含めない", () => {
     assert.ok(!/KOTONOHA_JWT_SECRET/.test(s), f);
   }
 });
+
+test("ADR-0118 注文履歴は本人の注文だけを表示する", async () => {
+  const { page: a } = await newPage();
+  await login(a, ["動作.注文する"]);
+  await a.goto(webUrl + "/s/" + encodeURIComponent("商品詳細") + "/P01");
+  await a.click("text=購入");
+  await a.waitForSelector(".msg.ok");
+  assert.match(await a.textContent(".msg.ok"), /結果: [0-9a-f-]{36}/, "K-13 結果の表示");
+  await a.goto(webUrl + "/s/" + encodeURIComponent("注文履歴"));
+  const mine = await a.locator("table.list tbody tr").count();
+  assert.ok(mine >= 1);
+  assert.ok(!(await a.textContent("table.list")).includes("other-user"));
+  // 別の利用者には見えない
+  const { page: b } = await newPage();
+  await b.goto(webUrl + "/login");
+  await b.fill("#token", runNode(be, ["tools/dev-token.ts", "--sub", "other-user", "--caps", ""], { KOTONOHA_JWT_SECRET: SECRET }));
+  await b.click("form[action='/login'] button");
+  await b.goto(webUrl + "/s/" + encodeURIComponent("注文履歴"));
+  assert.match(await b.textContent("main"), /データがありません/);
+});
+
+test("K-06 アクセシビリティ自動監査(axe-core: WCAG 2.2 A/AA)で違反なし", async () => {
+  const axe = readFileSync(require.resolve("axe-core/axe.min.js"), "utf8");
+  const { page } = await newPage();
+  await login(page, ["商品.create", "注文明細.read", "動作.注文する"]);
+  const results: string[] = [];
+  for (const path of ["/s/" + encodeURIComponent("商品一覧"), "/s/" + encodeURIComponent("商品詳細") + "/P01", "/s/" + encodeURIComponent("商品管理"), "/s/" + encodeURIComponent("売れ筋"), "/login"]) {
+    await page.goto(webUrl + path);
+    // CSP(script-src 'self')下でも動くよう、Playwright の評価経路で注入する
+    await page.evaluate(axe);
+    const v = await page.evaluate(async () => {
+      const r = await (window as any).axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"] } });
+      return r.violations.map((x: any) => `${x.id}: ${x.nodes.map((n: any) => n.target.join(" ")).join(", ")}`);
+    });
+    results.push(...v.map((x: string) => `${decodeURIComponent(path)} ${x}`));
+  }
+  assert.deepEqual(results, []);
+});

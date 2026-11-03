@@ -32,7 +32,11 @@ fn shop_intents_resolve() {
     assert_eq!(detail.input.as_deref(), Some("商品"));
     assert!(matches!(&detail.intents[0].kind, IntentKind::ShowFields { fields, .. } if fields == &["名前", "価格", "在庫"]));
     assert!(matches!(&detail.intents[1].kind, IntentKind::ButtonInvoke { label, action, args } if label == "購入" && action == "注文する" && args.len() == 2));
-    assert_eq!(m.contracts.len(), 2);
+    assert_eq!(m.contracts.len(), 3);
+    assert!(m
+        .contracts
+        .iter()
+        .any(|c| matches!(&c.kind, IntentKind::OwnerRead { data, field } if data == "注文" && field == "注文者")));
     assert!(m.unresolved.is_empty());
 }
 
@@ -137,4 +141,12 @@ fn intent_ids_are_stable_against_reordering() {
     let ids1: BTreeSet<_> = m1.screens[0].intents.iter().map(|i| i.id.clone()).collect();
     let ids2: BTreeSet<_> = m2.screens[0].intents.iter().map(|i| i.id.clone()).collect();
     assert_eq!(ids1, ids2);
+}
+
+#[test]
+fn owner_contract_requires_id_or_string_field() {
+    let s = SHOP.replace("注文は注文者が本人のものだけ閲覧可", "注文は数量が本人のものだけ閲覧可");
+    assert_eq!(codes(&run(&s, &[]).1), [Code::TYP001]);
+    let s = SHOP.replace("注文は注文者が本人のものだけ閲覧可", "注文は担当者が本人のものだけ閲覧可");
+    assert_eq!(codes(&run(&s, &[]).1), [Code::REF001]);
 }

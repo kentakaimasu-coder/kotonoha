@@ -249,3 +249,37 @@ fn nfr004_check_1000_lines_under_5_seconds() {
     assert!(a.ok(), "{:#?}", a.diags.items.first());
     assert!(el.as_secs_f64() < 5.0, "{el:?}");
 }
+
+/// K-12: 生成コード(手書きランタイムを除く)のゴールデン。意図した変更なら UPDATE_GOLDEN=1 で更新し差分をレビューする。
+#[test]
+fn generated_code_matches_golden_snapshots() {
+    let root = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/shop/expected/generated"));
+    let p = shop();
+    let a = analyze(&p, &none());
+    let update = std::env::var("UPDATE_GOLDEN").is_ok();
+    let mut diffs = Vec::new();
+    for t in ["backend", "web", "ios", "android"] {
+        let out = build_target(&p, &a, t).unwrap();
+        for (path, content) in out
+            .files
+            .iter()
+            .filter(|(p, _)| p.contains(".generated.") || p == "api.json" || p.ends_with("MainActivity.kt") || p == "tests/actions.todo.test.ts")
+        {
+            let file = root.join(t).join(path);
+            if update {
+                std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+                std::fs::write(&file, content).unwrap();
+            } else {
+                match std::fs::read_to_string(&file) {
+                    Ok(g) if &g == content => {}
+                    Ok(_) => diffs.push(format!("{t}/{path} が変わりました")),
+                    Err(_) => diffs.push(format!("{t}/{path} のゴールデンがありません")),
+                }
+            }
+        }
+    }
+    assert!(
+        diffs.is_empty(),
+        "{diffs:#?}\n意図した変更なら UPDATE_GOLDEN=1 cargo test -p kotonoha-driver で更新し、差分をレビューしてください"
+    );
+}

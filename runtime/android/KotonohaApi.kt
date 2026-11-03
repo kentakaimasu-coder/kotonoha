@@ -1,22 +1,22 @@
-// KOTONOHA Android runtime: API クライアント・トークン保管・表示形式・共通 UI
+// KOTONOHA Android runtime: API クライアント・トークン保管(Keystore)・表示形式(Compose に依存しない)
 // 共通 API 契約(api.json)のワイヤ形式に従う。認可は backend が強制する。
 package app.kotonoha.generated
 
 import android.content.Context
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.navigation.NavController
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 import java.net.URLDecoder
 import java.net.URLEncoder
@@ -30,17 +30,57 @@ class KotonohaHttpException(val status: Int, override val message: String) : Exc
 class KotonohaFailure(val value: String) : Exception(value)
 class KotonohaInputException(override val message: String) : Exception(message)
 
-class KotonohaApi(context: Context, private val base: String) {
-    // 既知の課題 K-07: トークンは端末内の private SharedPreferences に保存(暗号化保管は未対応)
+/** トークンを Android Keystore の AES-GCM 鍵で暗号化して保存する(鍵は端末外へ出ない)。 */
+class TokenStore(context: Context) {
     private val prefs = context.getSharedPreferences("kotonoha", Context.MODE_PRIVATE)
+    private val alias = "kotonoha.token.key"
+
+    private fun key(): SecretKey {
+        val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (ks.getKey(alias, null) as? SecretKey)?.let { return it }
+        val gen = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        gen.init(
+            KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .build()
+        )
+        return gen.generateKey()
+    }
+
+    fun load(): String? {
+        val data = prefs.getString("token.enc", null) ?: return null
+        return runCatching {
+            val raw = Base64.decode(data, Base64.NO_WRAP)
+            val c = Cipher.getInstance("AES/GCM/NoPadding")
+            c.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, raw.copyOfRange(0, 12)))
+            String(c.doFinal(raw.copyOfRange(12, raw.size)), Charsets.UTF_8)
+        }.getOrNull()
+    }
+
+    fun save(token: String?) {
+        if (token == null) {
+            prefs.edit().remove("token.enc").apply()
+            return
+        }
+        val c = Cipher.getInstance("AES/GCM/NoPadding")
+        c.init(Cipher.ENCRYPT_MODE, key())
+        val out = c.iv + c.doFinal(token.toByteArray(Charsets.UTF_8))
+        prefs.edit().putString("token.enc", Base64.encodeToString(out, Base64.NO_WRAP)).apply()
+    }
+}
+
+class KotonohaApi(context: Context, private val base: String) {
+    private val store = TokenStore(context)
     var token: String?
-        get() = prefs.getString("token", null)
-        set(v) { prefs.edit().apply { if (v == null) remove("token") else putString("token", v) }.apply() }
+        get() = store.load()
+        set(v) = store.save(v)
 
     private fun url(segments: List<String>, id: String?, query: Map<String, String>): URL {
         val path = (segments + listOfNotNull(id)).joinToString("/") { Kotonoha.enc(it) }
         val qs = query.entries.sortedBy { it.key }.joinToString("&") { Kotonoha.enc(it.key) + "=" + Kotonoha.enc(it.value) }
-        return URL(base.trimEnd('/') + "/" + path + (if (qs.isEmpty()) "" else "?$qs"))
+        return URI(base.trimEnd('/') + "/" + path + (if (qs.isEmpty()) "" else "?$qs")).toURL()
     }
 
     private suspend fun send(u: URL, method: String, body: String?): String = withContext(Dispatchers.IO) {
@@ -90,51 +130,9 @@ object Kotonoha {
         DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm").withZone(ZoneId.systemDefault()).format(Instant.parse(v))
     fun parseLong(s: String, field: String): Long = s.trim().toLongOrNull() ?: throw KotonohaInputException("$field は整数で入力してください")
     fun describe(e: Exception): String = when (e) {
-        is KotonohaHttpException -> when (e.status) { 401 -> "ログインが必要です"; 403 -> "権限がありません"; else -> e.message }
+        is KotonohaHttpException -> when (e.status) { 401 -> "ログインが必要です"; 403 -> "権限がありません"; 429 -> "要求が多すぎます"; else -> e.message }
         is KotonohaFailure -> "失敗しました: ${e.value}"
         is KotonohaInputException -> e.message
         else -> e.message ?: e.toString()
-    }
-
-    @OptIn(ExperimentalMaterial3Api::class)
-    @Composable
-    fun ScreenScaffold(title: String, nav: NavController, content: @Composable () -> Unit) {
-        Scaffold(topBar = { TopAppBar(title = { Text(title) }, navigationIcon = { TextButton(onClick = { nav.popBackStack() }) { Text("戻る") } }) }) { p ->
-            Box(Modifier.padding(p)) { content() }
-        }
-    }
-
-    @Composable
-    fun Menu(appName: String, screens: List<Pair<String, String>>, nav: NavController) {
-        ScreenScaffold(appName, nav) {
-            LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
-                items(screens) { (name, route) ->
-                    Text(name, Modifier.fillMaxWidth().clickable { nav.navigate(route) }.padding(vertical = 12.dp))
-                    HorizontalDivider()
-                }
-                item { Text("ログイン", Modifier.fillMaxWidth().clickable { nav.navigate("login") }.padding(vertical = 12.dp)) }
-            }
-        }
-    }
-
-    @Composable
-    fun Login(api: KotonohaApi, nav: NavController) {
-        var t by remember { mutableStateOf("") }
-        ScreenScaffold("ログイン", nav) {
-            Column(Modifier.padding(16.dp)) {
-                Text("認証基盤(ADR-002)から発行されたトークン")
-                OutlinedTextField(value = t, onValueChange = { t = it }, label = { Text("トークン") })
-                Button(onClick = { api.token = t; nav.popBackStack() }) { Text("ログイン") }
-                TextButton(onClick = { api.token = null }) { Text("ログアウト") }
-            }
-        }
-    }
-
-    @Composable
-    fun EnumPicker(label: String, options: List<String>, selected: String, onSelect: (String) -> Unit) {
-        Column {
-            Text(label)
-            options.forEach { o -> Row { RadioButton(selected = o == selected, onClick = { onSelect(o) }); Text(o) } }
-        }
     }
 }

@@ -27,9 +27,19 @@ jobs:
         if: runner.os == 'Windows'
 
   e2e:
-    # 生成した backend / web を起動して API とブラウザ操作を検証する
+    # 生成した backend / web を起動して API とブラウザ操作を検証する(SQLite と PostgreSQL)
     runs-on: ubuntu-latest
     needs: test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: kotonoha
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      KOTONOHA_TEST_PG_URL: postgres://kotonoha@127.0.0.1:5432/kotonoha
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -41,7 +51,14 @@ jobs:
         working-directory: tests/e2e
       - run: npx playwright install --with-deps chromium
         working-directory: tests/e2e
-      - run: node --no-warnings --test tests/e2e/backend.test.ts tests/e2e/web.test.ts
+      - run: node --no-warnings --test tests/e2e/backend.test.ts tests/e2e/backend_security.test.ts tests/e2e/postgres.test.ts tests/e2e/web.test.ts tests/e2e/oidc.test.ts
+      - run: ./target/debug/koto -C examples/shop test
+      - run: tools/mobile-syntax/run.sh
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - run: tools/verify_android_jvm.sh
 
   android-build:
     # 生成した Android プロジェクトのビルド確認(開発環境に SDK が無いため CI で検証する: K-01)

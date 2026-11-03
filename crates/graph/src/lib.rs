@@ -143,7 +143,7 @@ pub fn build_vag(inp: &GraphInput, status: Status) -> Value {
                             json!({"ui": "button", "event": "tap", "label": label, "action": format!("action.{action}"), "args": args}),
                         )
                     }
-                    IntentKind::PublicRead { .. } | IntentKind::AuthRequired { .. } => unreachable!("約束は画面に現れない"),
+                    IntentKind::PublicRead { .. } | IntentKind::AuthRequired { .. } | IntentKind::OwnerRead { .. } => unreachable!("約束は画面に現れない"),
                 };
             nodes.push(json!({
                 "id": i.id, "kind": kind, "title": title, "sentence": i.sentence,
@@ -178,15 +178,16 @@ pub fn build_vag(inp: &GraphInput, status: Status) -> Value {
     }
     // 約束ノード(検証)
     for c in &inp.intents.contracts {
-        let (policy, data) = match &c.kind {
-            IntentKind::PublicRead { data } => ("public_read", data),
-            IntentKind::AuthRequired { data } => ("auth_required", data),
+        let (policy, data, field) = match &c.kind {
+            IntentKind::PublicRead { data } => ("public_read", data, None),
+            IntentKind::AuthRequired { data } => ("auth_required", data, None),
+            IntentKind::OwnerRead { data, field } => ("owner_read", data, Some(field.clone())),
             _ => continue,
         };
         nodes.push(json!({
             "id": c.id, "kind": "validation", "title": c.sentence, "sentence": c.sentence,
             "inputs": [], "outputs": [], "effects": [], "capabilities": [], "knowledge_refs": [],
-            "source_span": span_json(inp.files, c.span), "detail": {"policy": policy, "data": data},
+            "source_span": span_json(inp.files, c.span), "detail": match field { Some(f) => json!({"policy": policy, "data": data, "field": f}), None => json!({"policy": policy, "data": data}) },
         }));
     }
 

@@ -1,6 +1,7 @@
-// KOTONOHA backend runtime: SQLite アクセス・取引・データアダプタ(ADR-003, ADR-0104, ADR-0110)
-// SQL は常にプレースホルダとバインド変数(SEC-04)。識別子は宣言名を二重引用符で囲む。
-import { DatabaseSync } from "node:sqlite";
+// KOTONOHA backend runtime: DB アクセス・取引・データアダプタ(ADR-003, ADR-0104, ADR-0110, ADR-0118)
+// - 方言: SQLite(node:sqlite、既定)/ PostgreSQL(KOTONOHA_DB=postgres://…、npm の pg を任意依存として使う)
+// - SQL は常にプレースホルダとバインド変数(SEC-04)。識別子は宣言名を二重引用符で囲む
+// - 整数・金額・日時(エポックミリ秒)・真偽(0/1)はどちらの方言でも 64 ビット整数列に格納する
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -13,11 +14,35 @@ interface EntityMeta {
   original: Record<string, unknown>;
 }
 
+export type Row = Record<string, unknown>;
+export type Dialect = "sqlite" | "postgres";
+
+/** 1 本の接続(取引中は取引用の接続) */
+export interface Conn {
+  all(sql: string, params: unknown[]): Promise<Row[]>;
+  /** 変更行数を返す */
+  run(sql: string, params: unknown[]): Promise<number>;
+  exec(sql: string): Promise<void>;
+}
+
+export interface Database {
+  dialect: Dialect;
+  /** 取引外で使う接続 */
+  conn: Conn;
+  /** 本体を取引の中で実行する。失敗(例外)ならロールバックして再送出 */
+  transaction<T>(body: (c: Conn) => Promise<T>): Promise<T>;
+  close(): Promise<void>;
+}
+
 export interface Ctx {
-  db: DatabaseSync;
+  db: Database;
+  /** 現在の接続(取引中は取引用) */
+  conn: Conn;
   schema: Schema;
+  /** 行レベル認可: データ → 本人の主体 ID を入れるフィールド */
+  owners: Record<string, string>;
   /** 取引中に更新されたエンティティ */
-  dirty: Set<Record<string, unknown>> | null;
+  dirty: Set<Row> | null;
   principal: Principal | null;
   traceId: string;
 }
@@ -32,91 +57,340 @@ export function q(ident: string): string {
   return `"${ident}"`;
 }
 
-export function openDb(path: string, ddl: string[]): DatabaseSync {
+/** `?` / `?n` プレースホルダを PostgreSQL の `$n` に変換する(単引用符の中は変換しない) */
+export function toPgParams(sql: string): string {
+  let n = 0;
+  let inStr = false;
+  let out = "";
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    if (ch === "'") inStr = !inStr;
+    if (!inStr && ch === "?") {
+      let j = i + 1;
+      while (j < sql.length && sql[j] >= "0" && sql[j] <= "9") j++;
+      out += j > i + 1 ? `$${sql.slice(i + 1, j)}` : `$${++n}`;
+      i = j - 1;
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+/** 非同期の排他ロック(SQLite の 1 接続を取引中に他の要求と共有しないため) */
+class Mutex {
+  tail: Promise<void> = Promise.resolve();
+  async run<T>(f: () => Promise<T>): Promise<T> {
+    let release!: () => void;
+    const prev = this.tail;
+    this.tail = new Promise((r) => (release = r));
+    await prev;
+    try {
+      return await f();
+    } finally {
+      release();
+    }
+  }
+}
+
+async function openSqlite(path: string): Promise<Database> {
+  const { DatabaseSync } = await import("node:sqlite");
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
-  const db = new DatabaseSync(path);
-  db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
-  for (const stmt of ddl) db.exec(stmt);
+  const raw = new DatabaseSync(path);
+  raw.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
+  const lock = new Mutex();
+  const direct: Conn = {
+    async all(sql, params) {
+      const st = raw.prepare(sql);
+      st.setReadBigInts(true);
+      return st.all(...(params as never[])) as Row[];
+    },
+    async run(sql, params) {
+      return Number(raw.prepare(sql).run(...(params as never[])).changes);
+    },
+    async exec(sql) {
+      raw.exec(sql);
+    },
+  };
+  // 取引外の操作もロックを取る(取引中の接続に割り込ませない)
+  const locked: Conn = {
+    all: (s, p) => lock.run(() => direct.all(s, p)),
+    run: (s, p) => lock.run(() => direct.run(s, p)),
+    exec: (s) => lock.run(() => direct.exec(s)),
+  };
+  return {
+    dialect: "sqlite",
+    conn: locked,
+    transaction: (body) =>
+      lock.run(async () => {
+        raw.exec("BEGIN IMMEDIATE");
+        try {
+          const r = await body(direct);
+          raw.exec("COMMIT");
+          return r;
+        } catch (e) {
+          raw.exec("ROLLBACK");
+          throw e;
+        }
+      }),
+    close: async () => raw.close(),
+  };
+}
+
+async function openPostgres(url: string): Promise<Database> {
+  let pg: any;
+  try {
+    pg = (await import("pg" as string)).default;
+  } catch {
+    throw new Error("PostgreSQL を使うには npm install pg(package.json の optionalDependencies)が必要です");
+  }
+  // BIGINT(20)・NUMERIC(1700: SUM の結果)は BigInt で受け取る
+  pg.types.setTypeParser(20, (v: string) => BigInt(v));
+  pg.types.setTypeParser(1700, (v: string) => (/^-?\d+$/.test(v) ? BigInt(v) : v));
+  const pool = new pg.Pool({ connectionString: url, max: Number(process.env.KOTONOHA_PG_POOL ?? 10) });
+  const wrap = (c: any): Conn => ({
+    async all(sql, params) {
+      return (await c.query(toPgParams(sql), params)).rows;
+    },
+    async run(sql, params) {
+      return Number((await c.query(toPgParams(sql), params)).rowCount ?? 0);
+    },
+    async exec(sql) {
+      await c.query(sql);
+    },
+  });
+  return {
+    dialect: "postgres",
+    conn: wrap(pool),
+    async transaction(body) {
+      // SERIALIZABLE で「読んでから更新」の取りこぼしを防ぎ、直列化失敗(40001)・デッドロック(40P01)は再試行する
+      for (let attempt = 0; ; attempt++) {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
+          const r = await body(wrap(client));
+          await client.query("COMMIT");
+          return r;
+        } catch (e: any) {
+          await client.query("ROLLBACK").catch(() => {});
+          if ((e?.code === "40001" || e?.code === "40P01") && attempt < 8) {
+            await new Promise((r) => setTimeout(r, 5 * 2 ** attempt * Math.random()));
+            continue;
+          }
+          throw e;
+        } finally {
+          client.release();
+        }
+      }
+    },
+    close: () => pool.end(),
+  };
+}
+
+// ---- スキーマ照合(差分マイグレーション) ----
+export interface ColumnDef {
+  name: string;
+  sql_type: string;
+  pg_type: string;
+  notnull: boolean;
+  pk: boolean;
+  def: string;
+  pg_def: string;
+}
+
+export interface TableDef {
+  name: string;
+  ddl: string;
+  pg_ddl: string;
+  columns: ColumnDef[];
+}
+
+export class MigrationError extends Error {}
+
+interface ColInfo {
+  name: string;
+  type: string;
+  notnull: boolean;
+  pk: boolean;
+}
+
+async function describe(db: Database, c: Conn, table: string): Promise<ColInfo[]> {
+  if (db.dialect === "sqlite") {
+    const info = (await c.all(`PRAGMA table_info(${q(table)})`, [])) as { name: string; type: string; notnull: bigint; pk: bigint }[];
+    return info.map((x) => ({ name: x.name, type: x.type.toUpperCase(), notnull: Number(x.notnull) === 1, pk: Number(x.pk) > 0 }));
+  }
+  const cols = (await c.all(
+    `SELECT c.column_name AS name, c.data_type AS type, c.is_nullable AS nullable,
+            EXISTS (SELECT 1 FROM information_schema.table_constraints t JOIN information_schema.key_column_usage k
+                    ON t.constraint_name = k.constraint_name AND t.table_schema = k.table_schema
+                    WHERE t.constraint_type = 'PRIMARY KEY' AND t.table_schema = current_schema() AND t.table_name = c.table_name AND k.column_name = c.column_name) AS pk
+     FROM information_schema.columns c WHERE c.table_schema = current_schema() AND c.table_name = ? ORDER BY c.ordinal_position`,
+    [table],
+  )) as { name: string; type: string; nullable: string; pk: boolean }[];
+  return cols.map((x) => ({ name: x.name, type: x.type.toUpperCase(), notnull: x.nullable === "NO", pk: x.pk }));
+}
+
+/**
+ * 起動時のスキーマ照合(差分マイグレーション)。
+ * - 表が無い → 作成
+ * - 選択型(NULL 可)の列が増えた → ALTER TABLE ADD COLUMN
+ * - 空の表で、型・NOT NULL・主キーが変わった/必須列が増えた/列が消えた → 作り直す
+ * - データのある表で上記の破壊的変更 → 起動を拒否(データを黙って壊さない)
+ * 適用した操作は _kotonoha_migrations に記録する。
+ */
+export async function migrate(db: Database, tables: TableDef[]): Promise<string[]> {
+  const pg = db.dialect === "postgres";
+  if (pg) {
+    for (const t of tables) {
+      for (const n of [t.name, ...t.columns.map((c) => c.name)]) {
+        if (Buffer.byteLength(n, "utf8") > 63) throw new MigrationError(`PostgreSQL の識別子は 63 バイトまでです: ${n}`);
+      }
+    }
+  }
+  await db.conn.exec('CREATE TABLE IF NOT EXISTS "_kotonoha_migrations" ("at" TEXT NOT NULL, "action" TEXT NOT NULL)');
+  return db.transaction(async (c) => {
+    const applied: string[] = [];
+    for (const t of tables) {
+      const ddl = pg ? t.pg_ddl : t.ddl;
+      const info = await describe(db, c, t.name);
+      if (info.length === 0) {
+        await c.exec(ddl);
+        applied.push(`create ${t.name}`);
+        continue;
+      }
+      const have = new Map(info.map((x) => [x.name, x]));
+      const rows = Number(((await c.all(`SELECT COUNT(*) AS n FROM ${q(t.name)}`, []))[0] as { n: bigint }).n);
+      const additive: ColumnDef[] = [];
+      const breaking: string[] = [];
+      for (const col of t.columns) {
+        const h = have.get(col.name);
+        const want = pg ? col.pg_type : col.sql_type;
+        if (!h) {
+          if (!col.notnull && !col.pk) additive.push(col);
+          else breaking.push(`必須列 ${col.name} の追加`);
+        } else if (h.type !== want || h.notnull !== col.notnull || h.pk !== col.pk) {
+          breaking.push(`列 ${col.name} の型/NOT NULL/主キーの変更`);
+        }
+      }
+      for (const h of info) if (!t.columns.some((x) => x.name === h.name)) breaking.push(`列 ${h.name} の削除`);
+      if (breaking.length > 0) {
+        if (rows > 0) throw new MigrationError(`表 ${t.name} にデータがあるため自動移行できません: ${breaking.join(", ")}。移行スクリプトを用意してください`);
+        await c.exec(`DROP TABLE ${q(t.name)}`);
+        await c.exec(ddl);
+        applied.push(`recreate ${t.name} (${breaking.join(", ")})`);
+        continue;
+      }
+      for (const col of additive) {
+        await c.exec(`ALTER TABLE ${q(t.name)} ADD COLUMN ${pg ? col.pg_def : col.def}`);
+        applied.push(`add ${t.name}.${col.name}`);
+      }
+    }
+    for (const a of applied) await c.run('INSERT INTO "_kotonoha_migrations" ("at", "action") VALUES (?, ?)', [new Date().toISOString(), a]);
+    return applied;
+  });
+}
+
+/** KOTONOHA_DB: SQLite のファイルパス(既定 data/app.sqlite、:memory: 可)または postgres:// URL */
+export async function openDb(target: string, tables: TableDef[]): Promise<Database> {
+  const db = /^postgres(ql)?:\/\//.test(target) ? await openPostgres(target) : await openSqlite(target);
+  await migrate(db, tables);
   return db;
 }
 
+// ---- 値の変換 ----
 function baseWire(w: Wire): Wire {
   return w.kind === "optional" ? w.of : w;
 }
 
-/** 内部値 → SQLite 値 */
-function toSql(v: unknown, w: Wire): unknown {
+/** 内部値 → DB 値 */
+export function toSql(v: unknown, w: Wire): unknown {
   if (v === null || v === undefined) return null;
   const b = baseWire(w);
   if (b.kind === "bool") return v ? 1n : 0n;
   return v;
 }
 
-/** SQLite 値 → 内部値 */
+/** DB 値 → 内部値 */
 function fromSql(v: unknown, w: Wire): unknown {
   if (v === null || v === undefined) return null;
   const b = baseWire(w);
   if (b.kind === "bool") return v !== 0n && v !== 0;
-  if (b.kind === "int" || b.kind === "money" || b.kind === "datetime") return typeof v === "bigint" ? v : BigInt(v as number);
+  if (b.kind === "int" || b.kind === "money" || b.kind === "datetime") return typeof v === "bigint" ? v : BigInt(v as number | string);
   return v;
 }
 
-export function decodeRow(ctx: Ctx, table: string, row: Record<string, unknown>): Record<string, unknown> {
+export function decodeRow(ctx: Ctx, table: string, row: Row): Row {
   const fields = ctx.schema.entities[table];
-  const e: Record<string, unknown> = {};
+  const e: Row = {};
   for (const f of fields) e[f.name] = fromSql(row[f.name], f.type);
   Object.defineProperty(e, META, { value: { table, original: { ...e } } satisfies EntityMeta, enumerable: false });
   return e;
 }
 
-export function all(ctx: Ctx, sql: string, params: unknown[]): Record<string, unknown>[] {
-  const st = ctx.db.prepare(sql);
-  st.setReadBigInts(true);
-  return st.all(...(params as never[])) as Record<string, unknown>[];
+/** 集計などの生 SQL(結果の整数は BigInt) */
+export function all(ctx: Ctx, sql: string, params: unknown[]): Promise<Row[]> {
+  return ctx.conn.all(sql, params);
 }
 
 // ---- 取引 ----
-/** `取引:` ブロック。本体が値 {v} を返したらそれを返す。失敗・例外はロールバックして再送出。 */
-export function tx<T>(ctx: Ctx, body: () => T): T {
+/** `取引:` ブロック。失敗・例外はロールバックして再送出。更新したエンティティは終わりに永続化する。 */
+export async function tx<T>(ctx: Ctx, body: () => Promise<T>): Promise<T> {
   if (ctx.dirty !== null) throw new Error("入れ子の取引");
-  ctx.dirty = new Set();
-  ctx.db.exec("BEGIN IMMEDIATE");
+  const outer = ctx.conn;
   try {
-    const r = body();
-    flush(ctx);
-    ctx.db.exec("COMMIT");
-    return r;
-  } catch (e) {
-    ctx.db.exec("ROLLBACK");
-    throw e;
+    return await ctx.db.transaction(async (c) => {
+      ctx.conn = c;
+      ctx.dirty = new Set();
+      const r = await body();
+      await flush(ctx);
+      return r;
+    });
   } finally {
+    ctx.conn = outer;
     ctx.dirty = null;
   }
 }
 
 /** エンティティのフィールド更新を記録する(取引の終わりに永続化)。 */
-export function markDirty(ctx: Ctx, e: Record<string, unknown>): void {
+export function markDirty(ctx: Ctx, e: Row): void {
   if (ctx.dirty === null) throw new Error("取引外の更新(型検査で禁止されているはず)");
   if (!(META in e)) throw new Error("保存元不明のエンティティ");
   ctx.dirty.add(e);
 }
 
-function flush(ctx: Ctx): void {
+async function flush(ctx: Ctx): Promise<void> {
   for (const e of ctx.dirty ?? []) {
     const meta = (e as Record<symbol, EntityMeta>)[META];
     const fields = ctx.schema.entities[meta.table];
     const changed = fields.filter((f) => f.name !== "ID" && e[f.name] !== meta.original[f.name]);
     if (changed.length === 0) continue;
+    const of = ctx.owners[meta.table];
+    if (of !== undefined && changed.some((f) => f.name === of)) throw new HttpError(403, "forbidden", "所有者は変更できません");
     const sets = changed.map((f) => `${q(f.name)} = ?`).join(", ");
-    const params = changed.map((f) => toSql(e[f.name], f.type));
-    ctx.db.prepare(`UPDATE ${q(meta.table)} SET ${sets} WHERE "ID" = ?`).run(...(params as never[]), e["ID"] as never);
+    await ctx.conn.run(`UPDATE ${q(meta.table)} SET ${sets} WHERE "ID" = ?`, [...changed.map((f) => toSql(e[f.name], f.type)), e["ID"]]);
     meta.original = { ...e };
   }
 }
 
+// ---- 行レベル認可 ----
+/** 組込み値 `本人`(動作は常に認証済みで呼ばれる) */
+export function principalId(ctx: Ctx): string {
+  if (ctx.principal === null) throw new HttpError(401, "unauthenticated", "認証が必要です");
+  return ctx.principal.sub;
+}
+
+/** 本人の行だけに絞る条件(対象外のデータなら空)。主体がいなければ何も見せない。 */
+function ownerCond(ctx: Ctx, table: string): { sql: string; params: unknown[] } {
+  const f = ctx.owners[table];
+  if (f === undefined) return { sql: "", params: [] };
+  if (ctx.principal === null) return { sql: " AND 1 = 0", params: [] };
+  return { sql: ` AND ${q(f)} = ?`, params: [ctx.principal.sub] };
+}
+
 // ---- データアダプタ(操作種別ごと) ----
-export function adGet(ctx: Ctx, table: string, id: unknown, optional: boolean): Record<string, unknown> | null {
-  const rows = all(ctx, `SELECT * FROM ${q(table)} WHERE "ID" = ?`, [id]);
+export async function adGet(ctx: Ctx, table: string, id: unknown, optional: boolean): Promise<Row | null> {
+  const oc = ownerCond(ctx, table);
+  const rows = await ctx.conn.all(`SELECT * FROM ${q(table)} WHERE "ID" = ?${oc.sql}`, [id, ...oc.params]);
   if (rows.length === 0) {
     if (optional) return null;
     throw new HttpError(404, "not_found", `${table} が見つかりません`);
@@ -124,33 +398,71 @@ export function adGet(ctx: Ctx, table: string, id: unknown, optional: boolean): 
   return decodeRow(ctx, table, rows[0]);
 }
 
-export function adList(ctx: Ctx, table: string): Record<string, unknown>[] {
-  return all(ctx, `SELECT * FROM ${q(table)} ORDER BY "ID"`, []).map((r) => decodeRow(ctx, table, r));
+export const PAGE_MAX = 1000;
+
+export async function adList(ctx: Ctx, table: string, page: { limit: number; offset: number } = { limit: 1_000_000, offset: 0 }): Promise<Row[]> {
+  const oc = ownerCond(ctx, table);
+  const where = oc.sql ? ` WHERE 1 = 1${oc.sql}` : "";
+  const rows = await ctx.conn.all(`SELECT * FROM ${q(table)}${where} ORDER BY "ID" LIMIT ? OFFSET ?`, [...oc.params, BigInt(page.limit), BigInt(page.offset)]);
+  return rows.map((r) => decodeRow(ctx, table, r));
 }
 
-export function adCreate(ctx: Ctx, table: string, values: Record<string, unknown>, returns: "id" | "entity"): unknown {
+export async function adCount(ctx: Ctx, table: string): Promise<number> {
+  const oc = ownerCond(ctx, table);
+  const where = oc.sql ? ` WHERE 1 = 1${oc.sql}` : "";
+  return Number((await ctx.conn.all(`SELECT COUNT(*) AS n FROM ${q(table)}${where}`, oc.params))[0].n);
+}
+
+/** 一覧 API のページング(?limit=&offset=。既定 100 件、上限 1000 件) */
+export function pageOf(query: URLSearchParams): { limit: number; offset: number } {
+  const num = (k: string, d: number) => {
+    if (!query.has(k)) return d;
+    const v = Number(query.get(k));
+    if (!Number.isSafeInteger(v) || v < 0) throw new HttpError(400, "invalid_input", `${k} は 0 以上の整数です`);
+    return v;
+  };
+  const limit = num("limit", 100);
+  if (limit < 1 || limit > PAGE_MAX) throw new HttpError(400, "invalid_input", `limit は 1〜${PAGE_MAX} です`);
+  return { limit, offset: num("offset", 0) };
+}
+
+export async function adCreate(ctx: Ctx, table: string, values: Row, returns: "id" | "entity"): Promise<unknown> {
   const fields = ctx.schema.entities[table];
   const idField = fields.find((f) => f.name === "ID");
-  const row: Record<string, unknown> = { ...values };
+  const row: Row = { ...values };
   if (idField) row["ID"] = randomUUID();
+  const of = ctx.owners[table];
+  if (of !== undefined) {
+    if (ctx.principal === null) throw new HttpError(401, "unauthenticated", "認証が必要です");
+    if (row[of] !== undefined && row[of] !== ctx.principal.sub) throw new HttpError(403, "forbidden", "他人の所有物としては登録できません");
+    row[of] = ctx.principal.sub;
+  }
   const cols = fields.filter((f) => f.name in row);
-  const sql = `INSERT INTO ${q(table)} (${cols.map((f) => q(f.name)).join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`;
-  ctx.db.prepare(sql).run(...(cols.map((f) => toSql(row[f.name], f.type)) as never[]));
+  await ctx.conn.run(
+    `INSERT INTO ${q(table)} (${cols.map((f) => q(f.name)).join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`,
+    cols.map((f) => toSql(row[f.name], f.type)),
+  );
   if (returns === "id") return row["ID"];
   return adGet(ctx, table, row["ID"], false);
 }
 
-export function adUpdate(ctx: Ctx, table: string, values: Record<string, unknown>): Record<string, unknown> {
+export async function adUpdate(ctx: Ctx, table: string, values: Row): Promise<Row> {
+  const of = ctx.owners[table];
+  if (of !== undefined && of in values) throw new HttpError(403, "forbidden", "所有者は変更できません");
   const fields = ctx.schema.entities[table].filter((f) => f.name !== "ID" && f.name in values);
   if (fields.length > 0) {
-    const sql = `UPDATE ${q(table)} SET ${fields.map((f) => `${q(f.name)} = ?`).join(", ")} WHERE "ID" = ?`;
-    const r = ctx.db.prepare(sql).run(...(fields.map((f) => toSql(values[f.name], f.type)) as never[]), values["ID"] as never);
-    if (Number(r.changes) === 0) throw new HttpError(404, "not_found", `${table} が見つかりません`);
+    const oc = ownerCond(ctx, table);
+    const n = await ctx.conn.run(`UPDATE ${q(table)} SET ${fields.map((f) => `${q(f.name)} = ?`).join(", ")} WHERE "ID" = ?${oc.sql}`, [
+      ...fields.map((f) => toSql(values[f.name], f.type)),
+      values["ID"],
+      ...oc.params,
+    ]);
+    if (n === 0) throw new HttpError(404, "not_found", `${table} が見つかりません`);
   }
-  return adGet(ctx, table, values["ID"], false) as Record<string, unknown>;
+  return (await adGet(ctx, table, values["ID"], false)) as Row;
 }
 
-export function adDelete(ctx: Ctx, table: string, id: unknown): boolean {
-  const r = ctx.db.prepare(`DELETE FROM ${q(table)} WHERE "ID" = ?`).run(id as never);
-  return Number(r.changes) > 0;
+export async function adDelete(ctx: Ctx, table: string, id: unknown): Promise<boolean> {
+  const oc = ownerCond(ctx, table);
+  return (await ctx.conn.run(`DELETE FROM ${q(table)} WHERE "ID" = ?${oc.sql}`, [id, ...oc.params])) > 0;
 }

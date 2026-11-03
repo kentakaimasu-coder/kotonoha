@@ -452,3 +452,169 @@ pub fn parse_for_cli(src: &str) -> (Value, Vec<Diagnostic>) {
     let (ast, d) = kotonoha_parser::parse_file(src, FileId(0));
     (serde_json::to_value(&ast).expect("AST は直列化できる"), d)
 }
+
+// ---------------------------------------------------------------------------
+// 影響分析(FR-016 / AT-08)
+// ---------------------------------------------------------------------------
+
+/// 影響を受ける VAG ノードと理由。
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+pub struct Impact {
+    pub node: String,
+    pub reason: String,
+}
+
+fn node_mentions(n: &Value, target: &str, field: Option<&str>) -> Option<String> {
+    let s = |v: &Value| v.as_str().unwrap_or("").to_string();
+    let caps: Vec<String> = n["capabilities"].as_array().into_iter().flatten().map(s).collect();
+    let d = &n["detail"];
+    if let Some(f) = field {
+        let fields: Vec<String> = d["fields"].as_array().into_iter().flatten().map(s).collect();
+        if d["data"] == target && (fields.iter().any(|x| x == f) || d["ui"] == "list") {
+            return Some(format!("{target}.{f} を表示"));
+        }
+        // 動作の本体のフィールド参照は VAG に記録しないため、資源を使う動作は保守的に含める
+        if n["kind"] == "action" && caps.iter().any(|c| c.split('.').next() == Some(target)) {
+            return Some(format!("{target} を使う(フィールド単位の参照は保守的に判定)"));
+        }
+        return None;
+    }
+    if caps.iter().any(|c| c.split('.').next() == Some(target)) {
+        return Some(format!("{target} の Capability を使う"));
+    }
+    if d["data"] == target {
+        return Some(format!("{target} を表示・選択"));
+    }
+    if n["knowledge_refs"].as_array().into_iter().flatten().any(|k| k == target) {
+        return Some(format!("知識 {target} を参照"));
+    }
+    if n["inputs"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .chain(n["outputs"].as_array().into_iter().flatten())
+        .any(|t| t.as_str().is_some_and(|t| t.contains(target)))
+    {
+        return Some(format!("入出力の型に {target} を含む"));
+    }
+    if n["id"] == format!("action.{target}") || n["id"] == format!("screen.{target}") {
+        return Some("変更対象そのもの".into());
+    }
+    None
+}
+
+/// 名前(データ / データ.フィールド / 知識 / 動作 / 画面 / 列挙 / 型)の変更が影響するノードを列挙する。
+/// 直接参照するノードに加え、それを含む画面・呼び出す/遷移してくるノードを辿る。
+pub fn impact_of(vag: &Value, name: &str) -> Vec<Impact> {
+    let (target, field) = match name.split_once('.') {
+        Some((d, f)) => (d, Some(f)),
+        None => (name, None),
+    };
+    let nodes = vag["nodes"].as_array().cloned().unwrap_or_default();
+    let mut out: BTreeMap<String, String> = BTreeMap::new();
+    // 知識の対象データが変わると知識も変わる
+    let mut targets = vec![target.to_string()];
+    for k in vag["knowledge"].as_array().into_iter().flatten() {
+        let uses_field = field.is_none_or(|f| {
+            [&k["unit"], &k["time_field"], &k["metric"]["field"]].iter().any(|x| *x == f) || k["filter"].as_str().is_some_and(|x| x.contains(f))
+        });
+        if k["source"] == target && uses_field {
+            targets.push(k["name"].as_str().unwrap_or("").to_string());
+        }
+    }
+    // 動作がアダプタ経由でデータを使う場合は capabilities に現れる
+    for n in &nodes {
+        for t in &targets {
+            let f = if t == target { field } else { None };
+            if let Some(r) = node_mentions(n, t, f) {
+                out.entry(n["id"].as_str().unwrap_or("").to_string()).or_insert(r);
+            }
+        }
+    }
+    // 上流へ辿る: contains(画面 ← 部品)/ invokes(呼出元 ← 動作)/ navigates(遷移元 ← 画面)
+    loop {
+        let mut added = false;
+        for e in vag["edges"].as_array().into_iter().flatten() {
+            let (from, to) = (e["from"].as_str().unwrap_or(""), e["to"].as_str().unwrap_or(""));
+            if out.contains_key(to) && !out.contains_key(from) {
+                out.insert(
+                    from.to_string(),
+                    format!(
+                        "{to} を{}",
+                        match e["kind"].as_str() {
+                            Some("contains") => "含む",
+                            Some("invokes") => "呼び出す",
+                            _ => "遷移先に持つ",
+                        }
+                    ),
+                );
+                added = true;
+            }
+        }
+        if !added {
+            break;
+        }
+    }
+    out.into_iter().map(|(node, reason)| Impact { node, reason }).collect()
+}
+
+/// 2 つの VAG の差分から影響を列挙する(意味定義の変更 → 影響箇所)。
+pub fn impact_diff(base: &Value, current: &Value) -> Vec<Impact> {
+    let strip = |n: &Value| {
+        let mut n = n.clone();
+        if let Some(o) = n.as_object_mut() {
+            o.remove("source_span");
+        }
+        kotonoha_graph::canonical_json(&n)
+    };
+    let index = |v: &Value| -> BTreeMap<String, String> {
+        v["nodes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|n| (n["id"].as_str().unwrap_or("").to_string(), strip(n)))
+            .collect()
+    };
+    let (a, b) = (index(base), index(current));
+    let mut out: BTreeMap<String, String> = BTreeMap::new();
+    for (id, n) in &b {
+        match a.get(id) {
+            None => {
+                out.insert(id.clone(), "追加されたノード".into());
+            }
+            Some(m) if m != n => {
+                out.insert(id.clone(), "定義が変わったノード".into());
+            }
+            _ => {}
+        }
+    }
+    for id in a.keys().filter(|k| !b.contains_key(*k)) {
+        out.insert(id.clone(), "削除されたノード".into());
+    }
+    // 知識・データ定義の変更 → その名前の影響
+    let named = |v: &Value, sect: &str, key: &str| -> BTreeMap<String, String> {
+        let arr = if sect.is_empty() { &v[key] } else { &v[sect][key] };
+        arr.as_array()
+            .into_iter()
+            .flatten()
+            .map(|x| (x["name"].as_str().unwrap_or("").to_string(), kotonoha_graph::canonical_json(x)))
+            .collect()
+    };
+    for (sect, key) in [
+        ("", "knowledge"),
+        ("schema", "data"),
+        ("schema", "enums"),
+        ("schema", "aliases"),
+        ("schema", "adapters"),
+    ] {
+        let (x, y) = (named(base, sect, key), named(current, sect, key));
+        for name in x.keys().chain(y.keys()).collect::<std::collections::BTreeSet<_>>() {
+            if x.get(name) != y.get(name) {
+                for i in impact_of(current, name).into_iter().chain(impact_of(base, name)) {
+                    out.entry(i.node).or_insert(format!("{name} の定義変更: {}", i.reason));
+                }
+            }
+        }
+    }
+    out.into_iter().map(|(node, reason)| Impact { node, reason }).collect()
+}

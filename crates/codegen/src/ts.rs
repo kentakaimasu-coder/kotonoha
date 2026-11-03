@@ -66,7 +66,7 @@ impl<'a> TsGen<'a> {
         self.out.clear();
         let ps: Vec<String> = params.iter().map(|(n, _)| format!("{}: any", mangle("v_", n))).collect();
         self.line(&format!(
-            "export function {}(ctx: Ctx{}{}): any {{",
+            "export async function {}(ctx: Ctx{}{}): Promise<any> {{",
             mangle("act_", name),
             if ps.is_empty() { "" } else { ", " },
             ps.join(", ")
@@ -138,7 +138,7 @@ impl<'a> TsGen<'a> {
             Stmt::Transaction { body, .. } => {
                 self.line("{");
                 self.indent += 1;
-                self.line("const __t: any = db.tx(ctx, () => {");
+                self.line("const __t: any = await db.tx(ctx, async () => {");
                 self.indent += 1;
                 self.in_tx = true;
                 self.block_stmts(body);
@@ -187,6 +187,7 @@ impl<'a> TsGen<'a> {
             ExprKind::Str(s) => js_str(s),
             ExprKind::Bool(b) => b.to_string(),
             ExprKind::None => "null".into(),
+            ExprKind::Ident(n) if n == kotonoha_types::check::PRINCIPAL_WORD && !self.declared(n) => "db.principalId(ctx)".into(),
             ExprKind::Ident(n) => mangle("v_", n),
             ExprKind::Field(b, f) => format!("{}[{}]", self.expr(b), js_str(&f.name)),
             ExprKind::Call { callee, args } => {
@@ -195,9 +196,9 @@ impl<'a> TsGen<'a> {
                     "成功" => a.into_iter().next().unwrap_or_else(|| "undefined".into()),
                     "失敗" => format!("(() => {{ throw new rt.Failure({}); }})()", a.join(", ")),
                     n if self.ir.adapters.iter().any(|x| x.name == n) => {
-                        format!("{}(ctx{}{})", mangle("ad_", n), if a.is_empty() { "" } else { ", " }, a.join(", "))
+                        format!("(await {}(ctx{}{}))", mangle("ad_", n), if a.is_empty() { "" } else { ", " }, a.join(", "))
                     }
-                    n => format!("{}(ctx{}{})", mangle("act_", n), if a.is_empty() { "" } else { ", " }, a.join(", ")),
+                    n => format!("(await {}(ctx{}{}))", mangle("act_", n), if a.is_empty() { "" } else { ", " }, a.join(", ")),
                 }
             }
             ExprKind::Unary { op, expr } => {

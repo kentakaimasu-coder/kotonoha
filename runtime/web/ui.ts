@@ -104,10 +104,18 @@ export async function callApi(method: "GET" | "POST", url: string, body?: unknow
   return { ok: res.ok, status: res.status, body: parsed };
 }
 
+/** 動作の成功結果の表示(K-13)。値が単純なときだけ添える。 */
+export function okText(prefix: string, r: LoadResult): string {
+  const v = r.body?.ok;
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return `${prefix}: 完了しました(結果: ${String(v)})`;
+  return `${prefix}: 完了しました`;
+}
+
 export function errorText(r: LoadResult): string {
   if (r.status === 401) return "ログインが必要です";
   if (r.status === 403) return "権限がありません";
   if (r.status === 404) return "見つかりません";
+  if (r.status === 429) return "要求が多すぎます。しばらく待ってから再試行してください";
   if (r.status === 422 && r.body?.error === "failure") return `失敗しました: ${String(r.body.value)}`;
   if (r.body?.message) return String(r.body.message);
   return `エラー(${r.status})`;
@@ -184,7 +192,7 @@ export function ActionButton(p: { label: string; action: string; args: () => Rec
     try {
       const r = await callApi("POST", "/api/actions/" + enc(p.action), args);
       if (r.ok) {
-        setM({ kind: "ok", text: `${p.label}: 完了しました` });
+        setM({ kind: "ok", text: okText(p.label, r) });
         await p.reload();
       } else setM({ kind: "error", text: errorText(r), login: r.status === 401 });
     } finally {
@@ -258,7 +266,7 @@ export function ActionForm(p: { action: string; fields: Field[]; reload: () => P
     try {
       const r = await callApi("POST", "/api/actions/" + enc(p.action), v);
       if (r.ok) {
-        setM({ kind: "ok", text: `${p.action}: 完了しました` });
+        setM({ kind: "ok", text: okText(p.action, r) });
         form.reset();
         await p.reload();
       } else setM({ kind: "error", text: errorText(r), login: r.status === 401 });

@@ -1,7 +1,7 @@
 //! Backend 生成(Node.js 22.18+ / TypeScript / node:sqlite、npm 依存なし)。docs/architecture.md §5。
 
-use crate::appir::{api_contract, check_ir, wire_type, Access, AppIr, EndpointKind};
-use crate::sql::{lower_ranking, sqlite_ddl_for, Dialect, SqlParam};
+use crate::appir::{api_contract, check_ir, wire_type, AppIr, EndpointKind};
+use crate::sql::{lower_ranking, pg_ddl_for, sqlite_columns, sqlite_ddl_for, Dialect, SqlParam};
 use crate::ts::{js_str, mangle, TsGen};
 use crate::GeneratedFile;
 use kotonoha_ast::OpKind;
@@ -12,15 +12,17 @@ use serde_json::json;
 pub const RT_TS: &str = include_str!("../../../runtime/backend/rt.ts");
 pub const DB_TS: &str = include_str!("../../../runtime/backend/db.ts");
 pub const AUTH_TS: &str = include_str!("../../../runtime/backend/auth.ts");
+/// PostgreSQL ドライバ(任意依存。KOTONOHA_DB=postgres://… のときだけ読み込む)。固定版(SEC-07)
+pub const PG_VERSION: &str = "8.16.3";
 pub const SERVER_TS: &str = include_str!("../../../runtime/backend/server.ts");
 
 const MAIN_TS: &str = r#"// 生成物: KOTONOHA backend の起動点
 import { openDb } from "./runtime/db.ts";
 import { createApp } from "./runtime/server.ts";
-import { app, ddl } from "./app.generated.ts";
+import { app, tables } from "./app.generated.ts";
 
 const dbPath = process.env.KOTONOHA_DB ?? "data/app.sqlite";
-const db = openDb(dbPath, ddl);
+const db = await openDb(dbPath, tables);
 const port = Number(process.env.PORT ?? 8787);
 const host = process.env.KOTONOHA_HOST ?? "127.0.0.1";
 createApp(app, db).listen(port, host, () => {
@@ -51,9 +53,9 @@ process.stdout.write(signToken({ sub: values.sub, caps, iat: now, exp: now + Num
 const SEED_TS: &str = r#"// 初期データ投入: node tools/seed.ts seed.json   (seed.json = { "データ名": [ { フィールド: 値, ... } ] })
 // 値はワイヤ形式(API と同じ)で検証してから INSERT する。
 import { readFileSync } from "node:fs";
-import { openDb, q } from "../src/runtime/db.ts";
+import { openDb, q, toSql } from "../src/runtime/db.ts";
 import { decodeInput } from "../src/runtime/rt.ts";
-import { app, ddl } from "../src/app.generated.ts";
+import { app, tables } from "../src/app.generated.ts";
 
 const file = process.argv[2];
 if (!file) {
@@ -61,21 +63,83 @@ if (!file) {
   process.exit(2);
 }
 const data = JSON.parse(readFileSync(file, "utf8"));
-const db = openDb(process.env.KOTONOHA_DB ?? "data/app.sqlite", ddl);
-db.exec("BEGIN");
-for (const [table, rows] of Object.entries(data)) {
-  const fields = app.schema.entities[table];
-  if (!fields) throw new Error(`未知のデータ ${table}`);
-  for (const [i, row] of (rows as Record<string, unknown>[]).entries()) {
-    const vals = fields.map((f) => {
-      const v = decodeInput(row[f.name], f.type, app.schema, `${table}[${i}].${f.name}`);
-      return typeof v === "boolean" ? (v ? 1n : 0n) : v;
+const db = await openDb(process.env.KOTONOHA_DB ?? "data/app.sqlite", tables);
+await db.transaction(async (c) => {
+  for (const [table, rows] of Object.entries(data)) {
+    const fields = app.schema.entities[table];
+    if (!fields) throw new Error(`未知のデータ ${table}`);
+    for (const [i, row] of (rows as Record<string, unknown>[]).entries()) {
+      const vals = fields.map((f) => toSql(decodeInput(row[f.name], f.type, app.schema, `${table}[${i}].${f.name}`), f.type));
+      await c.run(`INSERT INTO ${q(table)} (${fields.map((f) => q(f.name)).join(", ")}) VALUES (${fields.map(() => "?").join(", ")})`, vals);
+    }
+  }
+});
+await db.close();
+console.log("投入しました");
+"#;
+
+/// FR-019: API 契約から導いた契約テスト(生成物に同梱。`koto test` が実行する)
+const CONTRACT_TEST_TS: &str = r#"// 生成物: API 契約(api.json)から導いた契約テスト。node --test tests/contract.test.ts
+// 公開範囲・認証・権限(デフォルト拒否)が契約どおりかを、実際にサーバーを起動して確かめる。
+import { test, before, after } from "node:test";
+import assert from "node:assert/strict";
+import { spawn, type ChildProcess } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { createServer } from "node:net";
+import { signToken } from "../src/runtime/auth.ts";
+
+const api = JSON.parse(readFileSync(new URL("../api.json", import.meta.url), "utf8"));
+const secret = randomBytes(32).toString("hex");
+let url = "";
+let proc: ChildProcess;
+
+const port = () => new Promise<number>((ok) => { const s = createServer(); s.listen(0, "127.0.0.1", () => { const p = (s.address() as { port: number }).port; s.close(() => ok(p)); }); });
+const tok = (caps: string[]) => signToken({ sub: "contract-test", caps, exp: Math.floor(Date.now() / 1000) + 600 }, secret);
+const path = (e: any, id?: string) => "/" + e.segments.map(encodeURIComponent).join("/") + (e.has_id ? "/" + encodeURIComponent(id ?? "none") : "");
+const call = async (e: any, t?: string, body?: unknown) => {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (t) headers.Authorization = `Bearer ${t}`;
+  return (await fetch(url + path(e), { method: e.method, headers, body: e.method === "POST" ? JSON.stringify(body ?? {}) : undefined })).status;
+};
+
+before(async () => {
+  const p = await port();
+  url = `http://127.0.0.1:${p}`;
+  proc = spawn(process.execPath, ["--no-warnings", "src/main.ts"], { cwd: new URL("..", import.meta.url), env: { ...process.env, PORT: String(p), KOTONOHA_DB: ":memory:", KOTONOHA_JWT_SECRET: secret, KOTONOHA_RATE_LIMIT_PER_MINUTE: "0" }, stdio: "ignore" });
+  for (let i = 0; i < 200; i++) {
+    try { if ((await fetch(url + "/api/health")).ok) return; } catch {}
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error("server did not start");
+});
+after(() => proc?.kill());
+
+test("health", async () => assert.equal((await fetch(url + "/api/health")).status, 200));
+
+for (const e of api.endpoints) {
+  if (e.access.public) {
+    test(`${e.id}: 公開(認証なしで 401/403 にならない)`, async () => {
+      const s = await call(e);
+      assert.ok(s !== 401 && s !== 403, `status ${s}`);
     });
-    db.prepare(`INSERT INTO ${q(table)} (${fields.map((f) => q(f.name)).join(", ")}) VALUES (${fields.map(() => "?").join(", ")})`).run(...(vals as never[]));
+    continue;
+  }
+  test(`${e.id}: 認証なしは 401`, async () => assert.equal(await call(e), 401));
+  if (e.access.capabilities.length > 0 || e.access.grant) {
+    test(`${e.id}: 権限なしは 403`, async () => assert.equal(await call(e, tok([])), 403));
+  }
+  if (e.method === "POST") {
+    const full = e.access.grant ? [e.access.grant] : e.access.capabilities;
+    test(`${e.id}: 権限があり入力が不正なら 400`, async () => assert.equal(await call(e, tok(full), { "__不明な項目__": 1 }), 400));
+  }
+  if (e.query?.limit) {
+    test(`${e.id}: 許可されない limit は 400`, async () => {
+      const r = await fetch(url + path(e) + "?limit=99999", { headers: { Authorization: `Bearer ${tok(e.access.capabilities)}` } });
+      assert.equal(r.status, 400);
+    });
   }
 }
-db.exec("COMMIT");
-console.log("投入しました");
 "#;
 
 pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
@@ -111,13 +175,22 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
             Err(d) => errs.push(d),
         }
     }
-    g.push_str(&format!("export const ddl: string[] = {};\n\n", serde_json::to_string_pretty(&ddl).unwrap()));
+    let mut tables = Vec::new();
+    for (e, d) in ir.entities.iter().zip(&ddl) {
+        if let (Ok(cols), Ok(pg)) = (sqlite_columns(&e.fields, &ir.enums), pg_ddl_for(&e.name, &e.fields, &ir.enums)) {
+            tables.push(json!({"name": e.name, "ddl": d, "pg_ddl": pg, "columns": cols}));
+        }
+    }
+    g.push_str(&format!(
+        "export const tables: db.TableDef[] = {};\n\n",
+        serde_json::to_string_pretty(&tables).unwrap()
+    ));
 
     // アダプタ
     for a in &ir.adapters {
         let ps: Vec<String> = a.params.iter().map(|(n, _)| mangle("v_", n)).collect();
         let sig = format!(
-            "function {}(ctx: Ctx{}{}): any",
+            "async function {}(ctx: Ctx{}{}): Promise<any>",
             mangle("ad_", &a.name),
             if ps.is_empty() { "" } else { ", " },
             ps.iter().map(|p| format!("{p}: any")).collect::<Vec<_>>().join(", ")
@@ -168,17 +241,14 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
     // ルート
     g.push_str("export const routes: Route[] = [\n");
     for ep in &ir.endpoints {
-        let access = match &ep.access {
-            Access::Public => json!({"public": true, "capabilities": []}),
-            Access::Caps(c) => json!({"public": false, "capabilities": c.iter().map(|x| x.vag()).collect::<Vec<_>>()}),
-        };
+        let access = ep.access_json();
         let handler = match &ep.kind {
             EndpointKind::ListData { data } => format!(
-                "(ctx) => ({{ status: 200, body: db.adList(ctx, {d}).map((e) => rt.encode(e, {{ kind: \"entity\", name: {d} }}, schema)) }})",
+                "async (ctx, req) => ({{ status: 200, body: (await db.adList(ctx, {d}, db.pageOf(req.query))).map((e) => rt.encode(e, {{ kind: \"entity\", name: {d} }}, schema)), headers: {{ \"X-Total-Count\": String(await db.adCount(ctx, {d})) }} }})",
                 d = js_str(data)
             ),
             EndpointKind::GetData { data } => format!(
-                "(ctx, req) => ({{ status: 200, body: rt.encode(db.adGet(ctx, {d}, rt.decodeInput(req.id, {{ kind: \"id\" }}, schema, \"id\"), false), {{ kind: \"entity\", name: {d} }}, schema) }})",
+                "async (ctx, req) => ({{ status: 200, body: rt.encode(await db.adGet(ctx, {d}, rt.decodeInput(req.id, {{ kind: \"id\" }}, schema, \"id\"), false), {{ kind: \"entity\", name: {d} }}, schema) }})",
                 d = js_str(data)
             ),
             EndpointKind::Query { knowledge, limits } => {
@@ -205,7 +275,7 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
                             .collect();
                         let row_wire = wire_type(&spec.row_type()).unwrap();
                         format!(
-                            "(ctx, req) => {{\n      const allowed = {limits:?};\n      const limit = req.query.has(\"limit\") ? Number(req.query.get(\"limit\")) : allowed[allowed.length - 1];\n      if (!allowed.includes(limit)) throw new rt.HttpError(400, \"invalid_input\", `limit は ${{allowed.join(\" / \")}} のいずれかです`);\n      const base = req.query.has(\"base\") ? (rt.decodeInput(req.query.get(\"base\"), {{ kind: \"datetime\" }}, schema, \"base\") as bigint) : BigInt(Date.now());\n      const days = {days};\n      const rows = db.all(ctx, {sql}, [{params}]);\n      const w: any = {wire};\n      return {{ status: 200, body: rows.map((r) => rt.encode(r, w, schema)) }};\n    }}",
+                            "async (ctx, req) => {{\n      const allowed = {limits:?};\n      const limit = req.query.has(\"limit\") ? Number(req.query.get(\"limit\")) : allowed[allowed.length - 1];\n      if (!allowed.includes(limit)) throw new rt.HttpError(400, \"invalid_input\", `limit は ${{allowed.join(\" / \")}} のいずれかです`);\n      const base = req.query.has(\"base\") ? (rt.decodeInput(req.query.get(\"base\"), {{ kind: \"datetime\" }}, schema, \"base\") as bigint) : BigInt(Date.now());\n      const days = {days};\n      const rows = await db.all(ctx, {sql}, [{params}]);\n      const w: any = {wire};\n      return {{ status: 200, body: rows.map((r) => rt.encode(r, w, schema)) }};\n    }}",
                             days = spec.window_days,
                             sql = js_str(&qr.sql),
                             params = params.join(", "),
@@ -228,7 +298,7 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
                 };
                 let keys: Vec<String> = a.params.iter().map(|(n, _)| js_str(n)).collect();
                 format!(
-                    "(ctx, req) => {{\n      const b = req.body as Record<string, unknown>;\n      if (b === null || typeof b !== \"object\" || Array.isArray(b)) throw new rt.HttpError(400, \"invalid_input\", \"本文はオブジェクトです\");\n      const extra = Object.keys(b).filter((k) => ![{keys}].includes(k));\n      if (extra.length > 0) throw new rt.HttpError(400, \"invalid_input\", `未知の項目: ${{extra.join(\", \")}}`);\n      const v = {f}(ctx{sep}{args});\n      return {{ status: 200, body: {{ ok: rt.encode(v, {w}, schema) }} }};\n    }}",
+                    "async (ctx, req) => {{\n      const b = req.body as Record<string, unknown>;\n      if (b === null || typeof b !== \"object\" || Array.isArray(b)) throw new rt.HttpError(400, \"invalid_input\", \"本文はオブジェクトです\");\n      const extra = Object.keys(b).filter((k) => ![{keys}].includes(k));\n      if (extra.length > 0) throw new rt.HttpError(400, \"invalid_input\", `未知の項目: ${{extra.join(\", \")}}`);\n      const v = await {f}(ctx{sep}{args});\n      return {{ status: 200, body: {{ ok: rt.encode(v, {w}, schema) }} }};\n    }}",
                     keys = keys.join(", "),
                     f = mangle("act_", action),
                     sep = if args.is_empty() { "" } else { ", " },
@@ -247,7 +317,11 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
         ));
     }
     g.push_str("];\n\n");
-    g.push_str(&format!("export const app: App = {{ name: {}, schema, routes }};\n", js_str(&ir.name)));
+    g.push_str(&format!(
+        "export const app: App = {{ name: {}, schema, routes, owners: {} }};\n",
+        js_str(&ir.name),
+        serde_json::to_string(&ir.policy.owner_read).unwrap()
+    ));
 
     if !errs.is_empty() {
         return Err(errs);
@@ -257,10 +331,11 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
         "private": true,
         "type": "module",
         "engines": {"node": ">=22.18.0"},
-        "scripts": {"start": "node --no-warnings src/main.ts", "token": "node --no-warnings tools/dev-token.ts", "seed": "node --no-warnings tools/seed.ts"},
+        "optionalDependencies": {"pg": PG_VERSION},
+        "scripts": {"start": "node --no-warnings src/main.ts", "test": "node --no-warnings --test tests/contract.test.ts tests/actions.todo.test.ts", "token": "node --no-warnings tools/dev-token.ts", "seed": "node --no-warnings tools/seed.ts"},
     });
     let readme = format!(
-        "# {name} backend(KOTONOHA 生成物)\n\n依存パッケージなし。Node.js 22.18 以上。\n\n```bash\nexport KOTONOHA_JWT_SECRET=...(32 文字以上。秘密管理から注入)\nnpm run seed -- seed.json   # 任意\nnpm start                   # http://127.0.0.1:8787\n```\n\n環境変数: PORT, KOTONOHA_HOST, KOTONOHA_DB, KOTONOHA_JWT_SECRET, KOTONOHA_JWT_ISSUER, KOTONOHA_JWT_AUDIENCE\n\nAPI 契約: api.json。意味グラフ: vag.json。\n",
+        "# {name} backend(KOTONOHA 生成物)\n\nNode.js 22.18 以上。SQLite だけなら依存パッケージなし。PostgreSQL を使う場合は `npm install`(任意依存の pg)。\n\n```bash\nexport KOTONOHA_JWT_SECRET=...(32 文字以上。秘密管理から注入)\nnpm run seed -- seed.json   # 任意\nnpm start                   # http://127.0.0.1:8787\n```\n\n環境変数: PORT, KOTONOHA_HOST, KOTONOHA_DB(SQLite のパス または postgres://…), KOTONOHA_JWT_SECRET, KOTONOHA_JWKS_FILE / KOTONOHA_JWKS_JSON / KOTONOHA_JWKS_URL, KOTONOHA_JWT_ISSUER, KOTONOHA_JWT_AUDIENCE, KOTONOHA_CAPS_CLAIM, KOTONOHA_ROLES_CLAIM, KOTONOHA_ROLE_MAP, KOTONOHA_RATE_LIMIT_PER_MINUTE, KOTONOHA_PG_POOL\n\nAPI 契約: api.json。意味グラフ: vag.json。\n",
         name = ir.name
     );
     Ok(vec![
@@ -277,5 +352,57 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
         GeneratedFile::text("src/runtime/server.ts", SERVER_TS.to_string()),
         GeneratedFile::text("tools/dev-token.ts", DEV_TOKEN_TS.to_string()),
         GeneratedFile::text("tools/seed.ts", SEED_TS.to_string()),
+        GeneratedFile::text("tests/contract.test.ts", CONTRACT_TEST_TS.to_string()),
+        GeneratedFile::text("tests/actions.todo.test.ts", action_todos(ir)),
     ])
+}
+
+/// FR-019: 動作の `を確認 または 失敗(…)` から、業務規則のテスト雛形(test.todo)を作る。
+fn action_todos(ir: &AppIr) -> String {
+    use kotonoha_ast::{ExprKind, Stmt};
+    fn walk(b: &kotonoha_ast::Block, out: &mut Vec<String>) {
+        for s in &b.stmts {
+            match s {
+                Stmt::Check { cond, fail, .. } => {
+                    let v = match &fail.kind {
+                        ExprKind::Call { args, .. } => args.first().map(kotonoha_parser_expr).unwrap_or_default(),
+                        _ => String::new(),
+                    };
+                    out.push(format!("{} を満たさないとき 失敗({v}) になる", kotonoha_parser_expr(cond)));
+                }
+                Stmt::If { branches, else_block, .. } => {
+                    for (_, b) in branches {
+                        walk(b, out);
+                    }
+                    if let Some(b) = else_block {
+                        walk(b, out);
+                    }
+                }
+                Stmt::Loop { body, .. } | Stmt::Transaction { body, .. } => walk(body, out),
+                _ => {}
+            }
+        }
+    }
+    let mut s =
+        String::from("// 生成物: 業務規則のテスト雛形(FR-019)。各 todo を具体的な入力と期待値で実装してください。\nimport { test } from \"node:test\";\n\n");
+    for a in &ir.actions {
+        let mut rules = Vec::new();
+        if let Some(b) = &a.body {
+            walk(b, &mut rules);
+        }
+        s.push_str(&format!(
+            "// 動作 {}\ntest.todo({});\n",
+            a.name,
+            js_str(&format!("{}: 正常系の結果を確認する", a.name))
+        ));
+        for r in rules {
+            s.push_str(&format!("test.todo({});\n", js_str(&format!("{}: {r}", a.name))));
+        }
+        s.push('\n');
+    }
+    s
+}
+
+fn kotonoha_parser_expr(e: &kotonoha_ast::Expr) -> String {
+    kotonoha_parser::printer::expr_str(e)
 }

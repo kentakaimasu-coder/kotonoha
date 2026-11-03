@@ -1,0 +1,365 @@
+{
+  "application": "商店",
+  "contract_version": "1",
+  "endpoints": [
+    {
+      "access": {
+        "capabilities": [],
+        "public": true
+      },
+      "has_id": false,
+      "id": "data.list.商品",
+      "method": "GET",
+      "path": "/api/data/商品",
+      "response": {
+        "kind": "list",
+        "of": {
+          "kind": "entity",
+          "name": "商品"
+        }
+      },
+      "segments": [
+        "api",
+        "data",
+        "商品"
+      ]
+    },
+    {
+      "access": {
+        "capabilities": [],
+        "owner": "注文",
+        "public": false
+      },
+      "has_id": false,
+      "id": "data.list.注文",
+      "method": "GET",
+      "path": "/api/data/注文",
+      "response": {
+        "kind": "list",
+        "of": {
+          "kind": "entity",
+          "name": "注文"
+        }
+      },
+      "segments": [
+        "api",
+        "data",
+        "注文"
+      ]
+    },
+    {
+      "access": {
+        "capabilities": [],
+        "public": true
+      },
+      "has_id": true,
+      "id": "data.get.商品",
+      "method": "GET",
+      "path": "/api/data/商品/{id}",
+      "response": {
+        "kind": "entity",
+        "name": "商品"
+      },
+      "segments": [
+        "api",
+        "data",
+        "商品"
+      ]
+    },
+    {
+      "access": {
+        "capabilities": [
+          "注文明細.read"
+        ],
+        "public": false
+      },
+      "has_id": false,
+      "id": "query.売れ筋商品",
+      "method": "GET",
+      "path": "/api/queries/売れ筋商品",
+      "query": {
+        "base": {
+          "kind": "datetime",
+          "optional": true
+        },
+        "limit": {
+          "allowed": [
+            20
+          ]
+        }
+      },
+      "response": {
+        "kind": "list",
+        "of": {
+          "fields": [
+            {
+              "name": "商品ID",
+              "type": {
+                "kind": "id"
+              }
+            },
+            {
+              "name": "売上金額",
+              "type": {
+                "currency": "JPY",
+                "kind": "money",
+                "minor_units": 0
+              }
+            }
+          ],
+          "kind": "record"
+        }
+      },
+      "segments": [
+        "api",
+        "queries",
+        "売れ筋商品"
+      ]
+    },
+    {
+      "access": {
+        "capabilities": [
+          "商品.create"
+        ],
+        "grant": "動作.商品登録",
+        "public": false
+      },
+      "has_id": false,
+      "id": "action.商品登録",
+      "method": "POST",
+      "path": "/api/actions/商品登録",
+      "request": {
+        "fields": [
+          {
+            "name": "名前",
+            "type": {
+              "kind": "string"
+            }
+          },
+          {
+            "name": "価格",
+            "type": {
+              "currency": "JPY",
+              "kind": "money",
+              "minor_units": 0
+            }
+          },
+          {
+            "name": "在庫",
+            "type": {
+              "kind": "int"
+            }
+          }
+        ],
+        "kind": "record"
+      },
+      "response": {
+        "err": {
+          "kind": "enum",
+          "name": "登録失敗"
+        },
+        "kind": "result",
+        "ok": {
+          "kind": "id"
+        }
+      },
+      "segments": [
+        "api",
+        "actions",
+        "商品登録"
+      ]
+    },
+    {
+      "access": {
+        "capabilities": [
+          "商品.read",
+          "商品.update",
+          "注文.create"
+        ],
+        "grant": "動作.注文する",
+        "public": false
+      },
+      "has_id": false,
+      "id": "action.注文する",
+      "method": "POST",
+      "path": "/api/actions/注文する",
+      "request": {
+        "fields": [
+          {
+            "name": "商品ID",
+            "type": {
+              "kind": "id"
+            }
+          },
+          {
+            "name": "数量",
+            "type": {
+              "kind": "int"
+            }
+          }
+        ],
+        "kind": "record"
+      },
+      "response": {
+        "err": {
+          "kind": "enum",
+          "name": "注文失敗"
+        },
+        "kind": "result",
+        "ok": {
+          "kind": "id"
+        }
+      },
+      "segments": [
+        "api",
+        "actions",
+        "注文する"
+      ]
+    }
+  ],
+  "entities": [
+    {
+      "fields": [
+        {
+          "name": "ID",
+          "type": {
+            "kind": "id"
+          }
+        },
+        {
+          "name": "名前",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "価格",
+          "type": {
+            "currency": "JPY",
+            "kind": "money",
+            "minor_units": 0
+          }
+        },
+        {
+          "name": "在庫",
+          "type": {
+            "kind": "int"
+          }
+        }
+      ],
+      "name": "商品"
+    },
+    {
+      "fields": [
+        {
+          "name": "ID",
+          "type": {
+            "kind": "id"
+          }
+        },
+        {
+          "name": "商品ID",
+          "type": {
+            "kind": "id"
+          }
+        },
+        {
+          "name": "数量",
+          "type": {
+            "kind": "int"
+          }
+        },
+        {
+          "name": "注文者",
+          "type": {
+            "kind": "id"
+          }
+        }
+      ],
+      "name": "注文"
+    },
+    {
+      "fields": [
+        {
+          "name": "ID",
+          "type": {
+            "kind": "id"
+          }
+        },
+        {
+          "name": "商品ID",
+          "type": {
+            "kind": "id"
+          }
+        },
+        {
+          "name": "売上金額",
+          "type": {
+            "currency": "JPY",
+            "kind": "money",
+            "minor_units": 0
+          }
+        },
+        {
+          "name": "状態",
+          "type": {
+            "kind": "enum",
+            "name": "注文状態"
+          }
+        },
+        {
+          "name": "確定日時",
+          "type": {
+            "kind": "datetime"
+          }
+        }
+      ],
+      "name": "注文明細"
+    }
+  ],
+  "entry_screen": "商品一覧",
+  "enums": [
+    {
+      "name": "注文失敗",
+      "variants": [
+        "数量不正",
+        "在庫不足"
+      ]
+    },
+    {
+      "name": "注文状態",
+      "variants": [
+        "確定",
+        "取消"
+      ]
+    },
+    {
+      "name": "登録失敗",
+      "variants": [
+        "在庫不正"
+      ]
+    }
+  ],
+  "screens": [
+    {
+      "input": null,
+      "name": "商品一覧"
+    },
+    {
+      "input": "商品",
+      "name": "商品詳細"
+    },
+    {
+      "input": null,
+      "name": "商品管理"
+    },
+    {
+      "input": null,
+      "name": "注文履歴"
+    },
+    {
+      "input": null,
+      "name": "売れ筋"
+    }
+  ]
+}

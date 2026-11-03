@@ -39,10 +39,11 @@
     },
     "knowledge": {"type": "array", "items": {"$ref": "#/$defs/ranking"}},
     "policy": {
-      "type": "object", "additionalProperties": false, "required": ["public_read", "auth_required"],
+      "type": "object", "additionalProperties": false, "required": ["public_read", "auth_required", "owner_read"],
       "properties": {
         "public_read": {"type": "array", "items": {"type": "string"}},
-        "auth_required": {"type": "array", "items": {"type": "string"}}}
+        "auth_required": {"type": "array", "items": {"type": "string"}},
+        "owner_read": {"type": "object", "additionalProperties": {"type": "string"}}}
     },
     "nodes": {"type": "array", "items": {"$ref": "#/$defs/node"}},
     "edges": {"type": "array", "items": {

@@ -3,6 +3,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { createHash, randomBytes } from "node:crypto";
 import ReactDOMServer from "react-dom/server";
 import { App, h, loaderUrl, type Init, type LoadResult, type ScreenDef } from "./ui.ts";
 
@@ -14,10 +15,11 @@ export interface WebApp {
 }
 
 const COOKIE = "kotonoha_token";
+const OIDC_COOKIE = "kotonoha_oidc";
 const TOKEN_RE = /^[A-Za-z0-9_\-.]{1,4096}$/;
 const MAX_BODY = 64 * 1024;
 
-function securityHeaders(extra: Record<string, string | number> = {}): Record<string, string | number> {
+function securityHeaders(extra: Record<string, string | number | string[]> = {}): Record<string, string | number | string[]> {
   return {
     "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
     "X-Content-Type-Options": "nosniff",
@@ -36,16 +38,18 @@ function jsonForScript(v: unknown): string {
   return JSON.stringify(v).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 }
 
-function tokenOf(req: IncomingMessage): string | null {
+function cookieOf(req: IncomingMessage, name: string): string | null {
   const c = req.headers.cookie ?? "";
   for (const part of c.split(";")) {
     const [k, ...v] = part.trim().split("=");
-    if (k === COOKIE) {
-      const t = v.join("=");
-      return TOKEN_RE.test(t) ? t : null;
-    }
+    if (k === name) return v.join("=");
   }
   return null;
+}
+
+function tokenOf(req: IncomingMessage): string | null {
+  const t = cookieOf(req, COOKIE);
+  return t !== null && TOKEN_RE.test(t) ? t : null;
 }
 
 async function readBody(req: IncomingMessage): Promise<Buffer> {
@@ -66,8 +70,53 @@ function page(title: string, body: string, initJson: string | null): string {
 <body><div id="root">${body}</div>${initJson === null ? "" : `<script id="__KOTONOHA_INIT__" type="application/json">${initJson}</script><script type="module" src="/assets/client.js"></script>`}</body></html>`;
 }
 
-export function createWebServer(app: WebApp, opts: { backendUrl: string; root: string; secureCookie: boolean; tz: string }) {
+/** OIDC 認可コードフロー(PKCE)の設定。issuer が無ければ無効(ADR-002) */
+export interface OidcConfig {
+  issuer: string;
+  clientId: string;
+  clientSecret: string | null;
+  redirectUri: string;
+  scope: string;
+  /** backend に渡すトークン(既定 access_token) */
+  token: "access_token" | "id_token";
+}
+
+export function oidcFromEnv(env: NodeJS.ProcessEnv): OidcConfig | null {
+  if (!env.KOTONOHA_OIDC_ISSUER) return null;
+  const issuer = env.KOTONOHA_OIDC_ISSUER.replace(/\/$/, "");
+  const u = new URL(issuer);
+  if (u.protocol !== "https:" && !["127.0.0.1", "localhost", "[::1]"].includes(u.hostname)) throw new Error("KOTONOHA_OIDC_ISSUER は https です");
+  if (!env.KOTONOHA_OIDC_CLIENT_ID || !env.KOTONOHA_OIDC_REDIRECT_URI) throw new Error("KOTONOHA_OIDC_CLIENT_ID と KOTONOHA_OIDC_REDIRECT_URI が必要です");
+  return {
+    issuer,
+    clientId: env.KOTONOHA_OIDC_CLIENT_ID,
+    clientSecret: env.KOTONOHA_OIDC_CLIENT_SECRET || null,
+    redirectUri: env.KOTONOHA_OIDC_REDIRECT_URI,
+    scope: env.KOTONOHA_OIDC_SCOPE || "openid",
+    token: env.KOTONOHA_OIDC_TOKEN === "id_token" ? "id_token" : "access_token",
+  };
+}
+
+const b64u = (b: Buffer) => b.toString("base64url");
+
+export function createWebServer(
+  app: WebApp,
+  opts: { backendUrl: string; root: string; secureCookie: boolean; tz: string; oidc?: OidcConfig | null; devLogin?: boolean },
+) {
   const backend = new URL(opts.backendUrl);
+  const oidc = opts.oidc ?? null;
+  const devLogin = opts.devLogin ?? oidc === null;
+  let discovery: { authorization_endpoint: string; token_endpoint: string } | null = null;
+  async function discover() {
+    if (discovery) return discovery;
+    const r = await fetch(`${oidc!.issuer}/.well-known/openid-configuration`, { signal: AbortSignal.timeout(10_000) });
+    if (!r.ok) throw new Error(`OIDC discovery に失敗しました (${r.status})`);
+    const d = (await r.json()) as { issuer: string; authorization_endpoint: string; token_endpoint: string };
+    if (d.issuer.replace(/\/$/, "") !== oidc!.issuer) throw new Error("OIDC discovery の issuer が一致しません");
+    discovery = d;
+    return d;
+  }
+  const secure = opts.secureCookie ? "; Secure" : "";
   const assets: Record<string, [string, string]> = {
     "/assets/client.js": ["dist/client.js", "text/javascript; charset=utf-8"],
     "/assets/app.css": ["assets/app.css", "text/css; charset=utf-8"],
@@ -134,8 +183,49 @@ export function createWebServer(app: WebApp, opts: { backendUrl: string; root: s
         return res.end(buf);
       }
       // ログイン(トークンは backend が検証する。ここでは形式だけ確認して HttpOnly Cookie に保存)
+      // OIDC: 認可エンドポイントへ(state・nonce・PKCE を一時 Cookie に保存)
+      if (url.pathname === "/login/oidc" && oidc) {
+        const d = await discover();
+        const state = b64u(randomBytes(16)), nonce = b64u(randomBytes(16)), verifier = b64u(randomBytes(32));
+        const challenge = b64u(createHash("sha256").update(verifier).digest());
+        const auth = new URL(d.authorization_endpoint);
+        for (const [k, v] of Object.entries({ response_type: "code", client_id: oidc.clientId, redirect_uri: oidc.redirectUri, scope: oidc.scope, state, nonce, code_challenge: challenge, code_challenge_method: "S256" })) auth.searchParams.set(k, v);
+        // 認可サーバーからの戻り(トップレベルの GET)で送られるよう SameSite=Lax
+        res.writeHead(302, securityHeaders({ Location: auth.toString(), "Set-Cookie": `${OIDC_COOKIE}=${state}.${nonce}.${verifier}; HttpOnly; SameSite=Lax; Path=/login; Max-Age=600${secure}` }));
+        return res.end();
+      }
+      if (url.pathname === "/login/callback" && oidc) {
+        const fail = (msg: string) => {
+          res.writeHead(400, securityHeaders({ "Content-Type": "text/html; charset=utf-8", "Set-Cookie": `${OIDC_COOKIE}=; HttpOnly; Path=/login; Max-Age=0` }));
+          res.end(page("ログイン", `<section class="page"><h1>ログインできませんでした</h1><p role="alert">${escHtml(msg)}</p><a href="/login">戻る</a></section>`, null));
+        };
+        const saved = cookieOf(req, OIDC_COOKIE)?.split(".") ?? [];
+        if (url.searchParams.get("error")) return fail(`認可サーバーが拒否しました: ${url.searchParams.get("error")}`);
+        if (saved.length !== 3 || url.searchParams.get("state") !== saved[0]) return fail("state が一致しません(やり直してください)");
+        const code = url.searchParams.get("code");
+        if (!code) return fail("認可コードがありません");
+        const d = await discover();
+        const form = new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: oidc.redirectUri, client_id: oidc.clientId, code_verifier: saved[2] });
+        if (oidc.clientSecret) form.set("client_secret", oidc.clientSecret);
+        const tr = await fetch(d.token_endpoint, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" }, body: form, signal: AbortSignal.timeout(10_000) });
+        if (!tr.ok) return fail(`トークンを取得できませんでした (${tr.status})`);
+        const tokens = (await tr.json()) as Record<string, unknown>;
+        // id_token の nonce を照合する(署名は backend が JWKS で検証する)
+        if (typeof tokens.id_token === "string") {
+          const claims = JSON.parse(Buffer.from(tokens.id_token.split(".")[1] ?? "", "base64url").toString("utf8") || "{}");
+          if (claims.nonce !== saved[1]) return fail("nonce が一致しません");
+        }
+        const t = tokens[oidc.token];
+        if (typeof t !== "string" || !TOKEN_RE.test(t)) return fail(`${oidc.token} がありません`);
+        res.writeHead(303, securityHeaders({ Location: "/", "Set-Cookie": [`${COOKIE}=${t}; HttpOnly; SameSite=Strict; Path=/${secure}`, `${OIDC_COOKIE}=; HttpOnly; Path=/login; Max-Age=0`] }));
+        return res.end();
+      }
       if (url.pathname === "/login") {
         if (req.method === "POST") {
+          if (!devLogin) {
+            res.writeHead(404, securityHeaders());
+            return res.end();
+          }
           const form = new URLSearchParams((await readBody(req)).toString("utf8"));
           const t = form.get("token") ?? "";
           if (!TOKEN_RE.test(t)) {
@@ -150,7 +240,7 @@ export function createWebServer(app: WebApp, opts: { backendUrl: string; root: s
         return res.end(
           page(
             "ログイン",
-            `<section class="page"><h1>ログイン</h1><p>認証基盤(ADR-002)から発行されたトークンを入力してください。</p><form method="post" action="/login"><div class="field"><label for="token">トークン</label><input id="token" name="token" type="password" required autocomplete="off"></div><button type="submit">ログイン</button></form><form method="post" action="/logout"><button type="submit">ログアウト</button></form></section>`,
+            `<section class="page"><h1>ログイン</h1>${oidc ? `<p><a class="button" href="/login/oidc">認証基盤でログイン</a></p>` : ""}${devLogin ? `<p>開発用: 発行済みのトークンを入力してログインします。</p><form method="post" action="/login"><div class="field"><label for="token">トークン</label><input id="token" name="token" type="password" required autocomplete="off"></div><button type="submit">ログイン</button></form>` : ""}<form method="post" action="/logout"><button type="submit">ログアウト</button></form></section>`,
             null,
           ),
         );

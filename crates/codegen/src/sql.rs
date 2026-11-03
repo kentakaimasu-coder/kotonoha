@@ -137,8 +137,21 @@ pub fn sqlite_ddl(data: &DataInfo, env: &kotonoha_types::Env) -> Result<String, 
     sqlite_ddl_for(&data.name, &data.fields, &env.enums)
 }
 
-/// `CREATE TABLE IF NOT EXISTS`(起動時に適用。差分マイグレーションは未実装: K-05)
-pub fn sqlite_ddl_for(name: &str, fields: &[(String, Type)], enums: &std::collections::BTreeMap<String, Vec<String>>) -> Result<String, Diagnostic> {
+/// 列定義(マイグレーション照合用)。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct ColumnDef {
+    pub name: String,
+    pub sql_type: String,
+    /// PostgreSQL の型(information_schema.data_type の大文字表記)
+    pub pg_type: String,
+    pub notnull: bool,
+    pub pk: bool,
+    /// `"列" 型 [NOT NULL] [PRIMARY KEY] [CHECK]`
+    pub def: String,
+    pub pg_def: String,
+}
+
+pub fn sqlite_columns(fields: &[(String, Type)], enums: &std::collections::BTreeMap<String, Vec<String>>) -> Result<Vec<ColumnDef>, Diagnostic> {
     let mut cols = Vec::new();
     for (n, t) in fields {
         let (base, nullable) = match t {
@@ -164,18 +177,50 @@ pub fn sqlite_ddl_for(name: &str, fields: &[(String, Type)], enums: &std::collec
                 ))
             }
         };
-        let mut col = format!("{} {ty}", quote_ident(n)?);
+        let pg_ty = if ty == "INTEGER" { "BIGINT" } else { "TEXT" };
+        let pk = n == "ID";
+        let mut tail = String::new();
         if !nullable {
-            col.push_str(" NOT NULL");
+            tail.push_str(" NOT NULL");
         }
-        if n == "ID" {
-            col.push_str(" PRIMARY KEY");
+        if pk {
+            tail.push_str(" PRIMARY KEY");
         }
         if let Type::Enum(e) = base {
             let vs: Vec<String> = enums[e].iter().map(|v| format!("'{}'", v.replace('\'', "''"))).collect();
-            col.push_str(&format!(" CHECK ({} IN ({}))", quote_ident(n)?, vs.join(", ")));
+            tail.push_str(&format!(" CHECK ({} IN ({}))", quote_ident(n)?, vs.join(", ")));
         }
-        cols.push(col);
+        let def = format!("{} {ty}{tail}", quote_ident(n)?);
+        let pg_def = format!("{} {pg_ty}{tail}", quote_ident(n)?);
+        cols.push(ColumnDef {
+            name: n.clone(),
+            sql_type: ty.into(),
+            pg_type: pg_ty.into(),
+            notnull: !nullable,
+            pk,
+            def,
+            pg_def,
+        });
     }
-    Ok(format!("CREATE TABLE IF NOT EXISTS {} (\n    {}\n);", quote_ident(name)?, cols.join(",\n    ")))
+    Ok(cols)
+}
+
+/// `CREATE TABLE IF NOT EXISTS`(既存表との差分は backend ランタイムの migrate が照合する)
+pub fn sqlite_ddl_for(name: &str, fields: &[(String, Type)], enums: &std::collections::BTreeMap<String, Vec<String>>) -> Result<String, Diagnostic> {
+    let cols = sqlite_columns(fields, enums)?;
+    Ok(format!(
+        "CREATE TABLE IF NOT EXISTS {} (\n    {}\n);",
+        quote_ident(name)?,
+        cols.iter().map(|c| c.def.as_str()).collect::<Vec<_>>().join(",\n    ")
+    ))
+}
+
+/// PostgreSQL 用の `CREATE TABLE IF NOT EXISTS`
+pub fn pg_ddl_for(name: &str, fields: &[(String, Type)], enums: &std::collections::BTreeMap<String, Vec<String>>) -> Result<String, Diagnostic> {
+    let cols = sqlite_columns(fields, enums)?;
+    Ok(format!(
+        "CREATE TABLE IF NOT EXISTS {} (\n    {}\n);",
+        quote_ident(name)?,
+        cols.iter().map(|c| c.pg_def.as_str()).collect::<Vec<_>>().join(",\n    ")
+    ))
 }

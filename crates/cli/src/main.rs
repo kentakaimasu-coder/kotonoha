@@ -21,7 +21,9 @@ const USAGE: &str = "使い方: koto [-C <dir>] [--json] <command> [args]
   graph [--draft] [--canonical]   Verified Application Graph を出力
   build --target web|backend|ios|android [--locked] [--out dir]
                                   ターゲット生成(未対応機能があれば TGT001 で停止)
-  test                            (未実装)
+  test [--keep]                   backend を生成し、API 契約から導いた契約テストを実行(Node.js 22.18+ が必要)
+  impact <名前> | --base <vag.json>
+                                  変更の影響を受ける画面・動作・部品を列挙(名前はデータ / データ.フィールド / 知識 / 動作 / 画面)
   doctor                          実装状況と未決定事項を表示
   ast <file>                      [開発用] Surface AST を JSON で出力
 ";
@@ -124,7 +126,8 @@ fn run(mut o: Opts) -> i32 {
         "approve" => cmd_approve(&mut o),
         "graph" => cmd_graph(&mut o),
         "build" => cmd_build(&mut o),
-        "test" => Ok(report(&o, &single(Code::INT001, "koto test は未実装です(テスト生成 FR-019 は P1)"), json!({}))),
+        "test" => cmd_test(&mut o),
+        "impact" => cmd_impact(&mut o),
         "doctor" => Ok(cmd_doctor(&o)),
         "ast" => cmd_ast(&mut o),
         "-h" | "--help" | "help" => {
@@ -539,4 +542,76 @@ fn cmd_ast(o: &mut Opts) -> Result<i32, String> {
 fn kotonoha_parser_parse(src: &str) -> (serde_json::Value, Vec<Diagnostic>) {
     let (ast, d) = drv::parse_for_cli(src);
     (ast, d)
+}
+
+fn cmd_impact(o: &mut Opts) -> Result<i32, String> {
+    let base = take_value(&mut o.args, "--base")?;
+    let (p, ap) = match load(o) {
+        Ok(x) => x,
+        Err(c) => return Ok(c),
+    };
+    let a = drv::analyze(&p, &ap);
+    if !a.ok() {
+        return Ok(report(o, &a.diags, json!({})));
+    }
+    let impacts = match (base, o.args.first()) {
+        (Some(b), None) => {
+            let t = std::fs::read_to_string(o.dir.join(&b)).map_err(|e| format!("{b} を読めません: {e}"))?;
+            let v: serde_json::Value = serde_json::from_str(&t).map_err(|e| format!("{b} は VAG の JSON ではありません: {e}"))?;
+            drv::impact_diff(&v, &a.vag)
+        }
+        (None, Some(name)) => drv::impact_of(&a.vag, name),
+        _ => return Err("koto impact <名前> または koto impact --base <vag.json> のどちらかを指定してください".into()),
+    };
+    if o.json {
+        println!("{}", serde_json::to_string_pretty(&json!({"impacts": impacts, "exit_code": 0})).unwrap());
+    } else if impacts.is_empty() {
+        println!("影響を受けるノードはありません");
+    } else {
+        for i in &impacts {
+            println!("{}\t{}", i.node, i.reason);
+        }
+        eprintln!("{} 件のノードが影響を受けます", impacts.len());
+    }
+    Ok(0)
+}
+
+fn cmd_test(o: &mut Opts) -> Result<i32, String> {
+    let keep = take_flag(&mut o.args, "--keep");
+    no_extra(&o.args)?;
+    let (p, ap) = match load(o) {
+        Ok(x) => x,
+        Err(c) => return Ok(c),
+    };
+    let a = drv::analyze(&p, &ap);
+    if !a.ok() {
+        return Ok(report(o, &a.diags, json!({})));
+    }
+    let b = match drv::build_target(&p, &a, "backend") {
+        Ok(b) => b,
+        Err(d) => {
+            let mut ds = a.diags.clone();
+            ds.extend(d);
+            return Ok(report(o, &ds, json!({})));
+        }
+    };
+    let dir = std::env::temp_dir().join(format!("kotonoha-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    for (rel, content) in &b.files {
+        let path = dir.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
+        std::fs::write(&path, content).map_err(|e| e.to_string())?;
+    }
+    let status = std::process::Command::new("node")
+        .args(["--no-warnings", "--test", "tests/contract.test.ts", "tests/actions.todo.test.ts"])
+        .current_dir(&dir)
+        .status()
+        .map_err(|e| format!("node を実行できません(Node.js 22.18 以上が必要です): {e}"))?;
+    if keep {
+        eprintln!("生成物: {}", dir.display());
+    } else {
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    // テスト失敗は終了コード 1(ADR-0103 追補)
+    Ok(if status.success() { 0 } else { 1 })
 }

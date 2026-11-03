@@ -19,7 +19,7 @@ pub const ESBUILD_VERSION: &str = "0.25.10";
 const SERVER_MAIN_TS: &str = r#"// 生成物: KOTONOHA web の起動点
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { createWebServer } from "./runtime/server.ts";
+import { createWebServer, oidcFromEnv } from "./runtime/server.ts";
 import { webApp } from "./screens.generated.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -30,6 +30,9 @@ createWebServer(webApp, {
   root,
   secureCookie: process.env.KOTONOHA_COOKIE_SECURE === "1",
   tz: process.env.KOTONOHA_DISPLAY_TZ ?? "Asia/Tokyo",
+  oidc: oidcFromEnv(process.env),
+  // 開発用のトークン貼り付けログイン。OIDC を設定したら既定で無効(KOTONOHA_DEV_LOGIN=1 で有効)
+  devLogin: process.env.KOTONOHA_DEV_LOGIN ? process.env.KOTONOHA_DEV_LOGIN === "1" : !process.env.KOTONOHA_OIDC_ISSUER,
 }).listen(port, host, () => {
   process.stdout.write(JSON.stringify({ ts: new Date().toISOString(), level: "info", msg: `web listening on http://${host}:${port}` }) + "\n");
 });

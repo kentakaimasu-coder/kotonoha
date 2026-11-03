@@ -3,8 +3,8 @@
 日本語+最小限の記号で「目的」を書き、必要な箇所だけ「厳密な処理」を定義する、意図駆動型・検証可能なアプリケーション言語。
 コンパイラ `koto` は Rust で実装している。
 
-> **現状**: KOTONOHA ソースから **Backend(Node.js/TypeScript/SQLite)と Web(React SSR)を生成し、起動して E2E テストで動作を確認済み**。
-> iOS(SwiftUI)・Android(Compose)はコードを生成するが、この開発環境ではコンパイル未確認。詳細は [docs/status.md](docs/status.md)、構成は [docs/architecture.md](docs/architecture.md)。
+> **現状**: KOTONOHA ソースから **Backend(Node.js/TypeScript、SQLite / PostgreSQL)と Web(React SSR、OIDC ログイン)を生成し、起動して E2E テストで動作を確認済み**。
+> iOS(SwiftUI)・Android(Compose)はコードを生成し、構文検査と Android 非 UI 層のコンパイルまで確認済み(iOS のコンパイルと Compose 画面のビルドは未確認)。詳細は [docs/status.md](docs/status.md)、構成は [docs/architecture.md](docs/architecture.md)。
 
 ## 使い方
 ```bash
@@ -49,5 +49,9 @@ cd /tmp/shop-web && npm install && npm run build && npm start   # http://127.0.0
 ```bash
 cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings && cargo test
 python3 tools/validate_schemas.py target/debug/koto
-node --no-warnings --test tests/e2e/backend.test.ts tests/e2e/web.test.ts
+(cd tests/e2e && npm install)
+node --no-warnings --test tests/e2e/*.test.ts      # PostgreSQL も試すなら KOTONOHA_TEST_PG_URL=postgres://…
+./target/debug/koto -C examples/shop test          # 契約テスト
+./target/debug/koto -C examples/shop impact 注文明細  # 影響分析
+tools/mobile-syntax/run.sh && tools/verify_android_jvm.sh
 ```

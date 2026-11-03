@@ -9,7 +9,7 @@
 4. 業務ロジックと認可は backend だけで実行する。Web/iOS/Android は共通 API 契約(api.json)のクライアント。構成は [docs/architecture.md](docs/architecture.md)。
 5. 未実装機能を完成扱いしない。`koto build` は未対応機能を TGT001 で止める。`docs/status.md` を毎フェーズ更新する。
 6. 決定的であること: パイプラインは時刻・ネットワーク・乱数・HashMap 順序に依存しない(BTreeMap / ソート済み配列)。
-7. 変更ごとに `cargo fmt --all -- --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test`、`python3 tools/validate_schemas.py target/debug/koto`、`node --no-warnings --test tests/e2e/*.test.ts` を通す。iOS/Android はこの環境でコンパイルできないため、未検証であることを明記する。
+7. 変更ごとに `cargo fmt --all -- --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test`、`python3 tools/validate_schemas.py target/debug/koto`、`node --no-warnings --test tests/e2e/*.test.ts`(PostgreSQL は `KOTONOHA_TEST_PG_URL`)、`koto -C examples/shop test`、`tools/mobile-syntax/run.sh`、`tools/verify_android_jvm.sh` を通す。iOS のコンパイルと Compose 画面のビルドはこの環境ではできないため、未検証であることを明記する。生成 TypeScript は型除去モードで動く構文だけを使う(コンストラクタ引数プロパティ・enum・namespace 禁止)。
 8. 開発方針: 全体設計に沿って関連機能をまとめて実装する。軽微な不具合は `docs/status.md` の既知の不具合(K-xx)に記録して先に進む。構文・型・Intent Graph・セキュリティの重大な不具合は即時修正する。テストを通すために仕様を変えない。同じエラーの修正が 3 回続いたら原因分析に切り替える。ゴールデン(`examples/*/expected/`)を更新したら差分をレビューする。
 
 ## ファイル地図
@@ -32,6 +32,6 @@ crates/cli        koto コマンド
 examples/shop     MVP 垂直スライスのソースとゴールデン VAG
 examples/ranking  売れ筋(UC-04)とゴールデン SQL
 tests/fixtures    仕様書サンプル原文など(負例)
-tools/            スキーマ検証スクリプト
+tools/            スキーマ検証・モバイル構文検査・Android JVM 検証
 tests/e2e         生成物を起動しての結合・E2E テスト(node --test, Playwright)
 ```

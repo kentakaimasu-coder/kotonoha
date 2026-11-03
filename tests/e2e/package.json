@@ -3,5 +3,8 @@
   "private": true,
   "type": "module",
   "description": "生成物の結合・E2E テスト(node --test)。Playwright は CI でのみ npm install する",
-  "devDependencies": { "playwright": "1.63.0" }
+  "devDependencies": {
+    "playwright": "1.63.0",
+    "axe-core": "4.11.0"
+  }
 }

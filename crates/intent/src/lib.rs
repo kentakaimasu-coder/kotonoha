@@ -58,6 +58,9 @@ pub enum IntentKind {
     /// C-PUBLIC `{データ}は誰でも閲覧可`
     #[serde(rename = "public_read")]
     PublicRead { data: String },
+    /// C-OWNER `{データ}は{フィールド}が本人のものだけ閲覧可`(行レベル認可。ADR-0118)
+    #[serde(rename = "owner_read")]
+    OwnerRead { data: String, field: String },
     /// C-AUTH `未認証なら{データ}不可`
     #[serde(rename = "auth_required")]
     AuthRequired { data: String },
@@ -348,6 +351,25 @@ impl Ctx<'_> {
     }
 
     fn match_contract(&self, s: &str, span: Span) -> Match {
+        if let Some(rest) = s.strip_suffix("が本人のものだけ閲覧可") {
+            if let Some((d, f)) = rest.split_once('は') {
+                let Some(info) = self.env.data.get(d) else {
+                    return Match::NoMatch(vec![format!("「{d}」はデータとして定義されていません。どのデータを指しますか")]);
+                };
+                return match info.field(f) {
+                    Some(kotonoha_types::Type::Id | kotonoha_types::Type::Str) => Match::Ok(IntentKind::OwnerRead {
+                        data: d.into(),
+                        field: f.into(),
+                    }),
+                    Some(t) => Match::Invalid(Diagnostic::error(
+                        Code::TYP001,
+                        span,
+                        format!("本人の判定に使うフィールド `{f}` は 識別子 か 文字列 である必要がありますが {t} です"),
+                    )),
+                    None => Match::Invalid(Diagnostic::error(Code::REF001, span, format!("データ `{d}` にフィールド `{f}` はありません"))),
+                };
+            }
+        }
         if let Some(d) = s.strip_suffix("は誰でも閲覧可") {
             return if self.env.data.contains_key(d) {
                 Match::Ok(IntentKind::PublicRead { data: d.into() })
@@ -364,7 +386,7 @@ impl Ctx<'_> {
         }
         let _ = span;
         Match::NoMatch(vec![
-            "約束の文型は「{データ}は誰でも閲覧可」「未認証なら{データ}不可」のみです".into(),
+            "約束の文型は「{データ}は誰でも閲覧可」「未認証なら{データ}不可」「{データ}は{フィールド}が本人のものだけ閲覧可」です".into(),
             "この約束が守るべきデータ・操作・主体(本人/組織/役割)を具体的に指定してください".into(),
         ])
     }

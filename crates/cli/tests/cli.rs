@@ -143,12 +143,29 @@ fn graph_is_reproducible_and_fmt_check_works() {
 }
 
 #[test]
-fn init_doctor_and_unimplemented_test_command() {
+fn init_doctor_test_and_impact_commands() {
     let base = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("init_case");
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(&base).unwrap();
     assert_eq!(koto(&base, &["init", "app", "--name", "見本"]).0, 0);
     assert_eq!(koto(&base.join("app"), &["check"]).0, 0, "init の雛形は検査を通る");
     assert_eq!(koto(&base, &["doctor"]).0, 0);
-    assert_eq!(koto(&base.join("app"), &["test"]).0, 7, "未実装は成功扱いしない");
+    let (c, _, err) = koto(&base.join("app"), &["test"]);
+    assert_eq!(c, 0, "FR-019 契約テストが生成・実行される: {err}");
+    // AT-08 影響分析
+    let d = project("impact", SHOP, r#""web""#);
+    let (c, out, _) = koto(&d, &["--json", "impact", "注文明細"]);
+    assert_eq!(c, 0);
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    let nodes: Vec<&str> = v["impacts"].as_array().unwrap().iter().map(|i| i["node"].as_str().unwrap()).collect();
+    assert!(nodes.contains(&"screen.売れ筋"), "{nodes:?}");
+    let (_, base, _) = koto(&d, &["graph"]);
+    std::fs::write(d.join("base.json"), base).unwrap();
+    std::fs::write(d.join("src/app.koto"), SHOP.replace("期間 = 直近30日", "期間 = 直近7日")).unwrap();
+    let (c, out, _) = koto(&d, &["--json", "impact", "--base", "base.json"]);
+    assert_eq!(c, 0);
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    let nodes: Vec<&str> = v["impacts"].as_array().unwrap().iter().map(|i| i["node"].as_str().unwrap()).collect();
+    assert!(nodes.contains(&"screen.売れ筋"), "知識の意味変更 → 売れ筋画面に影響: {nodes:?}");
+    assert!(!nodes.contains(&"screen.商品一覧"), "無関係な画面は含まない: {nodes:?}");
 }

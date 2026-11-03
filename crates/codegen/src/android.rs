@@ -7,7 +7,8 @@ use kotonoha_ast::{BinOp, Expr, ExprKind};
 use kotonoha_diag::{Code, Diagnostic};
 use kotonoha_types::Type;
 
-pub const RUNTIME_KT: &str = include_str!("../../../runtime/android/KotonohaRuntime.kt");
+pub const RUNTIME_API_KT: &str = include_str!("../../../runtime/android/KotonohaApi.kt");
+pub const RUNTIME_UI_KT: &str = include_str!("../../../runtime/android/KotonohaUi.kt");
 const PKG: &str = "app.kotonoha.generated";
 
 fn bt(n: &str) -> String {
@@ -30,8 +31,17 @@ fn kstr(s: &str) -> String {
     o
 }
 
+/// クラス名は JVM のクラスファイル名になるため ASCII に符号化する(ファイル名の文字コードに依存しないように: NFR-009)
 fn tn(prefix: &str, n: &str) -> String {
-    crate::ts::mangle(prefix, n)
+    let mut s = String::from(prefix);
+    for c in n.chars() {
+        if c.is_ascii_alphanumeric() || c == '_' {
+            s.push(c);
+        } else {
+            s.push_str(&format!("_u{:04X}", c as u32));
+        }
+    }
+    s
 }
 
 fn kt_type(t: &Type) -> String {
@@ -209,7 +219,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                     let mut inputs = Vec::new();
                     let mut pairs = Vec::new();
                     for (n, t) in params {
-                        let sv = format!("f{ci}_{}", crate::ts::mangle("", n));
+                        let sv = tn(&format!("f{ci}_"), n);
                         let base = if let Type::Option(i) = t { i.as_ref() } else { t };
                         match base {
                             Type::Bool => {
@@ -222,7 +232,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                             }
                             Type::Enum(e) => {
                                 state.push(format!("    var {sv} by remember {{ mutableStateOf({}.first()) }}", tn("ENUM_", e)));
-                                inputs.push(format!("Kotonoha.EnumPicker({}, {}, {sv}) {{ {sv} = it }}", kstr(n), tn("ENUM_", e)));
+                                inputs.push(format!("KotonohaUi.EnumPicker({}, {}, {sv}) {{ {sv} = it }}", kstr(n), tn("ENUM_", e)));
                                 pairs.push(format!("{} to {sv}", kstr(n)));
                             }
                             Type::Int | Type::Money(_) => {
@@ -261,7 +271,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
             "api: KotonohaApi, nav: NavController"
         };
         v.push_str(&format!(
-            "@Composable\nfun Screen{si}({params}) {{\n    val scope = rememberCoroutineScope()\n    var message by remember {{ mutableStateOf<String?>(null) }}\n{}\n    suspend fun load() {{\n        try {{\n            {}\n        }} catch (e: Exception) {{ message = Kotonoha.describe(e) }}\n    }}\n    suspend fun act(op: suspend () -> Unit) {{\n        try {{ op(); message = \"完了しました\"; load() }} catch (e: Exception) {{ message = Kotonoha.describe(e) }}\n    }}\n    LaunchedEffect(Unit) {{ load() }}\n    Kotonoha.ScreenScaffold({}, nav) {{\n        LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {{\n            {}\n            message?.let {{ m -> item {{ Text(m, color = MaterialTheme.colorScheme.secondary) }} }}\n        }}\n    }}\n}}\n\n",
+            "@Composable\nfun Screen{si}({params}) {{\n    val scope = rememberCoroutineScope()\n    var message by remember {{ mutableStateOf<String?>(null) }}\n{}\n    suspend fun load() {{\n        try {{\n            {}\n        }} catch (e: Exception) {{ message = Kotonoha.describe(e) }}\n    }}\n    suspend fun act(op: suspend () -> Unit) {{\n        try {{ op(); message = \"完了しました\"; load() }} catch (e: Exception) {{ message = Kotonoha.describe(e) }}\n    }}\n    LaunchedEffect(Unit) {{ load() }}\n    KotonohaUi.ScreenScaffold({}, nav) {{\n        LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {{\n            {}\n            message?.let {{ m -> item {{ Text(m, color = MaterialTheme.colorScheme.secondary) }} }}\n        }}\n    }}\n}}\n\n",
             state.join("\n"),
             if loads.is_empty() { "Unit".to_string() } else { loads.join("\n            ") },
             kstr(&s.name),
@@ -287,7 +297,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
         .map(|(i, s)| format!("{} to \"screen{i}\"", kstr(&s.name)))
         .collect();
     let main = format!(
-        "// 生成物(koto build --target android)。手で編集しないでください。\npackage {PKG}\n\nimport android.os.Bundle\nimport androidx.activity.ComponentActivity\nimport androidx.activity.compose.setContent\nimport androidx.compose.material3.MaterialTheme\nimport androidx.navigation.compose.NavHost\nimport androidx.navigation.compose.composable\nimport androidx.navigation.compose.rememberNavController\n\nclass MainActivity : ComponentActivity() {{\n    override fun onCreate(savedInstanceState: Bundle?) {{\n        super.onCreate(savedInstanceState)\n        val api = KotonohaApi(applicationContext, BuildConfig.KOTONOHA_API_BASE)\n        setContent {{\n            MaterialTheme {{\n                val nav = rememberNavController()\n                NavHost(navController = nav, startDestination = \"menu\") {{\n                    composable(\"menu\") {{ Kotonoha.Menu({}, listOf({}), nav) }}\n                    composable(\"login\") {{ Kotonoha.Login(api, nav) }}\n                    {}\n                }}\n            }}\n        }}\n    }}\n}}\n",
+        "// 生成物(koto build --target android)。手で編集しないでください。\npackage {PKG}\n\nimport android.os.Bundle\nimport androidx.activity.ComponentActivity\nimport androidx.activity.compose.setContent\nimport androidx.compose.material3.MaterialTheme\nimport androidx.navigation.compose.NavHost\nimport androidx.navigation.compose.composable\nimport androidx.navigation.compose.rememberNavController\n\nclass MainActivity : ComponentActivity() {{\n    override fun onCreate(savedInstanceState: Bundle?) {{\n        super.onCreate(savedInstanceState)\n        val api = KotonohaApi(applicationContext, BuildConfig.KOTONOHA_API_BASE)\n        setContent {{\n            MaterialTheme {{\n                val nav = rememberNavController()\n                NavHost(navController = nav, startDestination = \"menu\") {{\n                    composable(\"menu\") {{ KotonohaUi.Menu({}, listOf({}), nav) }}\n                    composable(\"login\") {{ KotonohaUi.Login(api, nav) }}\n                    {}\n                }}\n            }}\n        }}\n    }}\n}}\n",
         kstr(&ir.name),
         menu.join(", "),
         routes.join("\n                    ")
@@ -314,7 +324,8 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
         GeneratedFile::text(&format!("{src}/Models.generated.kt"), m),
         GeneratedFile::text(&format!("{src}/Screens.generated.kt"), v),
         GeneratedFile::text(&format!("{src}/MainActivity.kt"), main),
-        GeneratedFile::text(&format!("{src}/KotonohaRuntime.kt"), RUNTIME_KT.to_string()),
+        GeneratedFile::text(&format!("{src}/KotonohaApi.kt"), RUNTIME_API_KT.to_string()),
+        GeneratedFile::text(&format!("{src}/KotonohaUi.kt"), RUNTIME_UI_KT.to_string()),
         GeneratedFile::text(
             "README.md",
             format!("# {} Android(KOTONOHA 生成物)\n\nKotlin / Jetpack Compose / minSdk 26(案)。Android Studio で開いてビルド。API の接続先は app/build.gradle.kts の KOTONOHA_API_BASE。\n\n**注意**: 生成環境に Android SDK が無く、ビルドは未検証です。\n", ir.name),

@@ -26,3 +26,4 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .msg.ok { color: var(--ok); }
 .msg.error, .notice { color: var(--err); }
 @media (max-width: 600px) { table.list th, table.list td { padding: 6px 4px; } dl.detail { grid-template-columns: 1fr; } }
+a.button { display: inline-block; padding: 10px 16px; min-height: 44px; border-radius: 6px; background: var(--accent); color: #fff; text-decoration: none; }
