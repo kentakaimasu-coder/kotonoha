@@ -7,6 +7,9 @@
 import json, pathlib, shutil, subprocess, sys, tempfile
 import jsonschema
 
+# Windows の既定(cp1252 等)でも日本語・記号を出力・読み取りできるようにする
+sys.stdout.reconfigure(encoding="utf-8")
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 def schema(n): return json.loads((ROOT / "schemas" / n).read_text(encoding="utf-8"))
 def check(name, data, s):
@@ -23,7 +26,7 @@ with tempfile.TemporaryDirectory() as d:
     src = (p / "src/app.koto").read_text(encoding="utf-8") + "\n@柔軟(確認)\n画面 人気:\n    人気商品を表示\n"
     (p / "src/app.koto").write_text(src, encoding="utf-8")
     (p / "fx.json").write_text(json.dumps({"人気商品を表示": {"interpretations": [{"canonical": "売れ筋商品を表示", "rationale": "r"}], "assumptions": [], "unresolved": [], "required_effects": ["data.read"], "evidence_refs": []}}, ensure_ascii=False), encoding="utf-8")
-    run = lambda *a: subprocess.run([koto, "-C", str(p), *a], capture_output=True, text=True)
+    run = lambda *a: subprocess.run([koto, "-C", str(p), *a], capture_output=True, text=True, encoding="utf-8")
     r = run("--json", "resolve", "--adapter", "fixture", "--fixture", "fx.json"); assert r.returncode == 0, r.stderr
     cands = json.loads((p / "kotonoha.candidates.json").read_text(encoding="utf-8"))
     for c in cands["candidates"]: check("candidate " + c["intent_id"], c, "intent-candidate.schema.json")
