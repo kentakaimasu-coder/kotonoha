@@ -1,0 +1,3 @@
+# 改行は常に LF(ゴールデン・ソースの比較を OS に依存させない)
+* text=auto eol=lf
+*.bundle binary
