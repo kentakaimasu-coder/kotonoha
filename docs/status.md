@@ -17,7 +17,7 @@
 | `tests/e2e/oidc.test.ts`(模擬 IdP での OIDC ログイン → 購入) | ✅ 2 件 |
 | `tools/mobile-syntax/run.sh`(生成 Swift 3 / Kotlin 5 ファイルの構文検査) | ✅ 8 ファイル |
 | `tools/verify_android_jvm.sh`(Android 非 UI 層を kotlinc `-Werror` でコンパイルし、実 API 応答を解析) | ✅ |
-| iOS のコンパイル・Compose 画面のビルド | ⚠ **未検証**(Swift・Android SDK の配布元がこの環境のネットワーク方針で遮断。CI ジョブは用意済み・未実行) |
+| iOS のコンパイル・Compose 画面のビルド | ✅ GitHub Actions の `ios-build`(macOS 15 / Xcode、iOS シミュレータ向け)と `android-build`(`gradle :app:assembleDebug`)で成功(2026-11-06) |
 
 ## 2. 実装済み
 - **コンパイラ**: 字句 → 構文 → 型 → 知識 → 意図(承認適用)→ 効果/Capability → VAG → ロック → App IR → 4 ターゲット生成。`koto init/fmt/check/resolve/approve/graph/build/test/impact/doctor`
@@ -32,7 +32,7 @@
 | ID | 状況 |
 |---|---|
 | AT-01〜AT-08, AT-10 | ✅ 自動テスト |
-| AT-09 iOS/Android で同じ商品一覧・API 通信 | ⚠ 生成・構文検査・Android 非 UI 層の実 API 解析まで。実機/シミュレータは未確認 |
+| AT-09 iOS/Android で同じ商品一覧・API 通信 | △ 両 OS のビルド成功(CI)と Android 非 UI 層の実 API 解析まで。シミュレータ上の操作は未確認(K-17) |
 | TC-001〜TC-013 | ✅ |
 | TC-014 | ⚠ AT-09 と同じ |
 
@@ -52,7 +52,7 @@
 ## 4. 既知の不具合・制約
 | ID | 重要度 | 状態 | 内容 |
 |---|---|---|---|
-| K-01 | 高 | 一部解消 | iOS のコンパイル・Compose 画面のビルドは未確認。構文検査と Android 非 UI 層のコンパイル・実応答解析は確認済み。残りは CI の `ios-build` / `android-build` |
+| K-01 | 高 | **解消** | iOS のコンパイルと Android(Compose 画面を含む)のビルドを CI で確認。実機/シミュレータ上での画面操作の自動テストは未実施(K-17) |
 | K-02 | 高 | **解消** | 動作単位の許可(`動作.名前`)と行レベル認可を実装(ADR-0118) |
 | K-03 | 中 | 制約(仕様) | ±2^53 を超える整数は JSON 応答で 422(ADR-0117 の設計判断) |
 | K-04 | 中 | 制約 | `node:sqlite` は Node 22 で実験的機能。本番は PostgreSQL を推奨 |
@@ -68,9 +68,11 @@
 | K-14 | 中 | 新規 | フィールド単位の影響分析は、動作本体のフィールド参照を VAG に持たないため、資源を使う動作を保守的に含める |
 | K-15 | 低 | 新規 | レート制限はプロセス内のメモリで数える(複数インスタンス間では共有しない) |
 | K-16 | 低 | 新規 | Web の一覧は 101 件目以降を表示する UI が無い |
+| K-17 | 中 | 新規 | iOS/Android は CI でビルドまで。シミュレータ/エミュレータ上の UI テスト(XCUITest / Compose UI テスト)は未実装 |
+| K-18 | 中 | **解消** | Node 22.18 の node:sqlite が番号付きプレースホルダ(`?1`)で失敗する問題。SQLite 接続では位置指定の `?` に変換して渡す |
 
 ## 5. 次の作業
-1. KOTONOHA 用のリモートリポジトリを用意して push → CI(iOS / Android ビルド)を実行し、K-01 を解消する
+1. iOS/Android のシミュレータ上の UI テスト(K-17)
 2. モバイルの OIDC ログイン(ASWebAuthenticationSession / Custom Tabs)
 3. 承認署名(ADR-007)、LSP(FR-017)、生成コードの行対応(FR-018)
 4. 未承認の ADR(0101〜0119)のレビューと確定

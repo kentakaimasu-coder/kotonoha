@@ -77,6 +77,37 @@ export function toPgParams(sql: string): string {
   return out;
 }
 
+/**
+ * `?N`(番号付き)を `?` に置き換え、引数を出現順に並べ直す。
+ * Node 22.18 の node:sqlite は番号付きプレースホルダに配列で値を渡すと
+ * "column index out of range" になるため、SQLite には常に位置指定の `?` で渡す。
+ */
+export function toPositional(sql: string, params: unknown[]): { sql: string; params: unknown[] } {
+  if (!/\?\d/.test(sql)) return { sql, params };
+  const out: unknown[] = [];
+  let inStr = false;
+  let res = "";
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    if (ch === "'") inStr = !inStr;
+    if (!inStr && ch === "?") {
+      let j = i + 1;
+      while (j < sql.length && sql[j] >= "0" && sql[j] <= "9") j++;
+      if (j > i + 1) {
+        const n = Number(sql.slice(i + 1, j));
+        if (n < 1 || n > params.length) throw new Error(`placeholder ?${n} out of range`);
+        out.push(params[n - 1]);
+        res += "?";
+        i = j - 1;
+        continue;
+      }
+      throw new Error("番号付きと位置指定のプレースホルダは混在できません");
+    }
+    res += ch;
+  }
+  return { sql: res, params: out };
+}
+
 /** 非同期の排他ロック(SQLite の 1 接続を取引中に他の要求と共有しないため) */
 class Mutex {
   tail: Promise<void> = Promise.resolve();
@@ -101,12 +132,14 @@ async function openSqlite(path: string): Promise<Database> {
   const lock = new Mutex();
   const direct: Conn = {
     async all(sql, params) {
-      const st = raw.prepare(sql);
+      const p = toPositional(sql, params);
+      const st = raw.prepare(p.sql);
       st.setReadBigInts(true);
-      return st.all(...(params as never[])) as Row[];
+      return st.all(...(p.params as never[])) as Row[];
     },
     async run(sql, params) {
-      return Number(raw.prepare(sql).run(...(params as never[])).changes);
+      const p = toPositional(sql, params);
+      return Number(raw.prepare(p.sql).run(...(p.params as never[])).changes);
     },
     async exec(sql) {
       raw.exec(sql);
