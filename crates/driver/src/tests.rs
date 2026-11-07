@@ -392,8 +392,13 @@ fn external_files_must_stay_inside_the_project_and_exist() {
     assert!(p.read_ext("ext/none.ts").is_err());
     #[cfg(unix)]
     {
-        std::os::unix::fs::symlink("/etc/hostname", dir.join("ext/link.ts")).ok();
-        assert!(p.read_ext("ext/link.ts").unwrap_err().contains("外"));
+        // プロジェクトの外に実在するファイルを作り、そこを指すリンクを置く(OS に依存しない)
+        let outside = std::env::temp_dir().join(format!("koto-outside-{}.ts", std::process::id()));
+        std::fs::write(&outside, "export {};\n").unwrap();
+        std::os::unix::fs::symlink(&outside, dir.join("ext/link.ts")).unwrap();
+        let err = p.read_ext("ext/link.ts").unwrap_err();
+        std::fs::remove_file(&outside).ok();
+        assert!(err.contains("外"), "{err}");
     }
     std::fs::remove_dir_all(&dir).ok();
 }
