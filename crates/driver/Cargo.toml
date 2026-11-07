@@ -13,6 +13,7 @@ kotonoha-types.workspace = true
 kotonoha-knowledge.workspace = true
 kotonoha-intent.workspace = true
 kotonoha-validator.workspace = true
+kotonoha-ext.workspace = true
 kotonoha-graph.workspace = true
 kotonoha-lock.workspace = true
 kotonoha-resolver.workspace = true

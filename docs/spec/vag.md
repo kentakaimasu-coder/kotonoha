@@ -13,6 +13,7 @@
 | nodes | 下記。`id` 順にソート |
 | edges | `{from, to, kind}`。kind = contains / navigates / invokes。(from,to,kind) 順にソート |
 | status | `validated`(全検査通過)/ `draft`(参考出力。ロック・ビルド不可) |
+| extensions | (拡張を宣言したときだけ)`functions` `analyses` `components` `experiments`。実装ファイルは `{path, sha256}` で記録し、graph_hash に含まれる(ADR-0122〜0125) |
 
 ## ノード
 共通: `id, kind, title, inputs[], outputs[], effects[], capabilities[], knowledge_refs[], source_span{file,line,column}`(技術仕様書 §5 の項目)。

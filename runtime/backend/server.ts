@@ -225,7 +225,8 @@ export function createApp(app: App, db: Database, env: NodeJS.ProcessEnv = proce
         throw new HttpError(429, "rate_limited", "要求が多すぎます。しばらく待ってから再試行してください");
       }
       const body = m.route.method === "POST" ? await readBody(req) : {};
-      const ctx: Ctx = { db, conn: db.conn, schema: app.schema, owners: app.owners, dirty: null, principal, traceId };
+      const subj = req.headers["x-koto-subject"];
+      const ctx: Ctx = { db, conn: db.conn, schema: app.schema, owners: app.owners, dirty: null, principal, traceId, subject: typeof subj === "string" ? subj : null };
       const r = await m.route.handle(ctx, { id: m.id, query: url.searchParams, body });
       status = r.status;
       if (m.route.method === "POST") audit({ event: "action", trace_id: traceId, sub, route: m.route.id, status });

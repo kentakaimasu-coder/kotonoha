@@ -75,6 +75,7 @@ final class KotonohaAPI: ObservableObject {
     private func send(_ req: URLRequest) async throws -> Data {
         var r = req
         if let token { r.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        r.setValue(KotonohaAPI.subject, forHTTPHeaderField: "X-Koto-Subject")
         let (data, resp) = try await URLSession.shared.data(for: r)
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if (200..<300).contains(status) { return data }
@@ -86,6 +87,29 @@ final class KotonohaAPI: ObservableObject {
     func get<T: Decodable>(_ segments: String..., id: String? = nil, query: [String: String] = [:]) async throws -> T {
         let data = try await send(URLRequest(url: url(segments, id: id, query: query)))
         return try KotonohaAPI.decoder.decode(T.self, from: data)
+    }
+
+    /// 実験(A/B テスト)の匿名の対象者 ID。端末ごとに 1 つ(個人情報は含めない。ADR-0122)
+    static let subject: String = {
+        let key = "kotonoha.subject"
+        if let s = UserDefaults.standard.string(forKey: key) { return s }
+        let s = UUID().uuidString
+        UserDefaults.standard.set(s, forKey: key)
+        return s
+    }()
+
+    private struct Assigned: Decodable { let variant: String }
+
+    /// 実験の変種を受け取る(失敗したら対照群 = 先頭。露出は記録されないので結果は偏らない)
+    func variant(_ experiment: String, _ variants: [String]) async -> String {
+        var r = URLRequest(url: url(["api", "experiments", experiment, "assign"], id: nil, query: [:]))
+        r.httpMethod = "POST"
+        r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        r.httpBody = Data("{}".utf8)
+        guard let data = try? await send(r), let a = try? KotonohaAPI.decoder.decode(Assigned.self, from: data), variants.contains(a.variant) else {
+            return variants[0]
+        }
+        return a.variant
     }
 
     @discardableResult

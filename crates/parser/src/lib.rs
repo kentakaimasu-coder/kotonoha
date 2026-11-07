@@ -218,6 +218,53 @@ impl<'a> Parser<'a> {
                     span: line.span,
                 }))
             }
+            Some(TokenKind::Keyword(Keyword::Function)) => {
+                let name = ts.ident()?;
+                let params = ts.params()?;
+                ts.expect_sym(Sym::Arrow)?;
+                let ret = ts.type_expr()?;
+                ts.expect_block_colon()?;
+                let ch = self.take_children(line.level);
+                let body = self.block(ch, line.level + 1, line.span)?;
+                Ok(Decl::Function(FunctionDecl { name, params, ret, body, span: line.span }))
+            }
+            Some(TokenKind::Keyword(k @ (Keyword::External | Keyword::Analysis | Keyword::Component))) => {
+                let kind = match k {
+                    Keyword::External => ExternalKind::Function,
+                    Keyword::Analysis => ExternalKind::Analysis,
+                    _ => ExternalKind::Component,
+                };
+                let name = ts.ident()?;
+                let params = ts.params()?;
+                let ret = if ts.eat_sym(Sym::Arrow) { Some(ts.type_expr()?) } else { None };
+                ts.expect_block_colon()?;
+                if kind == ExternalKind::Component && ret.is_some() {
+                    return Err(Diagnostic::error(Code::SYN001, line.span, "部品は戻り値の型を持ちません"));
+                }
+                if kind != ExternalKind::Component && ret.is_none() {
+                    return Err(Diagnostic::error(Code::SYN001, line.span, format!("{} には戻り値の型 `-> 型` が必要です", kind.word())));
+                }
+                let mut entries = Vec::new();
+                for c in self.flat_children(line)? {
+                    match kv_line(c) {
+                        Ok(e) => entries.push(e),
+                        Err(d) => self.diags.push(d),
+                    }
+                }
+                Ok(Decl::External(ExternalDecl { kind, name, params, ret, entries, span: line.span }))
+            }
+            Some(TokenKind::Keyword(Keyword::Experiment)) => {
+                let name = ts.ident()?;
+                ts.expect_block_colon()?;
+                let mut entries = Vec::new();
+                for c in self.flat_children(line)? {
+                    match kv_line(c) {
+                        Ok(e) => entries.push(e),
+                        Err(d) => self.diags.push(d),
+                    }
+                }
+                Ok(Decl::Experiment(ExperimentDecl { name, entries, span: line.span }))
+            }
             Some(TokenKind::Keyword(Keyword::Action)) => {
                 let name = ts.ident()?;
                 let params = ts.params()?;
@@ -233,7 +280,7 @@ impl<'a> Parser<'a> {
                 }))
             }
             _ => Err(Diagnostic::error(Code::SYN001, line.span, "宣言として解釈できない行です")
-                .hint("トップレベルには アプリ / 型 / 列挙 / データ / アダプタ / 知識 / 画面 / 動作 / 約束 のいずれかを書きます")),
+                .hint("トップレベルには アプリ / 型 / 列挙 / データ / アダプタ / 知識 / 画面 / 動作 / 約束 / 関数 / 外部関数 / 分析 / 部品 / 実験 のいずれかを書きます")),
         }
     }
 

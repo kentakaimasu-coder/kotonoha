@@ -4,7 +4,7 @@ use crate::appir::{api_contract, check_ir, wire_type, AppIr, Component};
 use crate::ts::{js_str, mangle};
 use crate::GeneratedFile;
 use kotonoha_ast::{BinOp, Expr, ExprKind};
-use kotonoha_diag::{Code, Diagnostic};
+use kotonoha_diag::{Code, Diagnostic, Span};
 use kotonoha_types::Type;
 use serde_json::{json, Value};
 
@@ -114,8 +114,39 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
     }
     let mut g = String::new();
     g.push_str("// このファイルは koto build --target web が生成しました。手で編集しないでください(正本は KOTONOHA ソース)。\n");
-    g.push_str("import { h, Page, DataList, Detail, ActionButton, ActionForm, screenHref, type ScreenDef, type ScreenProps } from \"./runtime/ui.ts\";\n");
-    g.push_str("import type { WebApp } from \"./runtime/server.ts\";\n\n");
+    g.push_str("import { h, Page, DataList, Detail, ActionButton, ActionForm, ExtBoundary, variantOf, screenHref, type ScreenDef, type ScreenProps } from \"./runtime/ui.ts\";\n");
+    g.push_str("import type { WebApp } from \"./runtime/server.ts\";\n");
+    // 拡張部品(画面で使うものだけ。web 実装が無ければ TGT001)
+    let mut used: Vec<String> = Vec::new();
+    for s in &ir.screens {
+        for c in &s.components {
+            if let Component::Ext { component, experiment, .. } = c {
+                let names = experiment.as_ref().map(|e| e.variants.clone()).unwrap_or_else(|| vec![component.clone()]);
+                for n in names {
+                    if !used.contains(&n) {
+                        used.push(n);
+                    }
+                }
+            }
+        }
+    }
+    let mut ext_files: Vec<GeneratedFile> = Vec::new();
+    for n in &used {
+        let Some(c) = ir.ext.component(n) else { continue };
+        let Some(f) = &c.web else {
+            errs.push(Diagnostic::error(
+                Code::TGT001,
+                Span::default(),
+                format!("部品 `{n}` に web の実装(web = \"….ts\")がありません"),
+            ));
+            continue;
+        };
+        g.push_str(&format!("import * as {} from {};\n", mangle("ce_", n), js_str(&format!("./ext/{}", f.path))));
+        if !ext_files.iter().any(|x| x.path == format!("src/ext/{}", f.path)) {
+            ext_files.push(GeneratedFile::text(&format!("src/ext/{}", f.path), f.content.clone()));
+        }
+    }
+    g.push('\n');
 
     let mut defs = Vec::new();
     for s in &ir.screens {
@@ -163,7 +194,12 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         js_str(&format!("{knowledge}(上位{limit}件)"))
                     ));
                 }
-                Component::Button { label, action, args } => {
+                Component::Button {
+                    label,
+                    action,
+                    args,
+                    experiment,
+                } => {
                     let Some(a) = ir.actions.iter().find(|x| &x.name == action) else { continue };
                     let pairs: Vec<String> = a
                         .params
@@ -178,11 +214,77 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         ),
                         None => String::new(),
                     };
+                    let label_js = match experiment {
+                        Some(x) => {
+                            let key = format!("exp:{}", x.name);
+                            if !loaders.iter().any(|l| l["key"] == key) {
+                                loaders.push(json!({"key": key, "segments": ["api", "experiments", x.name, "assign"], "withId": false, "method": "POST"}));
+                            }
+                            format!("variantOf(p.data[{}], {})", js_str(&key), serde_json::to_string(&x.variants).unwrap())
+                        }
+                        None => js_str(label),
+                    };
                     body.push(format!(
                         "h(ActionButton, {{ key: {ci}, label: {}, action: {}, reload: p.reload, args: () => {{ {cur}return {{ {} }}; }} }})",
-                        js_str(label),
+                        label_js,
                         js_str(action),
                         pairs.join(", ")
+                    ));
+                }
+                Component::Ext { component, args, experiment } => {
+                    let Some(c) = ir.ext.component(component) else { continue };
+                    let props: Vec<String> = c
+                        .params
+                        .iter()
+                        .zip(args)
+                        .map(|((n, _), e)| format!("{}: {}", js_str(n), screen_arg_js(e, s.input.as_deref(), &mut errs)))
+                        .collect();
+                    let cur = match &s.input {
+                        Some(d) => format!(
+                            "const r = p.data[{}]; if (!r?.ok) return null; const cur: any = r.body; ",
+                            js_str(&format!("get:{d}"))
+                        ),
+                        None => String::new(),
+                    };
+                    let (comp, name_js) = match experiment {
+                        Some(x) => {
+                            let key = format!("exp:{}", x.name);
+                            if !loaders.iter().any(|l| l["key"] == key) {
+                                loaders.push(json!({"key": key, "segments": ["api", "experiments", x.name, "assign"], "withId": false, "method": "POST"}));
+                            }
+                            let table: Vec<String> = x
+                                .variants
+                                .iter()
+                                .map(|v| format!("{}: ({} as any)[{}]", js_str(v), mangle("ce_", v), js_str(v)))
+                                .collect();
+                            (
+                                format!(
+                                    "({{ {} }} as Record<string, any>)[variantOf(p.data[{}], {})]",
+                                    table.join(", "),
+                                    js_str(&key),
+                                    serde_json::to_string(&x.variants).unwrap()
+                                ),
+                                js_str(component),
+                            )
+                        }
+                        None => (format!("({} as any)[{}]", mangle("ce_", component), js_str(component)), js_str(component)),
+                    };
+                    body.push(format!(
+                        "((): any => {{ {cur}return h(ExtBoundary, {{ key: {ci}, name: {name_js} }}, h({comp}, {{ {} }})); }})()",
+                        props.join(", ")
+                    ));
+                }
+                Component::Analysis { analysis, columns } => {
+                    let key = format!("analysis:{analysis}");
+                    if !loaders.iter().any(|l| l["key"] == key) {
+                        loaders.push(json!({"key": key, "segments": ["api", "analyses", analysis], "withId": false}));
+                    }
+                    let fs: Vec<Value> = columns.iter().map(|(n, t)| field_desc(ir, n, t)).collect();
+                    body.push(format!(
+                        "h(DataList, {{ key: {ci}, r: p.data[{}], fields: {}, tz: p.tz, caption: {} }})",
+                        js_str(&key),
+                        serde_json::to_string(&fs).unwrap(),
+                        js_str(analysis)
                     ));
                 }
                 Component::Form { action, params } => {
@@ -232,7 +334,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
         "# {name} web(KOTONOHA 生成物)\n\nReact {REACT_VERSION} の SSR。API は backend をこのサーバーの `/api` 経由で使う。\n\n```bash\nnpm install\nnpm run build\nKOTONOHA_BACKEND_URL=http://127.0.0.1:8787 npm start   # http://127.0.0.1:3000\n```\n",
         name = ir.name
     );
-    Ok(vec![
+    let mut out = vec![
         GeneratedFile::text("package.json", serde_json::to_string_pretty(&pkg).unwrap() + "\n"),
         GeneratedFile::text(
             "sbom.cdx.json",
@@ -255,5 +357,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
         GeneratedFile::text("src/client.ts", CLIENT_TS.to_string()),
         GeneratedFile::text("src/runtime/ui.ts", UI_TS.to_string()),
         GeneratedFile::text("src/runtime/server.ts", SERVER_TS.to_string()),
-    ])
+    ];
+    out.extend(ext_files);
+    Ok(out)
 }

@@ -64,6 +64,18 @@ export function neg(a: unknown): bigint {
   if (typeof a === "bigint") return checkI64(-a);
   throw new TypeError("neg: 型検査済みの値ではありません");
 }
+export function abs(a: unknown): bigint {
+  if (typeof a === "bigint") return checkI64(a < 0n ? -a : a);
+  throw new TypeError("abs: 型検査済みの値ではありません");
+}
+export function max(a: unknown, b: unknown): bigint {
+  if (typeof a === "bigint" && typeof b === "bigint") return a > b ? a : b;
+  throw new TypeError("max: 型検査済みの値ではありません");
+}
+export function min(a: unknown, b: unknown): bigint {
+  if (typeof a === "bigint" && typeof b === "bigint") return a < b ? a : b;
+  throw new TypeError("min: 型検査済みの値ではありません");
+}
 export function eq(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;

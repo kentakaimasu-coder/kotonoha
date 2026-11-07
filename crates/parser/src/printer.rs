@@ -86,6 +86,26 @@ fn print_decl(d: &Decl, out: &mut String) {
                 }
             }
         }
+        Decl::Function(f) => {
+            out.push_str(&format!("関数 {}({}) -> {}:\n", f.name.name, params_str(&f.params), type_str(&f.ret)));
+            print_block(&f.body, 1, out);
+        }
+        Decl::External(e) => {
+            out.push_str(&format!("{} {}({})", e.kind.word(), e.name.name, params_str(&e.params)));
+            if let Some(r) = &e.ret {
+                out.push_str(&format!(" -> {}", type_str(r)));
+            }
+            out.push_str(":\n");
+            for kv in &e.entries {
+                out.push_str(&format!("{}{} = {}\n", ind(1), kv.key.name, kv.value.text));
+            }
+        }
+        Decl::Experiment(x) => {
+            out.push_str(&format!("実験 {}:\n", x.name.name));
+            for kv in &x.entries {
+                out.push_str(&format!("{}{} = {}\n", ind(1), kv.key.name, kv.value.text));
+            }
+        }
         Decl::Contract(c) => {
             out.push_str("約束:\n");
             for l in &c.lines {

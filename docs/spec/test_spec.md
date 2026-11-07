@@ -1,6 +1,6 @@
 # テスト仕様とトレーサビリティ
 
-状態: 実装中 / 最終更新: 2026-11-03 / 上位文書: 技術仕様書 §16, §19, 要件 §9
+状態: 実装中 / 最終更新: 2026-11-07 / 上位文書: 技術仕様書 §16, §19, 要件 §9
 
 ## 1. 実行方法
 ```bash
@@ -8,9 +8,10 @@ cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 cargo test                                   # 全ユニット・ゴールデン・結合テスト
 python3 tools/validate_schemas.py target/debug/koto   # 生成物の JSON Schema 検証
-node --no-warnings --test tests/e2e/backend.test.ts tests/e2e/backend_security.test.ts tests/e2e/postgres.test.ts tests/e2e/web.test.ts tests/e2e/oidc.test.ts
+node --no-warnings --test tests/e2e/backend.test.ts tests/e2e/backend_security.test.ts tests/e2e/postgres.test.ts tests/e2e/web.test.ts tests/e2e/oidc.test.ts tests/e2e/extensions.test.ts
 #   生成物を起動しての結合・E2E(cd tests/e2e && npm install が必要。PostgreSQL は KOTONOHA_TEST_PG_URL を設定したときだけ)
 ./target/debug/koto -C examples/shop test   # API 契約から導いた契約テスト(FR-019)
+./target/debug/koto -C examples/lab test    # 拡張(分析・実験)を含む例の契約テスト
 tools/mobile-syntax/run.sh                   # 生成 Swift / Kotlin の構文検査
 tools/verify_android_jvm.sh                  # Android 非 UI 層の kotlinc コンパイルと実 API 応答の解析
 UPDATE_GOLDEN=1 cargo test -p kotonoha-driver # ゴールデン VAG の更新(差分をレビューすること)
@@ -35,6 +36,8 @@ UPDATE_GOLDEN=1 cargo test -p kotonoha-driver # ゴールデン VAG の更新(�
 | アクセシビリティ | `tests/e2e/web.test.ts` | axe-core(WCAG 2.2 A/AA)で 5 画面の違反ゼロ |
 | 契約テスト | `koto test` | API 契約の公開範囲・401・403・400 |
 | 生成コードのゴールデン | driver `generated_code_matches_golden_snapshots` | 4 ターゲットの生成コード |
+| 拡張(結合・E2E) | `tests/e2e/extensions.test.ts` | 関数・TS/Python 外部関数・戻り値の型検証・分析(SQLite/PostgreSQL)・実験の割付と成果・Web の変種表示 |
+| 拡張(負例) | driver `pure_functions_*`, `external_files_*`, `analyses_*`, `experiments_*`, `components_*`, `external_functions_declared_effects_*`, ext `rejects_*` | 副作用・パス逸脱・SQL の書込み/他表/関数・実験の誤り・実装欠落で必ず失敗 |
 | モバイル | `tools/mobile-syntax`, `tools/verify_android_jvm.sh` | 構文検査・Android 非 UI 層のコンパイル。Compose 画面と iOS のビルドは CI(未実行: K-01) |
 
 ## 3. 受入テストケース対応
@@ -96,3 +99,14 @@ UPDATE_GOLDEN=1 cargo test -p kotonoha-driver # ゴールデン VAG の更新(�
 | SEC-08 | ✅ | 候補の厳格スキーマ検査 + 文型での再照合 |
 | SEC-09 | △ | 改ざん検出のみ。署名は未実装 |
 | SEC-02 | ✅ | JWT(HS256 / JWKS RS256・ES256)。IdP 選定は ADR-002 |
+
+## 5. 追補要件(NR)対応
+| ID | 状況 | テスト |
+|---|---|---|
+| NR-01 | ✅ | cli `explain_*`・diag excerpt・e2e web(IME・全角数字) |
+| NR-02 / NR-03 | ✅ | e2e backend_security(ヘッダ・認証失敗遮断・本番モード)、CI security(cargo audit / npm audit / CodeQL) |
+| NR-04 | ✅ Web / backend、モバイルは CI ビルドのみ | e2e extensions `NR-04 *`(割付の Rust/TS 一致・成果の 1 回計上・結果の許可・SSR の変種固定)、driver `experiments_*` |
+| NR-05 | ✅ | driver `pure_functions_*`、e2e extensions `NR-05 …` |
+| NR-06 | ✅ | e2e extensions `NR-06 …`(戻り値の型検証・内部情報の非開示)、driver `changing_an_implementation_file_changes_the_graph_hash`・`components_*` |
+| NR-07 | ✅ | ext `accepts_*`/`rejects_*`、driver `analyses_*`、e2e extensions `NR-07 *`(SQLite / PostgreSQL) |
+| NR-08 | ✅ | e2e extensions(Python 外部関数の実行・例外・型違い) |

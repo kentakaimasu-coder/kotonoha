@@ -34,6 +34,8 @@ pub struct TsGen<'a> {
     indent: usize,
     scopes: Vec<BTreeSet<String>>,
     in_tx: bool,
+    /// `関数`(同期・ctx なし)の本体を生成中
+    pure: bool,
     pub errors: Vec<Diagnostic>,
 }
 
@@ -45,6 +47,7 @@ impl<'a> TsGen<'a> {
             indent: 0,
             scopes: Vec::new(),
             in_tx: false,
+            pure: false,
             errors: Vec::new(),
         }
     }
@@ -80,6 +83,23 @@ impl<'a> TsGen<'a> {
         self.scopes.pop();
         self.indent -= 1;
         self.line("}");
+        std::mem::take(&mut self.out)
+    }
+
+    /// `関数` 1 つ分(副作用なし・同期)を生成する。
+    pub fn function(&mut self, name: &str, params: &[(String, kotonoha_types::Type)], body: &Block) -> String {
+        self.out.clear();
+        self.pure = true;
+        let ps: Vec<String> = params.iter().map(|(n, _)| format!("{}: any", mangle("v_", n))).collect();
+        self.line(&format!("export function {}({}): any {{", mangle("fn_", name), ps.join(", ")));
+        self.indent += 1;
+        self.scopes.push(params.iter().map(|(n, _)| n.clone()).collect());
+        self.block_stmts(body);
+        self.line("throw new Error(\"unreachable\");");
+        self.scopes.pop();
+        self.indent -= 1;
+        self.line("}");
+        self.pure = false;
         std::mem::take(&mut self.out)
     }
 
@@ -163,7 +183,9 @@ impl<'a> TsGen<'a> {
                 } else {
                     let f = js_str(&target.fields[0].name);
                     self.line(&format!("{root}[{f}] = {v};"));
-                    self.line(&format!("db.markDirty(ctx, {root});"));
+                    if !self.pure {
+                        self.line(&format!("db.markDirty(ctx, {root});"));
+                    }
                 }
             }
             Stmt::Expr { expr, .. } => {
@@ -195,6 +217,18 @@ impl<'a> TsGen<'a> {
                 match callee.name.as_str() {
                     "成功" => a.into_iter().next().unwrap_or_else(|| "undefined".into()),
                     "失敗" => format!("(() => {{ throw new rt.Failure({}); }})()", a.join(", ")),
+                    n if self.ir.functions.iter().any(|f| f.name == n) => format!("{}({})", mangle("fn_", n), a.join(", ")),
+                    n if self.ir.ext.functions.iter().any(|f| f.name == n) => {
+                        format!("(await {}(ctx{}{}))", mangle("ex_", n), if a.is_empty() { "" } else { ", " }, a.join(", "))
+                    }
+                    "長さ" => format!("BigInt([...({})].length)", a[0]),
+                    "件数" => format!("BigInt(({}).length)", a[0]),
+                    "絶対値" => format!("rt.abs({})", a[0]),
+                    "最大" => format!("rt.max({}, {})", a[0], a[1]),
+                    "最小" => format!("rt.min({}, {})", a[0], a[1]),
+                    "文字列化" => format!("String({})", a[0]),
+                    "含む" => format!("({}).includes({})", a[0], a[1]),
+                    "現在日時" => "BigInt(Date.now())".into(),
                     n if self.ir.adapters.iter().any(|x| x.name == n) => {
                         format!("(await {}(ctx{}{}))", mangle("ad_", n), if a.is_empty() { "" } else { ", " }, a.join(", "))
                     }

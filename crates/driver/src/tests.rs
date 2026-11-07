@@ -283,3 +283,197 @@ fn generated_code_matches_golden_snapshots() {
         "{diffs:#?}\n意図した変更なら UPDATE_GOLDEN=1 cargo test -p kotonoha-driver で更新し、差分をレビューしてください"
     );
 }
+
+// ---- 拡張(関数・外部関数・分析・部品・実験): ADR-0122〜0125 / NR-05〜08 ----
+
+const LAB: &str = include_str!("../../../examples/lab/src/app.koto");
+
+fn lab_files() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("ext/pricing.ts", include_str!("../../../examples/lab/ext/pricing.ts")),
+        ("ml/forecast.py", include_str!("../../../examples/lab/ml/forecast.py")),
+        (
+            "analytics/sales_by_product.sql",
+            include_str!("../../../examples/lab/analytics/sales_by_product.sql"),
+        ),
+        ("analytics/sales_since.sql", include_str!("../../../examples/lab/analytics/sales_since.sql")),
+        ("ext/StarRating.ts", include_str!("../../../examples/lab/ext/StarRating.ts")),
+        ("ext/StarRating.swift", include_str!("../../../examples/lab/ext/StarRating.swift")),
+        ("ext/StarRating.kt", include_str!("../../../examples/lab/ext/StarRating.kt")),
+        ("ext/NumberRating.ts", include_str!("../../../examples/lab/ext/NumberRating.ts")),
+        ("ext/NumberRating.swift", include_str!("../../../examples/lab/ext/NumberRating.swift")),
+        ("ext/NumberRating.kt", include_str!("../../../examples/lab/ext/NumberRating.kt")),
+    ]
+}
+
+fn lab_with(src: &str, files: &[(&str, &str)]) -> Project {
+    let mut p = project_from_sources("実験室", &[("src/app.koto", src)], &["web", "backend", "ios", "android"]);
+    for (k, v) in files {
+        p.ext_files.insert(k.to_string(), v.to_string());
+    }
+    p
+}
+
+fn lab() -> Project {
+    lab_with(LAB, &lab_files())
+}
+
+fn errors_of(p: &Project) -> String {
+    analyze(p, &none())
+        .diags
+        .items
+        .iter()
+        .filter(|d| d.severity == kotonoha_diag::Severity::Error)
+        .map(|d| format!("{}: {}", d.code.as_str(), d.message_ja))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn lab_example_is_validated_and_records_extension_hashes() {
+    let a = analyze(&lab(), &none());
+    assert!(a.ok(), "{:#?}", a.diags.items);
+    let x = &a.vag["extensions"];
+    assert_eq!(x["functions"].as_array().unwrap().len(), 2);
+    assert_eq!(x["analyses"][0]["tables"], serde_json::json!(["注文"]));
+    assert_eq!(x["experiments"].as_array().unwrap().len(), 2);
+    assert_eq!(x["functions"][0]["file"]["sha256"].as_str().unwrap().len(), 64);
+    for t in ["backend", "web", "ios", "android"] {
+        build_target(&lab(), &a, t).unwrap_or_else(|d| panic!("{t}: {d:#?}"));
+    }
+}
+
+#[test]
+fn changing_an_implementation_file_changes_the_graph_hash() {
+    let a = analyze(&lab(), &none());
+    let mut files = lab_files();
+    files[0].1 = "export function 割引額(価格: number): number { return 0; }\n";
+    let b = analyze(&lab_with(LAB, &files), &none());
+    assert!(b.ok());
+    // 実装を差し替えるとロックが合わなくなる(承認なしに挙動を変えられない)
+    assert_ne!(a.hashes.graph, b.hashes.graph);
+}
+
+#[test]
+fn pure_functions_reject_side_effects_time_and_principal() {
+    let base = "アプリ「t」\nデータ 商品:\n    ID: 識別子\n    在庫: 整数\nアダプタ 商品を取得(ID: 識別子) -> 商品:\n    操作 = 取得(商品)\n";
+    for (body, want) in [
+        ("関数 f(x: 識別子) -> 整数:\n    商品を取得(x).在庫 を返す\n", "副作用"),
+        ("関数 f() -> 日時:\n    現在日時() を返す\n", "現在日時"),
+        ("関数 f() -> 識別子:\n    本人 を返す\n", "本人"),
+        ("関数 f(x: 整数) -> 整数:\n    もし x > 0:\n        x を返す\n", "全ての経路"),
+        ("関数 f(x: 整数) -> 文字列:\n    x を返す\n", "TYP"),
+        ("関数 f(x: 整数) -> 整数:\n    長さ(x) を返す\n", "TYP"),
+    ] {
+        let e = errors_of(&with_src(&format!("{base}{body}")));
+        assert!(e.contains(want), "{body}\n→ {e}");
+    }
+}
+
+#[test]
+fn external_files_must_stay_inside_the_project_and_exist() {
+    for (path, want) in [
+        ("../secret.ts", "相対パス"),
+        ("/etc/passwd.ts", "相対パス"),
+        ("C:\\\\x.ts", "相対パス"),
+        ("ext/none.ts", "読めません"),
+        ("ext/pricing.rb", "拡張子"),
+    ] {
+        let src = LAB.replace("実装 = \"ext/pricing.ts\"", &format!("実装 = \"{path}\""));
+        let e = errors_of(&lab_with(&src, &lab_files()));
+        assert!(e.contains(want), "{path} → {e}");
+    }
+    // 実際のファイルシステムでもシンボリックリンク等で外へ出られない
+    let dir = std::env::temp_dir().join(format!("koto-ext-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("ext")).unwrap();
+    let mut p = lab();
+    p.root = dir.clone();
+    p.ext_files.clear();
+    assert!(p.read_ext("ext/none.ts").is_err());
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink("/etc/hostname", dir.join("ext/link.ts")).ok();
+        assert!(p.read_ext("ext/link.ts").unwrap_err().contains("外"));
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn analyses_must_be_read_only_select_over_declared_tables() {
+    for (sql, want) in [
+        ("DELETE FROM \"注文\"", "SELECT"),
+        ("SELECT * FROM \"商品\"", "宣言されていません"),
+        ("SELECT 1; SELECT 2", "1 文"),
+        ("SELECT load_extension('x') FROM \"注文\"", "load_extension"),
+        ("SELECT \"商品ID\" FROM \"注文\" WHERE \"ID\" = ?", ":名前"),
+    ] {
+        let mut files = lab_files();
+        files[2].1 = sql;
+        let e = errors_of(&lab_with(LAB, &files));
+        assert!(e.contains(want), "{sql} → {e}");
+    }
+    // 対象に未定義のデータ・戻り値が表でない
+    let e = errors_of(&lab_with(
+        &LAB.replace(
+            "対象 = [注文]\n    SQL = \"analytics/sales_by_product.sql\"",
+            "対象 = [謎]\n    SQL = \"analytics/sales_by_product.sql\"",
+        ),
+        &lab_files(),
+    ));
+    assert!(e.contains("謎"), "{e}");
+    // 引数を取る分析は画面に直接出せない
+    let e = errors_of(&lab_with(&LAB.replace("    商品別売上を表示", "    期間売上を表示"), &lab_files()));
+    assert!(e.contains("引数"), "{e}");
+}
+
+#[test]
+fn experiments_are_checked_against_screens_variants_weights_and_goal() {
+    for (from, to, want) in [
+        (
+            "割合 = [50, 50]\n    成果 = 購入する\n\n実験 評価",
+            "割合 = [50, 40]\n    成果 = 購入する\n\n実験 評価",
+            "合計 100",
+        ),
+        ("変種 = [購入, 今すぐ購入]", "変種 = [買う, 今すぐ購入]", "ラベル「買う」"),
+        ("変種 = [購入, 今すぐ購入]", "変種 = [購入]", "2〜10"),
+        ("変種 = [星評価, 数字評価]", "変種 = [星評価, 謎の部品]", "謎の部品"),
+        ("成果 = 購入する\n\n実験 評価", "成果 = 謎の動作\n\n実験 評価", "謎の動作"),
+        ("    画面 = 商品詳細\n    変種 = [購入", "    画面 = 謎の画面\n    変種 = [購入", "謎の画面"),
+        (
+            "    割合 = [50, 50]\n    成果 = 購入する\n\n実験 評価",
+            "    割合 = [50, 50]\n    色 = 赤\n    成果 = 購入する\n\n実験 評価",
+            "色",
+        ),
+    ] {
+        assert!(LAB.contains(from), "{from}");
+        let e = errors_of(&lab_with(&LAB.replacen(from, to, 1), &lab_files()));
+        assert!(e.contains(want), "{to} → {e}");
+    }
+    // 同じ対象に実験が 2 つ
+    let dup = LAB.to_string() + "\n実験 もう一つ:\n    画面 = 商品詳細\n    変種 = [購入, 買う]\n    割合 = [50, 50]\n    成果 = 購入する\n";
+    assert!(errors_of(&lab_with(&dup, &lab_files())).contains("2 つ"));
+}
+
+#[test]
+fn components_without_a_platform_implementation_stop_that_target_with_tgt001() {
+    let src = LAB.replace("    android = \"ext/StarRating.kt\"\n", "");
+    let p = lab_with(&src, &lab_files());
+    let a = analyze(&p, &none());
+    assert!(a.ok(), "{:#?}", a.diags.items);
+    assert!(build_target(&p, &a, "web").is_ok());
+    let e = build_target(&p, &a, "android").err().expect("android は止まるはず");
+    assert!(e.iter().any(|d| d.code == Code::TGT001 && d.message_ja.contains("星評価")), "{e:#?}");
+}
+
+#[test]
+fn external_functions_declared_effects_flow_into_actions() {
+    // 外部関数が network.send を宣言 → 動作の効果宣言に無ければ SEC001
+    let src = LAB
+        .replace("    実装 = \"ext/pricing.ts\"", "    実装 = \"ext/pricing.ts\"\n    効果 = [network.send]")
+        .replace(
+            "    必要 = [注文.作成, 商品.読取]\n",
+            "    必要 = [注文.作成, 商品.読取]\n    効果 = [data.read, data.write]\n",
+        );
+    let e = errors_of(&lab_with(&src, &lab_files()));
+    assert!(e.contains("SEC001") && e.contains("network.send"), "{e}");
+}

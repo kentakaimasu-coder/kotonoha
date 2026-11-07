@@ -54,6 +54,12 @@ pub enum Decl {
     Screen(ScreenDecl),
     Action(ActionDecl),
     Contract(ContractDecl),
+    /// `関数 名前(引数) -> 型:` + 厳密層の本体(副作用なし)
+    Function(FunctionDecl),
+    /// `外部関数` / `分析` / `部品`(実装ファイルを `キー = 値` 行で指定する宣言)
+    External(ExternalDecl),
+    /// `実験 名前:` + `キー = 値` 行(A/B テスト)
+    Experiment(ExperimentDecl),
 }
 
 impl Decl {
@@ -68,6 +74,9 @@ impl Decl {
             Decl::Screen(d) => d.span,
             Decl::Action(d) => d.span,
             Decl::Contract(d) => d.span,
+            Decl::Function(d) => d.span,
+            Decl::External(d) => d.span,
+            Decl::Experiment(d) => d.span,
         }
     }
 }
@@ -412,4 +421,52 @@ impl BinOp {
     pub fn is_non_assoc(self) -> bool {
         self.precedence() == 3 || self.precedence() == 4
     }
+}
+
+/// `関数 名前(引数) -> 型:`(ADR-0124)
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct FunctionDecl {
+    pub name: Ident,
+    pub params: Vec<Param>,
+    pub ret: TypeExpr,
+    pub body: Block,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
+pub enum ExternalKind {
+    /// 外部関数(TypeScript / Python。ADR-0124)
+    Function,
+    /// 分析(読み取り専用 SQL。ADR-0125)
+    Analysis,
+    /// 拡張部品(ADR-0123)
+    Component,
+}
+
+impl ExternalKind {
+    pub fn word(self) -> &'static str {
+        match self {
+            ExternalKind::Function => "外部関数",
+            ExternalKind::Analysis => "分析",
+            ExternalKind::Component => "部品",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ExternalDecl {
+    pub kind: ExternalKind,
+    pub name: Ident,
+    pub params: Vec<Param>,
+    pub ret: Option<TypeExpr>,
+    pub entries: Vec<KvEntry>,
+    pub span: Span,
+}
+
+/// `実験 名前:`(ADR-0122)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ExperimentDecl {
+    pub name: Ident,
+    pub entries: Vec<KvEntry>,
+    pub span: Span,
 }

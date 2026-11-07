@@ -133,6 +133,14 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
             record(tn("Row_", &spec.name), &cols, &mut m);
         }
     }
+    for a in &ir.ext.analyses {
+        if let Type::List(r) = &a.ret {
+            if let Type::Record(cols) = r.as_ref() {
+                record(tn("Ana_", &a.name), cols, &mut m);
+            }
+        }
+    }
+    let mut ext_files: Vec<GeneratedFile> = Vec::new();
 
     let mut v = format!(
         "// 生成物(koto build --target android)。手で編集しないでください。\npackage {PKG}\n\nimport androidx.compose.foundation.clickable\nimport androidx.compose.foundation.layout.*\nimport androidx.compose.foundation.lazy.LazyColumn\nimport androidx.compose.foundation.lazy.items\nimport androidx.compose.foundation.text.KeyboardOptions\nimport androidx.compose.material3.*\nimport androidx.compose.runtime.*\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.text.input.KeyboardType\nimport androidx.compose.ui.unit.dp\nimport androidx.navigation.NavController\nimport kotlinx.coroutines.launch\nimport org.json.JSONObject\n\n"
@@ -199,7 +207,12 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                     ));
                     items.push(format!("items({var}) {{ row -> Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {{ {} }} }}", texts.join("; ")));
                 }
-                Component::Button { label, action, args } => {
+                Component::Button {
+                    label,
+                    action,
+                    args,
+                    experiment,
+                } => {
                     let Some(a) = ir.actions.iter().find(|x| &x.name == action) else { continue };
                     let pairs: Vec<String> = a
                         .params
@@ -208,11 +221,87 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         .map(|((n, _), e)| format!("{} to {}", kstr(n), arg_kt(e, s.input.as_deref(), &mut errs)))
                         .collect();
                     let pre = if s.input.is_some() { "val c = cur ?: return@launch; " } else { "" };
+                    let label_k = match experiment {
+                        Some(x) => {
+                            let var = format!("exp{ci}");
+                            state.push(format!("    var {var} by remember {{ mutableStateOf({}) }}", kstr(&x.variants[0])));
+                            loads.push(format!(
+                                "{var} = api.variant({}, listOf({}))",
+                                kstr(&x.name),
+                                x.variants.iter().map(|v| kstr(v)).collect::<Vec<_>>().join(", ")
+                            ));
+                            var
+                        }
+                        None => kstr(label),
+                    };
                     items.push(format!(
                         "item {{ Button(onClick = {{ scope.launch {{ {pre}act {{ api.post({}, mapOf({})) }} }} }}) {{ Text({}) }} }}",
                         kstr(action),
                         pairs.join(", "),
-                        kstr(label)
+                        label_k
+                    ));
+                }
+                Component::Ext { component, args, experiment } => {
+                    let names = experiment.as_ref().map(|x| x.variants.clone()).unwrap_or_else(|| vec![component.clone()]);
+                    let mut calls = Vec::new();
+                    for n in &names {
+                        let Some(c) = ir.ext.component(n) else { continue };
+                        let Some(f) = &c.android else {
+                            errs.push(Diagnostic::error(
+                                Code::TGT001,
+                                Default::default(),
+                                format!("部品 `{n}` に android の実装(android = \"….kt\")がありません"),
+                            ));
+                            continue;
+                        };
+                        let fp = format!("app/src/main/java/app/kotonoha/generated/ext/{}", f.path);
+                        if !ext_files.iter().any(|x| x.path == fp) {
+                            ext_files.push(GeneratedFile::text(&fp, f.content.clone()));
+                        }
+                        let a: Vec<String> = c
+                            .params
+                            .iter()
+                            .zip(args)
+                            .map(|((pn, _), e)| format!("{} = {}", bt(pn), arg_kt(e, s.input.as_deref(), &mut errs)))
+                            .collect();
+                        calls.push((n.clone(), format!("{}({})", bt(n), a.join(", "))));
+                    }
+                    let view = match experiment {
+                        Some(x) => {
+                            let var = format!("exp{ci}");
+                            state.push(format!("    var {var} by remember {{ mutableStateOf({}) }}", kstr(&x.variants[0])));
+                            loads.push(format!(
+                                "{var} = api.variant({}, listOf({}))",
+                                kstr(&x.name),
+                                x.variants.iter().map(|v| kstr(v)).collect::<Vec<_>>().join(", ")
+                            ));
+                            let arms: Vec<String> = calls.iter().map(|(n, call)| format!("{} -> {call}", kstr(n))).collect();
+                            format!("when ({var}) {{ {}; else -> {{}} }}", arms.join("; "))
+                        }
+                        None => calls.first().map(|c| c.1.clone()).unwrap_or_default(),
+                    };
+                    if s.input.is_some() {
+                        items.push(format!("cur?.let {{ c -> item {{ {view} }} }}"));
+                    } else {
+                        items.push(format!("item {{ {view} }}"));
+                    }
+                }
+                Component::Analysis { analysis, columns } => {
+                    let var = format!("analysis{ci}");
+                    let rt = tn("Ana_", analysis);
+                    state.push(format!("    var {var} by remember {{ mutableStateOf<List<{rt}>>(emptyList()) }}"));
+                    loads.push(format!(
+                        "{var} = api.getArray(listOf(\"api\", \"analyses\", {})).map {{ parse{rt}(it) }}",
+                        kstr(analysis)
+                    ));
+                    let texts: Vec<String> = columns
+                        .iter()
+                        .map(|(n, t)| format!("Text({})", display(&format!("row.{}", bt(n)), t)))
+                        .collect();
+                    items.push(format!("item {{ Text({}, style = MaterialTheme.typography.titleMedium) }}", kstr(analysis)));
+                    items.push(format!(
+                        "items({var}) {{ row -> Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {{ {} }} }}",
+                        texts.join("; ")
                     ));
                 }
                 Component::Form { action, params } => {
@@ -313,7 +402,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
     let manifest = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <application android:label=\"@string/app_name\" android:networkSecurityConfig=\"@xml/network_security_config\" android:allowBackup=\"false\">\n        <activity android:name=\".MainActivity\" android:exported=\"true\">\n            <intent-filter>\n                <action android:name=\"android.intent.action.MAIN\" />\n                <category android:name=\"android.intent.category.LAUNCHER\" />\n            </intent-filter>\n        </activity>\n    </application>\n</manifest>\n";
     let nsc = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!-- 平文 HTTP はエミュレータからホストの開発サーバー(10.0.2.2)への接続だけ許可する -->\n<network-security-config>\n    <base-config cleartextTrafficPermitted=\"false\" />\n    <domain-config cleartextTrafficPermitted=\"true\">\n        <domain includeSubdomains=\"false\">10.0.2.2</domain>\n    </domain-config>\n</network-security-config>\n";
     let src = "app/src/main/java/app/kotonoha/generated";
-    Ok(vec![
+    let mut out = vec![
         GeneratedFile::text("settings.gradle.kts", settings.into()),
         GeneratedFile::text(
             "sbom.cdx.json",
@@ -347,7 +436,9 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
             "README.md",
             format!("# {} Android(KOTONOHA 生成物)\n\nKotlin / Jetpack Compose / minSdk 26(案)。Android Studio で開いてビルド。API の接続先は app/build.gradle.kts の KOTONOHA_API_BASE。\n\nビルドは KOTONOHA の CI(`gradle :app:assembleDebug`)で確認しています。\n", ir.name),
         ),
-    ])
+    ];
+    out.extend(ext_files);
+    Ok(out)
 }
 
 fn xml_escape(s: &str) -> String {

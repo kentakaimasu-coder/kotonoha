@@ -108,6 +108,15 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
         }
         m.push_str("}\n\n");
     }
+    for a in &ir.ext.analyses {
+        let Type::List(r) = &a.ret else { continue };
+        let Type::Record(cols) = r.as_ref() else { continue };
+        m.push_str(&format!("struct {}: Codable, Hashable {{\n", type_name("Ana_", &a.name)));
+        for (n, t) in cols {
+            m.push_str(&format!("    let {}: {}\n", bt(n), swift_type(t)));
+        }
+        m.push_str("}\n\n");
+    }
     for a in &ir.actions {
         m.push_str(&format!("struct {}: Encodable {{\n", type_name("Req_", &a.name)));
         for (n, t) in &a.params {
@@ -117,6 +126,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
     }
 
     // 画面
+    let mut ext_files: Vec<GeneratedFile> = Vec::new();
     let mut v = String::from("// 生成物(koto build --target ios)。手で編集しないでください。\nimport SwiftUI\n\n");
     for s in &ir.screens {
         let sname = type_name("Screen_", &s.name);
@@ -176,7 +186,12 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         cells.join("; Spacer(); ")
                     ));
                 }
-                Component::Button { label, action, args } => {
+                Component::Button {
+                    label,
+                    action,
+                    args,
+                    experiment,
+                } => {
                     let Some(a) = ir.actions.iter().find(|x| &x.name == action) else { continue };
                     let fields: Vec<String> = a
                         .params
@@ -185,12 +200,87 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         .map(|((n, _), e)| format!("{}: {}", bt(n), arg_swift(e, s.input.as_deref(), &mut errs)))
                         .collect();
                     let guard = if s.input.is_some() { "guard let cur else { return }; " } else { "" };
+                    let label_s = match experiment {
+                        Some(x) => {
+                            let var = format!("exp{ci}");
+                            state.push(format!("    @State private var {var}: String = {}", swift_str(&x.variants[0])));
+                            loads.push(format!(
+                                "{var} = await api.variant({}, [{}])",
+                                swift_str(&x.name),
+                                x.variants.iter().map(|v| swift_str(v)).collect::<Vec<_>>().join(", ")
+                            ));
+                            var
+                        }
+                        None => swift_str(label),
+                    };
                     body.push(format!(
                         "Section {{ Button({}) {{ Task {{ {guard}await run {{ _ = try await api.post({}, body: {}({})) }} }} }} }}",
-                        swift_str(label),
+                        label_s,
                         swift_str(action),
                         type_name("Req_", action),
                         fields.join(", ")
+                    ));
+                }
+                Component::Ext { component, args, experiment } => {
+                    let names = experiment.as_ref().map(|x| x.variants.clone()).unwrap_or_else(|| vec![component.clone()]);
+                    let mut calls = Vec::new();
+                    for n in &names {
+                        let Some(c) = ir.ext.component(n) else { continue };
+                        let Some(f) = &c.ios else {
+                            errs.push(Diagnostic::error(
+                                Code::TGT001,
+                                kotonoha_diag::Span::default(),
+                                format!("部品 `{n}` に ios の実装(ios = \"….swift\")がありません"),
+                            ));
+                            continue;
+                        };
+                        if !ext_files.iter().any(|x: &GeneratedFile| x.path == format!("Sources/Ext/{}", f.path)) {
+                            ext_files.push(GeneratedFile::text(&format!("Sources/Ext/{}", f.path), f.content.clone()));
+                        }
+                        let a: Vec<String> = c
+                            .params
+                            .iter()
+                            .zip(args)
+                            .map(|((pn, _), e)| format!("{}: {}", bt(pn), arg_swift(e, s.input.as_deref(), &mut errs)))
+                            .collect();
+                        calls.push((n.clone(), format!("{}({})", bt(n), a.join(", "))));
+                    }
+                    let view = match experiment {
+                        Some(x) => {
+                            let var = format!("exp{ci}");
+                            state.push(format!("    @State private var {var}: String = {}", swift_str(&x.variants[0])));
+                            loads.push(format!(
+                                "{var} = await api.variant({}, [{}])",
+                                swift_str(&x.name),
+                                x.variants.iter().map(|v| swift_str(v)).collect::<Vec<_>>().join(", ")
+                            ));
+                            let mut sw = format!("switch {var} {{ ");
+                            for (n, call) in &calls {
+                                sw.push_str(&format!("case {}: {call}; ", swift_str(n)));
+                            }
+                            sw.push_str("default: EmptyView() }");
+                            sw
+                        }
+                        None => calls.first().map(|c| c.1.clone()).unwrap_or_else(|| "EmptyView()".into()),
+                    };
+                    if s.input.is_some() {
+                        body.push(format!("if let cur {{ Section {{ {view} }} }}"));
+                    } else {
+                        body.push(format!("Section {{ {view} }}"));
+                    }
+                }
+                Component::Analysis { analysis, columns } => {
+                    let var = format!("analysis{ci}");
+                    state.push(format!("    @State private var {var}: [{}] = []", type_name("Ana_", analysis)));
+                    loads.push(format!("{var} = try await api.get(\"api\", \"analyses\", {})", swift_str(analysis)));
+                    let cells: Vec<String> = columns
+                        .iter()
+                        .map(|(n, t)| format!("Text({})", display_expr(&format!("row.{}", bt(n)), t)))
+                        .collect();
+                    body.push(format!(
+                        "Section({}) {{ ForEach({var}, id: \\.self) {{ row in HStack {{ {} }} }} }}",
+                        swift_str(analysis),
+                        cells.join("; Spacer(); ")
                     ));
                 }
                 Component::Form { action, params } => {
@@ -270,7 +360,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
         "# XcodeGen 定義(xcodegen generate で .xcodeproj を作る)\nname: KotonohaApp\noptions:\n  bundleIdPrefix: app.kotonoha.generated\n  deploymentTarget:\n    iOS: \"16.0\"   # ADR-005 未決定(案)\ntargets:\n  KotonohaApp:\n    type: application\n    platform: iOS\n    sources: [Sources]\n    info:\n      path: Sources/Info.plist\n      properties:\n        CFBundleDisplayName: {}\n        CFBundleDevelopmentRegion: ja\n        KotonohaAPIBase: http://127.0.0.1:8787\n        UILaunchScreen: {{}}\n",
         swift_str(&ir.name)
     );
-    Ok(vec![
+    let mut out = vec![
         GeneratedFile::text("project.yml", project),
         GeneratedFile::text("api.json", serde_json::to_string_pretty(&api_contract(ir)).unwrap() + "\n"),
         GeneratedFile::text("Sources/Models.generated.swift", m),
@@ -281,7 +371,9 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
             format!("# {} iOS(KOTONOHA 生成物)\n\nSwiftUI / iOS 16+(案)。`xcodegen generate` → Xcode でビルド。API の接続先は Info.plist の KotonohaAPIBase。\n\nコンパイルは KOTONOHA の CI(xcodebuild、iOS シミュレータ向け)で確認しています。
 ", ir.name),
         ),
-    ])
+    ];
+    out.extend(ext_files);
+    Ok(out)
 }
 
 fn a_span(ir: &AppIr, action: &str) -> kotonoha_diag::Span {

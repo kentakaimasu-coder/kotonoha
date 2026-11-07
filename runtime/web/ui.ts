@@ -23,6 +23,8 @@ export interface Loader {
   segments: string[];
   withId: boolean;
   query?: Record<string, string>;
+  /** 実験の割付は POST(露出の記録)。再読み込みでは呼び直さない */
+  method?: "POST";
 }
 
 export interface LoadResult {
@@ -102,6 +104,23 @@ export async function callApi(method: "GET" | "POST", url: string, body?: unknow
     parsed = null;
   }
   return { ok: res.ok, status: res.status, body: parsed };
+}
+
+/** 実験の変種(割付に失敗したら対照群 = 先頭。露出は記録されないので結果は偏らない) */
+export function variantOf(r: LoadResult | undefined, variants: string[]): string {
+  const v = r?.ok ? r.body?.variant : undefined;
+  return typeof v === "string" && variants.includes(v) ? v : variants[0];
+}
+
+/** 拡張部品の描画失敗を画面全体に広げない */
+export class ExtBoundary extends React.Component<{ name: string; children?: React.ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? h("p", { className: "notice", role: "alert" }, `部品「${this.props.name}」を表示できませんでした`) : this.props.children;
+  }
 }
 
 /** 動作の成功結果の表示(K-13)。値が単純なときだけ添える。 */
@@ -304,7 +323,7 @@ export function App(p: { init: Init; screens: Record<string, ScreenDef> }) {
   const [data, setData] = React.useState(p.init.data);
   const reload = async () => {
     const next: Record<string, LoadResult> = {};
-    for (const l of def.loaders) next[l.key] = await callApi("GET", loaderUrl(l, p.init.id));
+    for (const l of def.loaders) next[l.key] = l.method === "POST" ? data[l.key] : await callApi("GET", loaderUrl(l, p.init.id));
     setData(next);
   };
   return h(

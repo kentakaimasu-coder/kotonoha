@@ -9,6 +9,7 @@
 
 use kotonoha_ast::{ActionDecl, Block, Decl, Expr, SourceFile};
 use kotonoha_diag::{Code, Diagnostic, Span};
+use kotonoha_ext::{ExperimentTarget, ExtModel};
 use kotonoha_intent::{IntentKind, IntentModel};
 use kotonoha_knowledge::{Knowledge, RankingSpec, Registry};
 use kotonoha_types::{AdapterSig, Capability, Env, Type, Verb};
@@ -52,11 +53,35 @@ impl Access {
 
 #[derive(Debug, Clone)]
 pub enum EndpointKind {
-    ListData { data: String },
-    GetData { data: String },
-    Query { knowledge: String, limits: Vec<u32> },
-    Action { action: String },
+    ListData {
+        data: String,
+    },
+    GetData {
+        data: String,
+    },
+    Query {
+        knowledge: String,
+        limits: Vec<u32>,
+    },
+    Action {
+        action: String,
+    },
+    /// 分析(読み取り専用 SQL。ADR-0125)
+    Analysis {
+        analysis: String,
+    },
+    /// 実験の割付(誰でも。露出を記録する。ADR-0122)
+    ExperimentAssign {
+        experiment: String,
+    },
+    /// 実験の結果(許可 `実験.結果` が必要)
+    ExperimentResults {
+        experiment: String,
+    },
 }
+
+/// 実験の許可名(結果の閲覧)
+pub const EXPERIMENT_GRANT: &str = "実験.結果";
 
 #[derive(Debug, Clone)]
 pub struct Endpoint {
@@ -75,6 +100,7 @@ impl Endpoint {
     pub fn grant(&self) -> Option<String> {
         match &self.kind {
             EndpointKind::Action { action } => Some(format!("動作.{action}")),
+            EndpointKind::ExperimentResults { .. } => Some(EXPERIMENT_GRANT.to_string()),
             _ => None,
         }
     }
@@ -121,11 +147,39 @@ pub enum Component {
         label: String,
         action: String,
         args: Vec<Expr>,
+        /// ラベルを出し分ける実験(変種 = ラベル)
+        experiment: Option<ExpRef>,
     },
     Form {
         action: String,
         params: Vec<(String, Type)>,
     },
+    /// 拡張部品(ADR-0123)
+    Ext {
+        component: String,
+        args: Vec<Expr>,
+        /// 部品を出し分ける実験(変種 = 部品名)
+        experiment: Option<ExpRef>,
+    },
+    /// 分析の結果表(ADR-0125)
+    Analysis {
+        analysis: String,
+        columns: Vec<(String, Type)>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct ExpRef {
+    pub name: String,
+    pub variants: Vec<String>,
+}
+
+/// `関数`(副作用なし。backend で実行する)
+#[derive(Debug, Clone)]
+pub struct FnIr {
+    pub name: String,
+    pub params: Vec<(String, Type)>,
+    pub body: Block,
 }
 
 #[derive(Debug, Clone)]
@@ -158,6 +212,9 @@ pub struct AppIr {
     /// 入力を持たない最初の画面
     pub entry_screen: Option<String>,
     pub policy: AccessPolicy,
+    pub functions: Vec<FnIr>,
+    /// 外部関数・分析・部品・実験(実装ファイルの内容を含む)
+    pub ext: ExtModel,
 }
 
 pub struct IrInput<'a> {
@@ -166,6 +223,7 @@ pub struct IrInput<'a> {
     pub intents: &'a IntentModel,
     pub validation: &'a Validation,
     pub asts: &'a [SourceFile],
+    pub ext: &'a ExtModel,
 }
 
 /// 一覧・詳細で表示する列: 宣言順の全フィールドから `ID` を除く(ADR-0116 提案)
@@ -239,7 +297,32 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
                     label: label.clone(),
                     action: action.clone(),
                     args: args.clone(),
+                    experiment: inp.ext.label_experiment(&s.name, label).map(|e| ExpRef {
+                        name: e.name.clone(),
+                        variants: e.variants.clone(),
+                    }),
                 }),
+                IntentKind::Component { component, args } => comps.push(Component::Ext {
+                    component: component.clone(),
+                    args: args.clone(),
+                    experiment: inp.ext.component_experiment(&s.name, component).map(|e| ExpRef {
+                        name: e.name.clone(),
+                        variants: e.variants.clone(),
+                    }),
+                }),
+                IntentKind::Analysis { analysis } => {
+                    let columns = match inp.ext.analyses.iter().find(|a| &a.name == analysis).map(|a| &a.ret) {
+                        Some(Type::List(r)) => match r.as_ref() {
+                            Type::Record(fs) => fs.clone(),
+                            _ => vec![],
+                        },
+                        _ => vec![],
+                    };
+                    comps.push(Component::Analysis {
+                        analysis: analysis.clone(),
+                        columns,
+                    });
+                }
                 IntentKind::Form { action } => comps.push(Component::Form {
                     action: action.clone(),
                     params: env.actions.get(action).map(|a| a.params.clone()).unwrap_or_default(),
@@ -294,6 +377,39 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
         });
         queries.push((spec.clone(), limits));
     }
+    for a in &inp.ext.analyses {
+        let access = if a.tables.iter().all(|t| policy.public_read.contains(t)) {
+            Access::Public
+        } else {
+            Access::Caps(a.tables.iter().map(|t| Capability::new(t, Verb::Read)).collect())
+        };
+        endpoints.push(Endpoint {
+            id: format!("analysis.{}", a.name),
+            method: "GET",
+            segments: vec!["api".into(), "analyses".into(), a.name.clone()],
+            has_id: false,
+            kind: EndpointKind::Analysis { analysis: a.name.clone() },
+            access,
+        });
+    }
+    for x in &inp.ext.experiments {
+        endpoints.push(Endpoint {
+            id: format!("experiment.assign.{}", x.name),
+            method: "POST",
+            segments: vec!["api".into(), "experiments".into(), x.name.clone(), "assign".into()],
+            has_id: false,
+            kind: EndpointKind::ExperimentAssign { experiment: x.name.clone() },
+            access: Access::Public,
+        });
+        endpoints.push(Endpoint {
+            id: format!("experiment.results.{}", x.name),
+            method: "GET",
+            segments: vec!["api".into(), "experiments".into(), x.name.clone(), "results".into()],
+            has_id: false,
+            kind: EndpointKind::ExperimentResults { experiment: x.name.clone() },
+            access: Access::Caps(vec![]),
+        });
+    }
     // 動作は全て公開 API(呼出元が画面かどうかに関わらず、サーバーで Capability を強制する)
     let mut actions = Vec::new();
     let decls: BTreeMap<String, &ActionDecl> = inp
@@ -332,6 +448,19 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
             span: sig.span,
         });
     }
+    let functions: Vec<FnIr> = inp
+        .asts
+        .iter()
+        .flat_map(|f| f.items.iter())
+        .filter_map(|i| match &i.decl {
+            Decl::Function(f) => env.functions.get(&f.name.name).map(|sig| FnIr {
+                name: f.name.name.clone(),
+                params: sig.params.clone(),
+                body: f.body.clone(),
+            }),
+            _ => None,
+        })
+        .collect();
     let entry_screen = screens.iter().find(|s| s.input.is_none()).map(|s| s.name.clone());
     AppIr {
         name: env.app_name.clone().unwrap_or_default(),
@@ -351,6 +480,8 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
         screens,
         entry_screen,
         policy,
+        functions,
+        ext: inp.ext.clone(),
     }
 }
 
@@ -410,6 +541,20 @@ pub fn check_ir(ir: &AppIr) -> Vec<Diagnostic> {
             ));
         }
     }
+    for a in &ir.ext.analyses {
+        for t in &a.tables {
+            if ir.policy.owner_read.contains_key(t) {
+                d.push(Diagnostic::error(
+                    Code::TGT001,
+                    Span::default(),
+                    format!(
+                        "分析 {} は本人限定のデータ {t} を読みます。行レベル認可と任意 SQL の関係が未定義のため生成できません(ADR-0118)",
+                        a.name
+                    ),
+                ));
+            }
+        }
+    }
     for a in &ir.actions {
         for (n, t) in &a.params {
             if matches!(t, Type::Data(_) | Type::List(_) | Type::Array(_) | Type::Record(_) | Type::Result(..)) {
@@ -448,6 +593,22 @@ pub fn api_contract(ir: &AppIr) -> Value {
                     let spec = &ir.queries.iter().find(|q| &q.0.name == knowledge).unwrap().0;
                     v["query"] = json!({"limit": {"allowed": limits}, "base": {"kind": "datetime", "optional": true}});
                     v["response"] = wire_type(&spec.result_type()).unwrap_or(Value::Null);
+                }
+                EndpointKind::Analysis { analysis } => {
+                    let a = ir.ext.analyses.iter().find(|x| &x.name == analysis).unwrap();
+                    v["query"] = json!({"params": a.params.iter().map(|(n, t)| json!({"name": n, "type": wire_type(t).unwrap_or(Value::Null)})).collect::<Vec<_>>()});
+                    v["response"] = wire_type(&a.ret).unwrap_or(Value::Null);
+                }
+                EndpointKind::ExperimentAssign { experiment } => {
+                    let x = ir.ext.experiments.iter().find(|x| &x.name == experiment).unwrap();
+                    v["request"] = json!({"kind": "record", "fields": [{"name": "subject", "type": {"kind": "optional", "of": {"kind": "string"}}}]});
+                    v["response"] = json!({"kind": "record", "fields": [{"name": "variant", "type": {"kind": "string"}}, {"name": "index", "type": {"kind": "int"}}]});
+                    v["experiment"] = json!({"variants": x.variants, "weights": x.weights, "goal": x.goal, "target": if x.target == ExperimentTarget::Label { "label" } else { "component" }});
+                }
+                EndpointKind::ExperimentResults { .. } => {
+                    v["response"] = json!({"kind": "record", "fields": [{"name": "variants", "type": {"kind": "list", "of": {"kind": "record", "fields": [
+                        {"name": "variant", "type": {"kind": "string"}}, {"name": "exposures", "type": {"kind": "int"}}, {"name": "conversions", "type": {"kind": "int"}}
+                    ]}}}]});
                 }
                 EndpointKind::Action { action } => {
                     let a = ir.actions.iter().find(|x| &x.name == action).unwrap();

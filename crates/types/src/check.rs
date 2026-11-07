@@ -17,7 +17,23 @@ pub struct Facts {
     pub mutations: Vec<(String, String, Span)>,
     /// `本人` を参照したか
     pub uses_principal: bool,
+    /// 呼んだ `関数`
+    pub function_calls: Vec<(String, Span)>,
+    /// 呼んだ `外部関数`
+    pub external_calls: Vec<(String, Span)>,
 }
+
+/// 組込み関数(既存言語の基本操作。ADR-0124)。(名前, 説明)
+pub const BUILTINS: &[(&str, &str)] = &[
+    ("長さ", "長さ(文字列) -> 整数: 文字数(Unicode のスカラー値の数)"),
+    ("件数", "件数(一覧<T>) -> 整数"),
+    ("絶対値", "絶対値(整数) -> 整数"),
+    ("最大", "最大(整数, 整数) -> 整数"),
+    ("最小", "最小(整数, 整数) -> 整数"),
+    ("文字列化", "文字列化(整数 | 金額) -> 文字列: 明示的な変換"),
+    ("含む", "含む(文字列, 文字列) -> 真偽: 部分文字列を含むか"),
+    ("現在日時", "現在日時() -> 日時: 動作の中だけで使える(関数では使えない)"),
+];
 
 #[derive(Debug, Clone)]
 struct Local {
@@ -36,6 +52,8 @@ pub struct Checker<'e> {
     in_tx: u32,
     /// 組込み値 `本人`(現在の主体 ID)を使えるか。動作の中だけ(ADR-0119)
     allow_principal: bool,
+    /// `関数` の本体を検査中(副作用・時刻・本人を禁止する)
+    in_pure_fn: bool,
 }
 
 /// 組込み値: 現在の認証済み主体の ID(識別子)。動作の中でだけ使える。
@@ -89,6 +107,49 @@ pub fn check_action(env: &Env, a: &ActionDecl) -> (Facts, Vec<Diagnostic>) {
     (c.facts, c.diags)
 }
 
+/// `関数` を検査する(副作用・`本人`・`現在日時`・取引を禁止)。
+pub fn check_function(env: &Env, f: &FunctionDecl) -> (Facts, Vec<Diagnostic>) {
+    let mut c = Checker::new(env);
+    c.in_pure_fn = true;
+    let sig = env.functions.get(&f.name.name);
+    c.ret = sig.map(|s| s.ret.clone());
+    let mut top = BTreeMap::new();
+    if let Some(sig) = sig {
+        for (n, t) in &sig.params {
+            top.insert(
+                n.clone(),
+                Local {
+                    ty: t.clone(),
+                    mutable: false,
+                    persisted: false,
+                },
+            );
+        }
+    }
+    c.scopes.push(top);
+    c.block(&f.body);
+    if !terminates(&f.body) {
+        c.diags.push(Diagnostic::error(
+            Code::TYP003,
+            f.body.span,
+            format!("関数 `{}` は全ての経路で値を返していません", f.name.name),
+        ));
+    }
+    if contains_tx(&f.body) {
+        c.diags.push(Diagnostic::error(Code::SEC001, f.span, "関数の中で `取引:` は使えません"));
+    }
+    (c.facts, c.diags)
+}
+
+fn contains_tx(b: &Block) -> bool {
+    b.stmts.iter().any(|s| match s {
+        Stmt::Transaction { .. } => true,
+        Stmt::If { branches, else_block, .. } => branches.iter().any(|(_, b)| contains_tx(b)) || else_block.as_ref().is_some_and(contains_tx),
+        Stmt::Loop { body, .. } => contains_tx(body),
+        _ => false,
+    })
+}
+
 /// 任意のスコープで式を検査する(画面意図のボタン引数・知識の条件式で使う)。
 pub fn check_expr_in(env: &Env, vars: &[(String, Type)], e: &Expr, expected: Option<&Type>) -> (Type, Facts, Vec<Diagnostic>) {
     let mut c = Checker::new(env);
@@ -131,6 +192,7 @@ impl<'e> Checker<'e> {
             ret: None,
             in_tx: 0,
             allow_principal: false,
+            in_pure_fn: false,
         }
     }
 
@@ -518,6 +580,42 @@ impl<'e> Checker<'e> {
             self.diags.push(d);
             return Type::Error;
         }
+        if let Some(t) = self.builtin(name, args, span) {
+            return t;
+        }
+        if let Some(f) = self.env.functions.get(name).cloned() {
+            self.facts.function_calls.push((name.to_string(), callee.span));
+            return self.check_args(name, &f.params, args, span, f.ret);
+        }
+        if let Some(x) = self.env.externals.get(name).cloned() {
+            if x.kind != ExternalKind::Function {
+                let d = self.err(
+                    Code::TYP001,
+                    callee.span,
+                    format!("{} `{name}` は呼び出せません(画面で `{name}を表示` として使います)", x.kind.word()),
+                );
+                self.diags.push(d);
+                return Type::Error;
+            }
+            if self.in_pure_fn {
+                let d = self.err(
+                    Code::SEC001,
+                    callee.span,
+                    format!("関数の中で外部関数 `{name}` は呼べません(関数は副作用を持てません)"),
+                );
+                self.diags.push(d);
+            }
+            self.facts.external_calls.push((name.to_string(), callee.span));
+            return self.check_args(name, &x.params, args, span, x.ret.unwrap_or(Type::Error));
+        }
+        if self.in_pure_fn && (self.env.adapters.contains_key(name) || self.env.actions.contains_key(name)) {
+            let d = self.err(
+                Code::SEC001,
+                callee.span,
+                format!("関数の中で `{name}` は呼べません(関数は副作用を持てません。動作で呼んでください)"),
+            );
+            self.diags.push(d);
+        }
         let (params, ret, kind) = if let Some(a) = self.env.adapters.get(name) {
             (a.params.clone(), a.ret.clone(), 0)
         } else if let Some(a) = self.env.actions.get(name) {
@@ -552,6 +650,97 @@ impl<'e> Checker<'e> {
             self.expect(a, pt);
         }
         ret
+    }
+
+    fn check_args(&mut self, name: &str, params: &[(String, Type)], args: &[Expr], span: Span, ret: Type) -> Type {
+        if params.len() != args.len() {
+            let d = self.err(
+                Code::TYP001,
+                span,
+                format!("`{name}` の引数は {} 個ですが {} 個渡されています", params.len(), args.len()),
+            );
+            self.diags.push(d);
+            for a in args {
+                self.expr(a, None);
+            }
+            return ret;
+        }
+        for (a, (_, pt)) in args.iter().zip(params) {
+            self.expect(a, pt);
+        }
+        ret
+    }
+
+    /// 組込み関数。該当しなければ None。
+    fn builtin(&mut self, name: &str, args: &[Expr], span: Span) -> Option<Type> {
+        if !BUILTINS.iter().any(|(n, _)| *n == name) || self.env.functions.contains_key(name) || self.env.externals.contains_key(name) {
+            return None;
+        }
+        let arity = |n: usize, s: &mut Self| -> bool {
+            if args.len() != n {
+                let d = s.err(Code::TYP001, span, format!("`{name}` の引数は {n} 個です"));
+                s.diags.push(d);
+                false
+            } else {
+                true
+            }
+        };
+        Some(match name {
+            "長さ" => {
+                if arity(1, self) {
+                    self.expect(&args[0], &Type::Str);
+                }
+                Type::Int
+            }
+            "件数" => {
+                if arity(1, self) {
+                    let t = self.expr(&args[0], None);
+                    if !matches!(t, Type::List(_) | Type::Array(_) | Type::Error) {
+                        self.mismatch(args[0].span, &Type::List(Box::new(Type::Error)), &t);
+                    }
+                }
+                Type::Int
+            }
+            "絶対値" => {
+                if arity(1, self) {
+                    self.expect(&args[0], &Type::Int);
+                }
+                Type::Int
+            }
+            "最大" | "最小" => {
+                if arity(2, self) {
+                    self.expect(&args[0], &Type::Int);
+                    self.expect(&args[1], &Type::Int);
+                }
+                Type::Int
+            }
+            "文字列化" => {
+                if arity(1, self) {
+                    let t = self.expr(&args[0], None);
+                    if !matches!(t, Type::Int | Type::Money(_) | Type::Error) {
+                        let d = self.err(Code::TYP001, args[0].span, format!("文字列化できるのは 整数 と 金額 です({t})"));
+                        self.diags.push(d);
+                    }
+                }
+                Type::Str
+            }
+            "含む" => {
+                if arity(2, self) {
+                    self.expect(&args[0], &Type::Str);
+                    self.expect(&args[1], &Type::Str);
+                }
+                Type::Bool
+            }
+            "現在日時" => {
+                arity(0, self);
+                if self.in_pure_fn {
+                    let d = self.err(Code::SEC001, span, "関数の中で `現在日時()` は使えません(結果が呼ぶたびに変わるため)");
+                    self.diags.push(d);
+                }
+                Type::DateTime
+            }
+            _ => return None,
+        })
     }
 
     fn binary(&mut self, op: BinOp, lhs: &Expr, rhs: &Expr, span: Span) -> Type {

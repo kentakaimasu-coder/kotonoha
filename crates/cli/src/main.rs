@@ -526,7 +526,7 @@ fn cmd_build(o: &mut Opts) -> Result<i32, String> {
 fn cmd_doctor(o: &Opts) -> i32 {
     let info = json!({
         "compiler_version": drv::COMPILER_VERSION,
-        "implemented": ["lexer", "parser", "ast-printer", "type-check(strict layer)", "knowledge-registry(ranking)", "intent-patterns", "effects/capabilities", "vag", "lock", "approval-records(unsigned)", "resolver(offline/fixture)", "sql-lowering(ranking: sqlite/postgres)", "app-ir + api-contract", "backend(node/ts/sqlite)", "web(react ssr)", "ios(swiftui, 未検証)", "android(compose, 未検証)"],
+        "implemented": ["lexer", "parser", "ast-printer", "type-check(strict layer)", "knowledge-registry(ranking)", "intent-patterns", "effects/capabilities", "vag", "lock", "approval-records(ed25519 signing)", "resolver(offline/fixture)", "sql-lowering(ranking: sqlite/postgres)", "app-ir + api-contract", "functions + builtins", "external functions(typescript/python)", "analysis(read-only sql)", "extension components", "experiments(a/b)", "backend(node/ts/sqlite/postgres)", "web(react ssr)", "ios(swiftui, CI build)", "android(compose, CI build)"],
         "targets": {
             "web": kotonoha_codegen::verification_status(kotonoha_codegen::TargetKind::Web),
             "backend": kotonoha_codegen::verification_status(kotonoha_codegen::TargetKind::Backend),

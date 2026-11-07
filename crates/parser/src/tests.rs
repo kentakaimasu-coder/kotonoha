@@ -53,6 +53,9 @@ fn parses_shop_example() {
             Decl::Screen(_) => "screen",
             Decl::Action(_) => "action",
             Decl::Contract(_) => "contract",
+            Decl::Function(_) => "function",
+            Decl::External(_) => "external",
+            Decl::Experiment(_) => "experiment",
         })
         .collect();
     // 宣言の種類がすべて現れ、先頭はアプリ宣言
@@ -97,7 +100,11 @@ fn spec_sample_fails_only_on_unspaced_return() {
 
 #[test]
 fn ast_roundtrip_is_fixpoint_on_examples() {
-    for src in [SHOP, include_str!("../../../examples/ranking/src/app.koto")] {
+    for src in [
+        SHOP,
+        include_str!("../../../examples/ranking/src/app.koto"),
+        include_str!("../../../examples/lab/src/app.koto"),
+    ] {
         let f1 = parse_ok(src);
         let printed = print_file(&f1);
         let f2 = parse_ok(&printed);

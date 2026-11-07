@@ -13,6 +13,7 @@ kotonoha-knowledge.workspace = true
 kotonoha-graph.workspace = true
 kotonoha-intent.workspace = true
 kotonoha-validator.workspace = true
+kotonoha-ext.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 

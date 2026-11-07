@@ -19,6 +19,13 @@ def check(name, data, s):
 koto = sys.argv[1]
 check("examples/shop/expected/vag.json", json.loads((ROOT / "examples/shop/expected/vag.json").read_text(encoding="utf-8")), "vag.schema.json")
 
+# 拡張(外部関数・分析・部品・実験)を含む例
+r = subprocess.run([koto, "-C", str(ROOT / "examples/lab"), "graph"], capture_output=True, text=True, encoding="utf-8")
+assert r.returncode == 0, r.stderr
+lab = json.loads(r.stdout)
+assert "extensions" in lab, "examples/lab の VAG に extensions がありません"
+check("examples/lab graph", lab, "vag.schema.json")
+
 with tempfile.TemporaryDirectory() as d:
     d = pathlib.Path(d)
     shutil.copytree(ROOT / "examples/shop", d / "shop")

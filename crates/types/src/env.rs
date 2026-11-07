@@ -69,6 +69,57 @@ pub struct Env {
     /// 知識名(本体は knowledge クレートが解釈する)。名前の重複検査のためだけに保持。
     pub knowledge_names: BTreeSet<String>,
     pub screens: BTreeSet<String>,
+    /// `関数`(副作用なし)
+    pub functions: BTreeMap<String, FnSig>,
+    /// `外部関数` / `分析` / `部品`
+    pub externals: BTreeMap<String, ExternalSig>,
+    /// `実験`(意味は ext クレートが解釈する)
+    pub experiments: Vec<ExperimentInfo>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExperimentInfo {
+    pub name: String,
+    pub entries: Vec<(String, String, Span)>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct FnSig {
+    pub name: String,
+    pub params: Vec<(String, Type)>,
+    pub ret: Type,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExternalSig {
+    pub kind: ExternalKind,
+    pub name: String,
+    pub params: Vec<(String, Type)>,
+    pub ret: Option<Type>,
+    /// `キー = 値`(値は生テキスト)。意味は ext クレートが解釈する
+    pub entries: Vec<(String, String, Span)>,
+    /// `効果 = [...]`(外部関数のみ。既定は pure)
+    pub effects: BTreeSet<Effect>,
+    pub span: Span,
+}
+
+impl ExternalSig {
+    pub fn entry(&self, key: &str) -> Option<&str> {
+        self.entries.iter().find(|(k, _, _)| k == key).map(|(_, v, _)| v.as_str())
+    }
+    /// 分析の `対象 = [データ, …]`
+    pub fn tables(&self) -> Vec<String> {
+        self.entry("対象").map(list_value).unwrap_or_default()
+    }
+}
+
+/// `[a, b]` 形式の値を語の一覧にする(括弧が無ければ 1 語)
+pub fn list_value(s: &str) -> Vec<String> {
+    let t = s.trim();
+    let inner = t.strip_prefix('[').and_then(|x| x.strip_suffix(']')).unwrap_or(t);
+    inner.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect()
 }
 
 impl Env {
@@ -228,6 +279,70 @@ pub fn collect_env(files: &[&SourceFile]) -> (Env, Vec<Diagnostic>) {
                 };
                 check_adapter(&sig, a, &env, &mut diags);
                 env.adapters.insert(a.name.name.clone(), sig);
+            }
+            Decl::Experiment(x) => {
+                if env.experiments.iter().any(|e| e.name == x.name.name) {
+                    diags.push(Diagnostic::error(
+                        Code::REF002,
+                        x.name.span,
+                        format!("実験 `{}` は既に定義されています", x.name.name),
+                    ));
+                } else {
+                    env.experiments.push(ExperimentInfo {
+                        name: x.name.name.clone(),
+                        entries: x.entries.iter().map(|kv| (kv.key.name.clone(), kv.value.text.clone(), kv.value.span)).collect(),
+                        span: x.span,
+                    });
+                }
+            }
+            Decl::Function(f) => {
+                if dup(&mut call_names, &f.name, &mut diags) {
+                    continue;
+                }
+                let params = resolve_params(&f.params, &env, &data_names, &mut diags);
+                let ret = resolve_type(&f.ret, &env, &data_names, &mut diags);
+                env.functions.insert(
+                    f.name.name.clone(),
+                    FnSig {
+                        name: f.name.name.clone(),
+                        params,
+                        ret,
+                        span: f.span,
+                    },
+                );
+            }
+            Decl::External(x) => {
+                if dup(&mut call_names, &x.name, &mut diags) {
+                    continue;
+                }
+                let params = resolve_params(&x.params, &env, &data_names, &mut diags);
+                let ret = x.ret.as_ref().map(|r| resolve_type(r, &env, &data_names, &mut diags));
+                let mut effects = BTreeSet::new();
+                for kv in &x.entries {
+                    if kv.key.name == "効果" {
+                        let inner = kv.value.text.trim().trim_start_matches('[').trim_end_matches(']');
+                        for e in inner.split(',').map(str::trim).filter(|e| !e.is_empty() && *e != "pure") {
+                            match Effect::parse(e) {
+                                Some(ef) => {
+                                    effects.insert(ef);
+                                }
+                                None => diags.push(Diagnostic::error(Code::REF001, kv.value.span, format!("未知の効果 `{e}` です"))),
+                            }
+                        }
+                    }
+                }
+                env.externals.insert(
+                    x.name.name.clone(),
+                    ExternalSig {
+                        kind: x.kind,
+                        name: x.name.name.clone(),
+                        params,
+                        ret,
+                        entries: x.entries.iter().map(|kv| (kv.key.name.clone(), kv.value.text.clone(), kv.value.span)).collect(),
+                        effects,
+                        span: x.span,
+                    },
+                );
             }
             Decl::Action(a) => {
                 if dup(&mut call_names, &a.name, &mut diags) {

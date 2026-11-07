@@ -51,9 +51,31 @@
       "properties": {
         "from": {"type": "string"}, "to": {"type": "string"},
         "kind": {"enum": ["contains", "navigates", "invokes"]}}}},
-    "status": {"enum": ["validated", "draft"]}
+    "status": {"enum": ["validated", "draft"]},
+    "extensions": {
+      "description": "外部関数・分析・拡張部品・実験(ADR-0122〜0125)。実装ファイルは内容の SHA-256 で固定する",
+      "type": "object", "additionalProperties": false, "required": ["functions", "analyses", "components", "experiments"],
+      "properties": {
+        "functions": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["name", "lang", "file", "effects"],
+          "properties": {"name": {"type": "string"}, "lang": {"enum": ["typescript", "python"]}, "file": {"$ref": "#/$defs/ext_file"},
+            "effects": {"type": "array", "items": {"$ref": "#/$defs/effect"}, "uniqueItems": true}}}},
+        "analyses": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["name", "tables", "file"],
+          "properties": {"name": {"type": "string"}, "tables": {"type": "array", "items": {"type": "string"}, "minItems": 1}, "file": {"$ref": "#/$defs/ext_file"}}}},
+        "components": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["name", "web", "ios", "android"],
+          "properties": {"name": {"type": "string"}, "web": {"$ref": "#/$defs/ext_file_or_null"}, "ios": {"$ref": "#/$defs/ext_file_or_null"}, "android": {"$ref": "#/$defs/ext_file_or_null"}}}},
+        "experiments": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["name", "screen", "target", "variants", "weights", "goal"],
+          "properties": {"name": {"type": "string"}, "screen": {"type": "string"},
+            "target": {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"enum": ["label", "component"]}}},
+            "variants": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 10},
+            "weights": {"type": "array", "items": {"type": "integer", "minimum": 1, "maximum": 100}, "minItems": 2, "maxItems": 10},
+            "goal": {"type": "string"}}}}
+      }
+    }
   },
   "$defs": {
+    "ext_file": {"type": "object", "additionalProperties": false, "required": ["path", "sha256"],
+      "properties": {"path": {"type": "string", "pattern": "^[^/\\\\:][^\\\\:]*$"}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}},
+    "ext_file_or_null": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/ext_file"}]},
     "named_type": {"type": "object", "additionalProperties": false, "required": ["name", "type"],
       "properties": {"name": {"type": "string"}, "type": {"type": "string"}}},
     "effect": {"enum": ["data.read", "data.write", "network.send", "filesystem.read", "filesystem.write", "device.camera", "device.location", "device.notifications"]},

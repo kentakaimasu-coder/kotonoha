@@ -144,18 +144,26 @@ export function createWebServer(
     "/assets/app.css": ["assets/app.css", "text/css; charset=utf-8"],
   };
 
-  async function backendFetch(path: string, init: RequestInit, token: string | null, traceId: string): Promise<Response> {
+  // 実験(A/B テスト)の匿名の対象者 ID(ADR-0122)。個人を特定する情報は入れない
+  const VID = opts.secureCookie ? "__Host-vid" : "vid";
+  const vidOf = (req: IncomingMessage): string | null => {
+    const v = cookieOf(req, VID);
+    return v && /^[A-Za-z0-9_-]{16,64}$/.test(v) ? v : null;
+  };
+  async function backendFetch(path: string, init: RequestInit, token: string | null, traceId: string, vid: string | null = null): Promise<Response> {
     const headers = new Headers(init.headers);
     if (token) headers.set("Authorization", `Bearer ${token}`);
+    if (vid) headers.set("X-Koto-Subject", vid);
     headers.set("X-Request-Id", traceId);
     return fetch(new URL(path, backend), { ...init, headers, redirect: "manual" });
   }
 
-  async function load(def: ScreenDef, id: string | null, token: string | null, traceId: string): Promise<Record<string, LoadResult>> {
+  async function load(def: ScreenDef, id: string | null, token: string | null, traceId: string, vid: string | null): Promise<Record<string, LoadResult>> {
     const out: Record<string, LoadResult> = {};
     for (const l of def.loaders) {
       try {
-        const r = await backendFetch(loaderUrl(l, id), { method: "GET" }, token, traceId);
+        const init: RequestInit = l.method === "POST" ? { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" } : { method: "GET" };
+        const r = await backendFetch(loaderUrl(l, id), init, token, traceId, vid);
         let body: unknown = null;
         try {
           body = await r.json();
@@ -199,7 +207,7 @@ export function createWebServer(
         const body = req.method === "POST" ? await readBody(req) : undefined;
         const headers: Record<string, string> = {};
         if (req.headers["content-type"]) headers["Content-Type"] = String(req.headers["content-type"]);
-        const r = await backendFetch(url.pathname + url.search, { method: req.method, headers, body }, tokenOf(req), traceId);
+        const r = await backendFetch(url.pathname + url.search, { method: req.method, headers, body }, tokenOf(req), traceId, vidOf(req));
         const buf = Buffer.from(await r.arrayBuffer());
         res.writeHead(r.status, securityHeaders({ "Content-Type": r.headers.get("content-type") ?? "application/json", "Cache-Control": "no-store" }));
         return res.end(buf);
@@ -281,11 +289,18 @@ export function createWebServer(
         const def = app.screens[segs[1]];
         const id = segs[2] ?? null;
         if (def && (def.input === null) === (id === null)) {
-          const data = await load(def, id, tokenOf(req), traceId);
+          const hasExp = def.loaders.some((l) => l.method === "POST");
+          let vid = vidOf(req);
+          const extra: Record<string, string> = {};
+          if (hasExp && vid === null) {
+            vid = b64u(randomBytes(16));
+            extra["Set-Cookie"] = `${VID}=${vid}; HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000${secure}`;
+          }
+          const data = await load(def, id, tokenOf(req), traceId, vid);
           const init: Init = { appName: app.appName, screen: def.name, id, data, tz: opts.tz, nav: app.nav };
           const html = ReactDOMServer.renderToString(h(App, { init, screens: app.screens }));
           const notFound = Object.values(data).some((d) => d.status === 404);
-          res.writeHead(notFound ? 404 : 200, securityHeaders({ "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }));
+          res.writeHead(notFound ? 404 : 200, securityHeaders({ "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...extra }));
           return res.end(page(`${def.name} - ${app.appName}`, html, jsonForScript(init)));
         }
       }

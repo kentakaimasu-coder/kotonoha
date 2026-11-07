@@ -81,11 +81,34 @@ pub fn validate(env: &Env, facts: &BTreeMap<String, Facts>, intents: &IntentMode
 
     for (name, sig) in &env.actions {
         let computed = caps.get(name).cloned().unwrap_or_default();
-        let effects: BTreeSet<Effect> = computed.keys().map(|c| c.verb.effect()).collect();
+        let mut effects: BTreeSet<Effect> = computed.keys().map(|c| c.verb.effect()).collect();
+        // 外部関数の宣言効果(推移: 呼んだ動作の外部関数も含む)
+        let mut ext_spans: BTreeMap<Effect, Span> = BTreeMap::new();
+        let mut stack = vec![name.clone()];
+        let mut seen = BTreeSet::new();
+        while let Some(n) = stack.pop() {
+            if !seen.insert(n.clone()) {
+                continue;
+            }
+            if let Some(f) = facts.get(&n) {
+                for (x, sp) in &f.external_calls {
+                    for e in env.externals.get(x).map(|s| s.effects.clone()).unwrap_or_default() {
+                        effects.insert(e);
+                        ext_spans.entry(e).or_insert(*sp);
+                    }
+                }
+                stack.extend(f.action_calls.iter().map(|(a, _)| a.clone()));
+            }
+        }
         if let Some(decl_eff) = &sig.declared_effects {
             for e in &effects {
                 if !decl_eff.contains(e) {
-                    let sp = computed.iter().find(|(c, _)| c.verb.effect() == *e).map(|(_, s)| *s).unwrap_or(sig.span);
+                    let sp = computed
+                        .iter()
+                        .find(|(c, _)| c.verb.effect() == *e)
+                        .map(|(_, s)| *s)
+                        .or(ext_spans.get(e).copied())
+                        .unwrap_or(sig.span);
                     diags.push(
                         Diagnostic::error(
                             Code::SEC001,
@@ -152,6 +175,13 @@ pub fn validate(env: &Env, facts: &BTreeMap<String, Facts>, intents: &IntentMode
             let read = match &i.kind {
                 IntentKind::ListData { data } | IntentKind::ShowFields { data, .. } => Some(data.clone()),
                 IntentKind::ShowKnowledge { spec, .. } => Some(spec.source.clone()),
+                IntentKind::Analysis { analysis } => {
+                    for t in env.externals.get(analysis).map(|x| x.tables()).unwrap_or_default() {
+                        sum.capabilities.insert(Capability::new(t, Verb::Read));
+                        sum.effects.insert(Effect::DataRead);
+                    }
+                    None
+                }
                 _ => None,
             };
             if let Some(d) = read {

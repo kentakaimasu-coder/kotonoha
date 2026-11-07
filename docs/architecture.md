@@ -102,6 +102,15 @@ docs/spec/compiler.md を参照。VAG までがターゲット非依存の「意
 - クライアントが使う動作・データ API は契約に含まれるものだけ。
 - 認可は backend だけが判断する。クライアントは 401/403 を利用者向けの文言に変えるだけ。
 
+## 8.1 拡張(ADR-0122〜0125)
+| 宣言 | コンパイラ(`crates/ext`) | backend | Web | iOS / Android |
+|---|---|---|---|---|
+| 関数 | 型・純粋性の検査(types) | 同期関数として生成 | — | — |
+| 外部関数 | 実装ファイルの読込・ハッシュ | TS は同一プロセス、Python は常駐ワーカー(`runtime/backend/pyworker.py`)。戻り値を型検査(`runtime/backend/ext.ts`) | — | — |
+| 分析 | SQL の構文検査・`:名前` → `?N` | `GET /api/analyses/{名前}`。読み取り専用の取引・行数上限 | 表を SSR | 行モデル + 一覧 |
+| 部品 | 実装ファイルの読込 | — | `src/ext/` に複製して import(`ExtBoundary` で囲む) | `Sources/Ext/` / `…/generated/ext/` に複製して呼ぶ |
+| 実験 | 対象・変種・割合・成果の検査、割付関数 | `assign` / `results` API、露出と成果の表 | SSR 時に割付(匿名 ID の Cookie) | `api.variant`(端末の匿名 ID) |
+
 ## 9. 今後の拡張点
 | 項目 | 方針 |
 |---|---|

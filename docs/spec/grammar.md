@@ -48,7 +48,19 @@ strict_block   = "厳密" , ":" , NEWLINE , block ;                    (* 動作
 
 params         = "(" , [ param , { "," , param } ] , ")" ;
 param          = ident , ":" , type ;
+
+(* 拡張(ADR-0122〜0125) *)
+function_decl  = "関数" , ident , params , "->" , type , ":" , NEWLINE , block ;   (* 本体は厳密層。副作用なし *)
+external_decl  = "外部関数" , ident , params , "->" , type , ":" , NEWLINE , INDENT , kv_line , { kv_line } , DEDENT ;
+                 (* キー: 実装 = "….ts" | "….py"、効果 = [ … ] *)
+analysis_decl  = "分析" , ident , params , "->" , type , ":" , NEWLINE , INDENT , kv_line , { kv_line } , DEDENT ;
+                 (* キー: 対象 = [データ, …]、SQL = "….sql"。戻り値は 一覧<記録{…}> *)
+component_decl = "部品" , ident , params , ":" , NEWLINE , INDENT , kv_line , { kv_line } , DEDENT ;
+                 (* キー: web = "….ts"、ios = "….swift"、android = "….kt"(1 つ以上) *)
+experiment_decl= "実験" , ident , ":" , NEWLINE , INDENT , kv_line , { kv_line } , DEDENT ;
+                 (* キー: 画面・変種・割合・成果(すべて必須) *)
 ```
+関数・外部関数・分析・部品・動作・アダプタの名前は同じ名前空間(重複は REF002)。
 
 ## 3. 型
 

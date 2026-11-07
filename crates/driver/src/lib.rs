@@ -38,6 +38,31 @@ pub struct Project {
     pub config: ProjectConfig,
     /// FileId → (プロジェクト相対パス, 内容)
     pub files: BTreeMap<FileId, (String, String)>,
+    /// 拡張の実装ファイル(メモリ上で与える場合。無ければ root から読む)
+    pub ext_files: BTreeMap<String, String>,
+}
+
+/// 拡張の実装ファイルの大きさの上限
+pub const EXT_FILE_MAX: u64 = 1024 * 1024;
+
+impl Project {
+    /// 拡張の実装ファイルを読む(プロジェクト内の相対パスだけ。シンボリックリンクで外へ出るものは拒否)
+    pub fn read_ext(&self, rel: &str) -> Result<String, String> {
+        if let Some(c) = self.ext_files.get(rel) {
+            return Ok(c.clone());
+        }
+        let root = self.root.canonicalize().map_err(|e| e.to_string())?;
+        let path = root.join(rel).canonicalize().map_err(|_| "ファイルがありません".to_string())?;
+        if !path.starts_with(&root) {
+            return Err("プロジェクトの外を指しています".into());
+        }
+        let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+        if !meta.is_file() || meta.len() > EXT_FILE_MAX {
+            return Err(format!("通常のファイル({} バイト以下)ではありません", EXT_FILE_MAX));
+        }
+        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        String::from_utf8(bytes).map_err(|_| "UTF-8 として不正です".into())
+    }
 }
 
 fn io_err(msg: String) -> Diagnostics {
@@ -78,6 +103,7 @@ pub fn load_project(root: &Path) -> Result<Project, Diagnostics> {
         root: root.to_path_buf(),
         config,
         files,
+        ext_files: BTreeMap::new(),
     })
 }
 
@@ -97,6 +123,7 @@ pub fn project_from_sources(name: &str, sources: &[(&str, &str)], targets: &[&st
             targets: targets.iter().map(|s| s.to_string()).collect(),
         },
         files,
+        ext_files: BTreeMap::new(),
     }
 }
 
@@ -133,6 +160,8 @@ pub struct Analysis {
     pub intents: IntentModel,
     pub validation: Validation,
     pub facts: BTreeMap<String, Facts>,
+    /// 外部関数・分析・部品・実験
+    pub ext: kotonoha_ext::ExtModel,
     /// エラーがあれば status=draft
     pub vag: Value,
     pub hashes: Hashes,
@@ -179,6 +208,10 @@ pub fn analyze(p: &Project, approvals: &ApprovalsFile) -> Analysis {
                 diags.extend(d);
                 facts.insert(a.name.name.clone(), fa);
             }
+            if let Decl::Function(f) = &it.decl {
+                let (_, d) = kotonoha_types::check_function(&env, f);
+                diags.extend(d);
+            }
         }
     }
     // 3. 知識
@@ -214,6 +247,9 @@ pub fn analyze(p: &Project, approvals: &ApprovalsFile) -> Analysis {
     // 5. 効果・権限
     let (validation, d) = kotonoha_validator::validate(&env, &facts, &intents);
     diags.extend(d);
+    // 6. 拡張(実装ファイルの読込・SQL 検査・実験)
+    let (ext, d) = kotonoha_ext::resolve(&env, &intents, &|rel: &str| p.read_ext(rel));
+    diags.extend(d);
 
     // ファイル名を診断に付与
     for d in diags.items.iter_mut() {
@@ -237,6 +273,9 @@ pub fn analyze(p: &Project, approvals: &ApprovalsFile) -> Analysis {
         },
         status,
     );
+    if !(ext.functions.is_empty() && ext.analyses.is_empty() && ext.components.is_empty() && ext.experiments.is_empty()) {
+        vag["extensions"] = kotonoha_ext::vag_json(&ext);
+    }
     let problems = check_integrity(&vag);
     if !problems.is_empty() {
         for pr in problems {
@@ -259,6 +298,7 @@ pub fn analyze(p: &Project, approvals: &ApprovalsFile) -> Analysis {
         intents,
         validation,
         facts,
+        ext,
         vag,
         hashes,
     }
@@ -372,6 +412,7 @@ pub fn build_target(p: &Project, a: &Analysis, target: &str) -> Result<BuildOutp
         intents: &a.intents,
         validation: &a.validation,
         asts: &a.asts,
+        ext: &a.ext,
     });
     let generated = match kind {
         kotonoha_codegen::TargetKind::Backend => kotonoha_codegen::backend::generate(&ir, &a.vag)?,

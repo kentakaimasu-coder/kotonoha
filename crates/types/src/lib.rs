@@ -5,9 +5,9 @@ pub mod effects;
 pub mod env;
 pub mod ty;
 
-pub use check::{check_action, check_expr_in, Facts};
+pub use check::{check_action, check_expr_in, check_function, Facts, BUILTINS};
 pub use effects::{Capability, Effect, Verb};
-pub use env::{collect_env, resolve_type, ActionSig, AdapterSig, DataInfo, Env};
+pub use env::{collect_env, list_value, resolve_type, ActionSig, AdapterSig, DataInfo, Env, ExternalSig, FnSig};
 pub use ty::Type;
 
 #[cfg(test)]

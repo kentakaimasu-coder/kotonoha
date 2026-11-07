@@ -53,6 +53,11 @@ pub enum Keyword {
     False,       // 偽
     NoneKw,      // なし
     Record,      // 記録
+    Function,    // 関数
+    External,    // 外部関数
+    Analysis,    // 分析
+    Component,   // 部品
+    Experiment,  // 実験
 }
 
 pub const KEYWORDS: &[(&str, Keyword)] = &[
@@ -83,6 +88,11 @@ pub const KEYWORDS: &[(&str, Keyword)] = &[
     ("偽", Keyword::False),
     ("なし", Keyword::NoneKw),
     ("記録", Keyword::Record),
+    ("関数", Keyword::Function),
+    ("外部関数", Keyword::External),
+    ("分析", Keyword::Analysis),
+    ("部品", Keyword::Component),
+    ("実験", Keyword::Experiment),
 ];
 
 impl Keyword {

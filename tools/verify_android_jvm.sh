@@ -24,11 +24,15 @@ ANDROID=lib/android-all-14-robolectric-10818077.jar
 STDLIB=$(ls lib/kotlin-stdlib-2*.jar)
 CORO=$(ls lib/kotlinx-coroutines-core-jvm-*.jar)
 KOTLINC="java -Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8 -cp $CP org.jetbrains.kotlin.cli.jvm.K2JVMCompiler -no-stdlib"
-rm -rf out classes vclasses
+rm -rf out classes vclasses lab lab-classes
 "$ROOT/target/debug/koto" -C "$ROOT/examples/shop" build --target android --out "$WORK/out" >/dev/null
 G=out/app/src/main/java/app/kotonoha/generated
 $KOTLINC -Werror -classpath "$STDLIB:$ANDROID:$CORO" -d classes $G/Models.generated.kt $G/KotonohaApi.kt
 echo "OK  生成 Kotlin(モデル + API クライアント)を -Werror でコンパイル"
+"$ROOT/target/debug/koto" -C "$ROOT/examples/lab" build --target android --out "$WORK/lab" >/dev/null
+L=lab/app/src/main/java/app/kotonoha/generated
+$KOTLINC -Werror -classpath "$STDLIB:$ANDROID:$CORO" -d lab-classes $L/Models.generated.kt $L/KotonohaApi.kt
+echo "OK  拡張の例(分析の行モデル・実験の割付 API)を -Werror でコンパイル"
 
 # 実際の backend の応答を生成モデルで解析する
 node --no-warnings "$ROOT/tools/android_jvm_fetch.mjs" "$WORK"

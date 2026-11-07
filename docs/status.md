@@ -1,23 +1,20 @@
 # 実装状況報告
 
-状態: Web / Backend の生成と実行、PostgreSQL、OIDC、行レベル認可、影響分析、契約テストまで実装。iOS / Android は生成と部分検証 / 最終更新: 2026-11-03
-全体構成は [architecture.md](architecture.md)。
+状態: Web / Backend の生成と実行、PostgreSQL、OIDC、行レベル認可、影響分析、契約テスト、承認署名、関数・外部関数(TS/Python)・分析(SQL)・拡張部品・A/B 実験まで実装。iOS / Android は生成と CI ビルド / 最終更新: 2026-11-07
+全体構成は [architecture.md](architecture.md)。追補要件(NR-01〜08)は [03_requirements_addendum.md](requirements/03_requirements_addendum.md)。
 
-## 1. 検証結果(2026-11-03)
+## 1. 検証結果(2026-11-07)
 | 検査 | 結果 |
 |---|---|
 | `cargo fmt --check` / `cargo clippy --all-targets -D warnings` | ✅ |
-| `cargo test`(コンパイラ・生成器・CLI・生成コードのゴールデン) | ✅ 98 件 |
-| `tools/validate_schemas.py`(VAG・候補・承認・ロックの実出力) | ✅ |
-| `koto test`(見本アプリの API 契約から導いた契約テスト) | ✅ 13 件 + 業務規則の雛形 5 件(todo) |
-| `tests/e2e/backend.test.ts`(生成 backend を起動) | ✅ 9 件 |
-| `tests/e2e/backend_security.test.ts`(許可・行レベル認可・JWKS・ページング・レート制限・マイグレーション・同時実行) | ✅ 7 件 |
-| `tests/e2e/postgres.test.ts`(生成 backend を PostgreSQL 16 で起動) | ✅ 5 件 |
-| `tests/e2e/web.test.ts`(Chromium で操作・axe-core 監査) | ✅ 9 件 |
-| `tests/e2e/oidc.test.ts`(模擬 IdP での OIDC ログイン → 購入) | ✅ 2 件 |
-| `tools/mobile-syntax/run.sh`(生成 Swift 3 / Kotlin 5 ファイルの構文検査) | ✅ 8 ファイル |
-| `tools/verify_android_jvm.sh`(Android 非 UI 層を kotlinc `-Werror` でコンパイルし、実 API 応答を解析) | ✅ |
-| iOS のコンパイル・Compose 画面のビルド | ✅ GitHub Actions の `ios-build`(macOS 15 / Xcode、iOS シミュレータ向け)と `android-build`(`gradle :app:assembleDebug`)で成功(2026-11-06) |
+| `cargo test`(コンパイラ・生成器・CLI・生成コードのゴールデン・拡張の負例・乱数入力の堅牢性) | ✅ 116 件 |
+| `tools/validate_schemas.py`(VAG・候補・承認・ロックの実出力。拡張を含む examples/lab も) | ✅ |
+| `koto test`(examples/shop・examples/lab の API 契約から導いた契約テスト) | ✅ 13 件 / 14 件 + 業務規則の雛形(todo) |
+| `tests/e2e/*.test.ts`(backend・セキュリティ・PostgreSQL 16・web(Chromium・axe-core)・OIDC・拡張) | ✅ 42 件(PostgreSQL ありで実行) |
+| `tests/e2e/extensions.test.ts`(TS/Python 外部関数・戻り値の型検証・分析・実験・Web の変種表示・PostgreSQL) | ✅ 7 件 |
+| `tools/mobile-syntax/run.sh`(shop・lab の生成 Swift / Kotlin と拡張部品の構文検査) | ✅ |
+| `tools/verify_android_jvm.sh`(Android 非 UI 層を kotlinc `-Werror` でコンパイルし、実 API 応答を解析。lab の分析行モデル・実験 API も) | ✅ |
+| iOS のコンパイル・Compose 画面のビルド | CI の `ios-build` / `android-build`(shop・lab のマトリクス)で確認。この開発環境では Swift / Android SDK が無いため未検証 |
 
 ## 2. 実装済み
 - **コンパイラ**: 字句 → 構文 → 型 → 知識 → 意図(承認適用)→ 効果/Capability → VAG → ロック → App IR → 4 ターゲット生成。`koto init/fmt/check/resolve/approve/graph/build/test/impact/doctor`
@@ -27,6 +24,9 @@
 - **iOS**: SwiftUI の画面・モデル・API クライアント・Keychain・ログイン・XcodeGen 定義(構文検査のみ)
 - **Android**: Compose の画面・モデル・API クライアント・Keystore 暗号化トークン・Gradle 定義(構文検査 + 非 UI 層のコンパイルと実応答の解析)
 - **影響分析**: `koto impact <名前>` / `koto impact --base <旧 VAG>`(AT-08)
+- **言語の拡張(NR-04〜08)**: `関数`(副作用なし)・組込み関数、`外部関数`(TypeScript / Python。戻り値は実行時にも型検査、宣言効果は動作の効果検査へ)、`分析`(読み取り専用 SQL。コンパイル時の構文検査と実行時の読み取り専用取引)、`部品`(Web / iOS / Android の手書き UI)、`実験`(A/B テスト: 決定的割付・露出・成果・z 検定の結果 API)。実装ファイルは内容のハッシュで VAG とロックに固定(ADR-0122〜0125)
+- **セキュリティ(NR-02/03)**: 痕跡を出さない応答、セキュリティヘッダ、認証失敗の遮断、slowloris 対策、本番モードの設定検査、監査ログ、承認の Ed25519 署名と信頼鍵、SBOM、cargo audit / npm audit / CodeQL
+- **日本語での使いやすさ(NR-01)**: 診断の行抜粋、`koto explain`、`koto fmt --zenkaku`、IME の Enter 誤送信防止、全角数字の受付、日本語チュートリアル
 
 ### 受入テストの状況
 | ID | 状況 |
@@ -44,7 +44,9 @@
 | デザイントークン | FR-015 |
 | 定期処理・外部 SDK・オフライン同期 | FR-021〜023(P2) |
 | モバイルの OIDC ログイン・トークン更新 | ADR-002 の未決 |
-| 承認の署名検証 | ADR-007(承認入りの `--locked` ビルドは拒否のまま) |
+| 外部関数のサンドボックス(OS レベルの隔離) | ADR-0124 の未決(現状は信頼したコードをハッシュで固定) |
+| 分析 SQL の方言差の吸収・非同期実行 | ADR-0125 の未決 |
+| 実験の逐次検定・多重比較の補正、終了手順 | ADR-0122 の未決 |
 | 実 AI プロバイダとの接続 | ADR-006 |
 | 組織・テナント単位の認可、本人限定データの集計 | ADR-0118 の未決 |
 | 分岐網羅率の計測 | NFR-003 |
@@ -69,10 +71,14 @@
 | K-15 | 低 | 新規 | レート制限はプロセス内のメモリで数える(複数インスタンス間では共有しない) |
 | K-16 | 低 | 新規 | Web の一覧は 101 件目以降を表示する UI が無い |
 | K-17 | 中 | 新規 | iOS/Android は CI でビルドまで。シミュレータ/エミュレータ上の UI テスト(XCUITest / Compose UI テスト)は未実装 |
+| K-19 | 低 | 新規 | 実験の結果 API の p 値は固定標本の z 検定。途中で何度も見て止めると誤判定が増える(結果に注意書きを付ける) |
+| K-20 | 低 | 新規 | 拡張部品の iOS / Android 実装は CI のビルドでのみ確認(この環境では未コンパイル) |
+| K-21 | 低 | 制約 | 分析の SQL は SQLite と PostgreSQL の両方で動く書き方が必要(識別子は二重引用符) |
 | K-18 | 中 | **解消** | Node 22.18 の node:sqlite が番号付きプレースホルダ(`?1`)で失敗する問題。SQLite 接続では位置指定の `?` に変換して渡す |
 
 ## 5. 次の作業
 1. iOS/Android のシミュレータ上の UI テスト(K-17)
 2. モバイルの OIDC ログイン(ASWebAuthenticationSession / Custom Tabs)
-3. 承認署名(ADR-007)、LSP(FR-017)、生成コードの行対応(FR-018)
-4. 未承認の ADR(0101〜0119)のレビューと確定
+3. LSP(FR-017)、生成コードの行対応(FR-018)、Web 一覧の続き表示(K-16)
+4. 外部関数の隔離方式・分析の方言差・実験の逐次検定(ADR-0122/0124/0125 の未決)
+5. 未承認の ADR(0101〜0125)のレビューと確定

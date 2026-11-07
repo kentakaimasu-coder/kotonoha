@@ -36,3 +36,5 @@
 | [ADR-0121](ADR-0121-japanese-usability.md) | 日本人の利用者のための使いやすさ | 提案(実装) | |
 | [ADR-0122](ADR-0122-experiments.md) | 実験(A/B テスト) | 提案(実装) | |
 | [ADR-0123](ADR-0123-extension-components.md) | 拡張部品 | 提案(実装) | |
+| [ADR-0124](ADR-0124-functions-and-externals.md) | 関数・組込み関数・外部関数(TypeScript / Python) | 提案(実装) | 外部コードの隔離方式 |
+| [ADR-0125](ADR-0125-analysis-sql.md) | 分析(読み取り専用 SQL) | 提案(実装) | SQL 方言差の吸収 |

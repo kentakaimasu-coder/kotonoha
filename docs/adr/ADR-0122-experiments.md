@@ -15,7 +15,15 @@
 
 ## 意味
 - 割付: `SHA-256(実験名 + ":" + 利用者 ID)` の先頭 8 バイトを 100 で割った余りで決める(決定的。同じ利用者には常に同じ変種)
-- 利用者 ID: 匿名 ID(Web は HttpOnly Cookie、モバイルは端末内の UUID。`X-Anon-Id` で backend へ)を優先し、無ければ認証主体の sub
+- 対象者 ID: 端末の匿名 ID(Web は HttpOnly Cookie `vid` / 本番 `__Host-vid`、モバイルは端末内の UUID。`X-Koto-Subject` ヘッダで backend へ)を優先し、無ければ認証主体の sub。同じ端末ならログイン前の露出とログイン後の成果が結び付く
 - 露出: 変種を返した時点で記録(利用者ごとに初回のみ)。成果: `成果` の動作が成功した時に記録(利用者ごとに初回のみ)
-- 結果: 変種ごとの露出数・成果数・成果率と、対照群との差の両側 p 値(2 標本比率の z 検定)。`GET /api/experiments/{名前}/results`、許可 `実験.閲覧`
+- 結果: 変種ごとの露出数・成果数・成果率と、対照群との差の両側 p 値(2 標本比率の z 検定)。`GET /api/experiments/{名前}/results`、許可 `実験.結果`
 - 匿名 ID は利用者が変えられるため、結果は統計目的に限る(認可には使わない)
+
+## 実装(2026-11-07)
+- コンパイラ: `crates/ext`(`resolve_experiments`・`assign`)。VAG の `extensions.experiments` に記録
+- backend: `POST /api/experiments/{名前}/assign`(誰でも。本文 `{subject?}`)、`GET /api/experiments/{名前}/results`(許可 `実験.結果`)。表 `_exp_exposure` / `_exp_conversion`(起動時に作成)。成果は `成果` の動作の成功時に、露出済みの対象者だけ 1 回数える
+- Web: SSR 時に割付 API を呼んで変種を決める(ハイドレーション後も表示は変わらない)。割付に失敗したら対照群を表示し、露出は記録しない(結果は偏らない)
+- iOS / Android: 画面の読み込み時に割付 API を呼ぶ(`api.variant`)
+- 割付の計算は Rust(コンパイラ)と TypeScript(backend)で同じ値になることをテストで確認(TC-NR08-1)
+- 未決定: 多重比較・逐次検定の補正(現状は注意書きのみ)、実験の終了・勝者の固定の手順

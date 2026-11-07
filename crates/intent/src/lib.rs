@@ -52,6 +52,16 @@ pub enum IntentKind {
         #[serde(serialize_with = "ser_args")]
         args: Vec<Expr>,
     },
+    /// P-COMPONENT `{部品}(引数, …)を表示`(ADR-0123)
+    #[serde(rename = "component")]
+    Component {
+        component: String,
+        #[serde(serialize_with = "ser_args")]
+        args: Vec<Expr>,
+    },
+    /// P-ANALYSIS `{分析}を表示`(引数なしの分析。ADR-0125)
+    #[serde(rename = "analysis")]
+    Analysis { analysis: String },
     /// P-FORM `{動作}のフォームを表示`(ADR-0115 提案)
     #[serde(rename = "form")]
     Form { action: String },
@@ -473,6 +483,42 @@ impl Ctx<'_> {
             }
         }
         if let Some(x) = s.strip_suffix("を表示") {
+            // P-COMPONENT
+            if let Some(open) = x.find('(') {
+                let name = &x[..open];
+                if let Some(sig) = self.env.externals.get(name) {
+                    if sig.kind == kotonoha_ast::ExternalKind::Component && x.ends_with(')') {
+                        let base = Span::new(span.file, span.line, span.column, span.start, span.end);
+                        return match kotonoha_parser::parse_expr_str(x, base) {
+                            Ok(Expr {
+                                kind: ExprKind::Call { args, .. },
+                                ..
+                            }) => Match::Ok(IntentKind::Component { component: name.into(), args }),
+                            Ok(_) => Match::Invalid(Diagnostic::error(Code::SYN001, span, "部品は `部品名(引数)を表示` の形で書きます")),
+                            Err(d) => Match::Invalid(d),
+                        };
+                    }
+                }
+            }
+            // P-ANALYSIS
+            if let Some(sig) = self.env.externals.get(x) {
+                return match sig.kind {
+                    kotonoha_ast::ExternalKind::Analysis if sig.params.is_empty() => Match::Ok(IntentKind::Analysis { analysis: x.into() }),
+                    kotonoha_ast::ExternalKind::Analysis => Match::Invalid(Diagnostic::error(
+                        Code::TYP001,
+                        span,
+                        format!("分析 `{x}` は引数を取るため画面に直接は表示できません(引数なしの分析だけ表示できます)"),
+                    )),
+                    kotonoha_ast::ExternalKind::Component => {
+                        Match::Invalid(Diagnostic::error(Code::SYN001, span, format!("部品は `{x}(引数)を表示` の形で書きます")))
+                    }
+                    kotonoha_ast::ExternalKind::Function => Match::Invalid(Diagnostic::error(
+                        Code::TYP001,
+                        span,
+                        format!("外部関数 `{x}` は画面に表示できません(動作の中で呼びます)"),
+                    )),
+                };
+            }
             // P-FORM
             if let Some(a) = x.strip_suffix("のフォーム") {
                 if self.env.actions.contains_key(a) {
@@ -629,8 +675,22 @@ impl Ctx<'_> {
         for s in &self.model.screens {
             let vars: Vec<(String, Type)> = s.input.iter().map(|d| (d.clone(), Type::Data(d.clone()))).collect();
             for i in &s.intents {
-                if let IntentKind::ButtonInvoke { action, args, .. } = &i.kind {
-                    let Some(sig) = self.env.actions.get(action) else { continue };
+                let (action, args, params) = match &i.kind {
+                    IntentKind::ButtonInvoke { action, args, .. } => match self.env.actions.get(action) {
+                        Some(sig) => (action, args, sig.params.clone()),
+                        None => continue,
+                    },
+                    IntentKind::Component { component, args } => match self.env.externals.get(component) {
+                        Some(sig) => (component, args, sig.params.clone()),
+                        None => continue,
+                    },
+                    _ => continue,
+                };
+                {
+                    struct Sig {
+                        params: Vec<(String, Type)>,
+                    }
+                    let sig = Sig { params };
                     if sig.params.len() != args.len() {
                         self.diags.push(Diagnostic::error(
                             Code::TYP001,

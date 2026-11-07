@@ -114,6 +114,35 @@ pub fn build_vag(inp: &GraphInput, status: Status) -> Value {
                             json!({"event": "tap", "data": data, "to": format!("screen.{screen}")}),
                         )
                     }
+                    IntentKind::Component { component, args } => {
+                        let args: Vec<String> = args.iter().map(kotonoha_parser::printer::expr_str).collect();
+                        (
+                            "display",
+                            component.clone(),
+                            vec![],
+                            vec![],
+                            vec![],
+                            vec![],
+                            vec![],
+                            json!({"ui": "component", "component": component, "args": args}),
+                        )
+                    }
+                    IntentKind::Analysis { analysis } => {
+                        let sig = &env.externals[analysis];
+                        let o = sig.ret.as_ref().map(tstr).unwrap_or_default();
+                        outputs.push(o.clone());
+                        let caps: Vec<String> = sig.tables().iter().map(|t| format!("{t}.read")).collect();
+                        (
+                            "query",
+                            analysis.clone(),
+                            vec![],
+                            vec![o],
+                            vec!["data.read"],
+                            caps,
+                            vec![],
+                            json!({"ui": "table", "analysis": analysis}),
+                        )
+                    }
                     IntentKind::Form { action } => {
                         edges.insert((i.id.clone(), format!("action.{action}"), "invokes".into()));
                         edges.insert((sid.clone(), format!("action.{action}"), "invokes".into()));

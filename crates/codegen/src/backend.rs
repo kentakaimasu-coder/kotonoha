@@ -6,6 +6,7 @@ use crate::ts::{js_str, mangle, TsGen};
 use crate::GeneratedFile;
 use kotonoha_ast::OpKind;
 use kotonoha_diag::Diagnostic;
+use kotonoha_ext::Lang;
 use kotonoha_types::Type;
 use serde_json::json;
 
@@ -15,6 +16,8 @@ pub const AUTH_TS: &str = include_str!("../../../runtime/backend/auth.ts");
 /// PostgreSQL ドライバ(任意依存。KOTONOHA_DB=postgres://… のときだけ読み込む)。固定版(SEC-07)
 pub const PG_VERSION: &str = "8.16.3";
 pub const SERVER_TS: &str = include_str!("../../../runtime/backend/server.ts");
+pub const EXT_TS: &str = include_str!("../../../runtime/backend/ext.ts");
+pub const PYWORKER_PY: &str = include_str!("../../../runtime/backend/pyworker.py");
 
 const MAIN_TS: &str = r#"// 生成物: KOTONOHA backend の起動点
 import { openDb } from "./runtime/db.ts";
@@ -149,7 +152,27 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
     }
     let mut g = String::new();
     g.push_str("// このファイルは koto build --target backend が生成しました。手で編集しないでください(正本は KOTONOHA ソース)。\n");
-    g.push_str("import * as rt from \"./runtime/rt.ts\";\nimport * as db from \"./runtime/db.ts\";\nimport type { Ctx } from \"./runtime/db.ts\";\nimport type { App, Route } from \"./runtime/server.ts\";\n\n");
+    g.push_str("import * as rt from \"./runtime/rt.ts\";\nimport * as db from \"./runtime/db.ts\";\nimport type { Ctx } from \"./runtime/db.ts\";\nimport type { App, Route } from \"./runtime/server.ts\";\n");
+    if !ir.ext.functions.is_empty() || !ir.ext.analyses.is_empty() || !ir.ext.experiments.is_empty() {
+        g.push_str("import * as ext from \"./runtime/ext.ts\";\n");
+    }
+    let mut ext_files: Vec<GeneratedFile> = Vec::new();
+    for (i, f) in ir.ext.functions.iter().enumerate() {
+        match f.lang {
+            Lang::TypeScript => {
+                g.push_str(&format!("import * as ext_{i} from {};\n", js_str(&format!("./ext/{}", f.file.path))));
+                if !ext_files.iter().any(|x| x.path == format!("src/ext/{}", f.file.path)) {
+                    ext_files.push(GeneratedFile::text(&format!("src/ext/{}", f.file.path), f.file.content.clone()));
+                }
+            }
+            Lang::Python => {
+                if !ext_files.iter().any(|x| x.path == format!("ext/{}", f.file.path)) {
+                    ext_files.push(GeneratedFile::text(&format!("ext/{}", f.file.path), f.file.content.clone()));
+                }
+            }
+        }
+    }
+    g.push('\n');
 
     // スキーマ
     let mut ents = serde_json::Map::new();
@@ -225,8 +248,54 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
         ));
     }
 
-    // 動作
+    // 関数(副作用なし)
     let mut tg = TsGen::new(ir);
+    for f in &ir.functions {
+        g.push_str(&format!("// 関数 {}\n", f.name));
+        g.push_str(&tg.function(&f.name, &f.params, &f.body));
+        g.push('\n');
+    }
+    // 外部関数(入出力はワイヤ形式。戻り値は宣言型で検証する)
+    for (i, f) in ir.ext.functions.iter().enumerate() {
+        let ps: Vec<String> = f.params.iter().map(|(n, _)| mangle("v_", n)).collect();
+        let pw: Vec<String> = f
+            .params
+            .iter()
+            .map(|(_, t)| serde_json::to_string(&wire_type(t).unwrap_or(serde_json::Value::Null)).unwrap())
+            .collect();
+        let rw = serde_json::to_string(&wire_type(&f.ret).unwrap_or(serde_json::Value::Null)).unwrap();
+        let imp = match f.lang {
+            Lang::TypeScript => format!("(w) => (ext_{i} as any)[{n}](...w)", n = js_str(&f.name)),
+            Lang::Python => format!("(w) => ext.callPython({}, {}, w)", js_str(&format!("ext/{}", f.file.path)), js_str(&f.name)),
+        };
+        g.push_str(&format!(
+            "// 外部関数 {} ({}, sha256 {})\nasync function {}(ctx: Ctx{}{}): Promise<any> {{\n  void ctx;\n  return ext.callExternal({}, [{}], [{}], {rw}, schema, {imp});\n}}\n\n",
+            f.name,
+            f.file.path,
+            &f.file.sha256[..12],
+            mangle("ex_", &f.name),
+            if ps.is_empty() { "" } else { ", " },
+            ps.iter().map(|p| format!("{p}: any")).collect::<Vec<_>>().join(", "),
+            js_str(&f.name),
+            ps.join(", "),
+            pw.join(", "),
+        ));
+    }
+    // 実験
+    if !ir.ext.experiments.is_empty() {
+        let xs: Vec<serde_json::Value> = ir
+            .ext
+            .experiments
+            .iter()
+            .map(|x| json!({"name": x.name, "variants": x.variants, "weights": x.weights, "goal": x.goal}))
+            .collect();
+        g.push_str(&format!(
+            "const experiments: ext.Experiment[] = {};\n\n",
+            serde_json::to_string_pretty(&xs).unwrap()
+        ));
+    }
+
+    // 動作
     for a in &ir.actions {
         g.push_str(&format!(
             "// 動作 {}  必要: [{}]\n",
@@ -284,8 +353,56 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
                     }
                 }
             }
+            EndpointKind::Analysis { analysis } => {
+                let a = ir.ext.analyses.iter().find(|x| &x.name == analysis).unwrap();
+                let keys: Vec<String> = a.params.iter().map(|(n, _)| js_str(n)).collect();
+                let decs: Vec<String> = a
+                    .params
+                    .iter()
+                    .map(|(n, t)| {
+                        let w = serde_json::to_string(&wire_type(t).unwrap_or(serde_json::Value::Null)).unwrap();
+                        format!("db.toSql(rt.decodeInput(ext.fromQuery(req.query.get({k}), {w}), {w}, schema, {k}), {w})", k = js_str(n))
+                    })
+                    .collect();
+                let cols: Vec<serde_json::Value> = match &a.ret {
+                    Type::List(r) => match r.as_ref() {
+                        Type::Record(fs) => fs.iter().map(|(n, t)| json!({"name": n, "type": wire_type(t).unwrap_or(serde_json::Value::Null)})).collect(),
+                        _ => vec![],
+                    },
+                    _ => vec![],
+                };
+                let row_wire = match &a.ret {
+                    Type::List(r) => wire_type(r).unwrap_or(serde_json::Value::Null),
+                    _ => serde_json::Value::Null,
+                };
+                format!(
+                    "async (ctx, req) => {{\n      const extra = [...req.query.keys()].filter((k) => ![{keys}].includes(k));\n      if (extra.length > 0) throw new rt.HttpError(400, \"invalid_input\", `未知の引数: ${{extra.join(\", \")}}`);\n      const params = [{decs}];\n      const rows = await ext.runAnalysis(ctx, ctx.db, {sql}, params, {cols});\n      const w: any = {rw};\n      return {{ status: 200, body: rows.map((r) => rt.encode(r, w, schema)) }};\n    }}",
+                    keys = keys.join(", "),
+                    decs = decs.join(", "),
+                    sql = js_str(&a.sql),
+                    cols = serde_json::to_string(&cols).unwrap(),
+                    rw = serde_json::to_string(&row_wire).unwrap(),
+                )
+            }
+            EndpointKind::ExperimentAssign { experiment } => {
+                let i = ir.ext.experiments.iter().position(|x| &x.name == experiment).unwrap();
+                format!("async (ctx, req) => ({{ status: 200, body: await ext.assign(ctx, experiments[{i}], req.body) }})")
+            }
+            EndpointKind::ExperimentResults { experiment } => {
+                let i = ir.ext.experiments.iter().position(|x| &x.name == experiment).unwrap();
+                format!("async (ctx) => ({{ status: 200, body: await ext.results(ctx, experiments[{i}]) }})")
+            }
             EndpointKind::Action { action } => {
                 let a = ir.actions.iter().find(|x| &x.name == action).unwrap();
+                let goals: Vec<usize> = ir.ext.experiments.iter().enumerate().filter(|(_, x)| &x.goal == action).map(|(i, _)| i).collect();
+                let convert = if goals.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        "\n      await ext.convert(ctx, [{}]);",
+                        goals.iter().map(|i| format!("experiments[{i}]")).collect::<Vec<_>>().join(", ")
+                    )
+                };
                 let args: Vec<String> = a
                     .params
                     .iter()
@@ -298,12 +415,13 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
                 };
                 let keys: Vec<String> = a.params.iter().map(|(n, _)| js_str(n)).collect();
                 format!(
-                    "async (ctx, req) => {{\n      const b = req.body as Record<string, unknown>;\n      if (b === null || typeof b !== \"object\" || Array.isArray(b)) throw new rt.HttpError(400, \"invalid_input\", \"本文はオブジェクトです\");\n      const extra = Object.keys(b).filter((k) => ![{keys}].includes(k));\n      if (extra.length > 0) throw new rt.HttpError(400, \"invalid_input\", `未知の項目: ${{extra.join(\", \")}}`);\n      const v = await {f}(ctx{sep}{args});\n      return {{ status: 200, body: {{ ok: rt.encode(v, {w}, schema) }} }};\n    }}",
+                    "async (ctx, req) => {{\n      const b = req.body as Record<string, unknown>;\n      if (b === null || typeof b !== \"object\" || Array.isArray(b)) throw new rt.HttpError(400, \"invalid_input\", \"本文はオブジェクトです\");\n      const extra = Object.keys(b).filter((k) => ![{keys}].includes(k));\n      if (extra.length > 0) throw new rt.HttpError(400, \"invalid_input\", `未知の項目: ${{extra.join(\", \")}}`);\n      const v = await {f}(ctx{sep}{args});{convert}\n      return {{ status: 200, body: {{ ok: rt.encode(v, {w}, schema) }} }};\n    }}",
                     keys = keys.join(", "),
                     f = mangle("act_", action),
                     sep = if args.is_empty() { "" } else { ", " },
                     args = args.join(", "),
                     w = serde_json::to_string(&ok_wire).unwrap(),
+                    convert = convert,
                 )
             }
         };
@@ -338,7 +456,7 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
         "# {name} backend(KOTONOHA 生成物)\n\nNode.js 22.18 以上。SQLite だけなら依存パッケージなし。PostgreSQL を使う場合は `npm install`(任意依存の pg)。\n\n```bash\nexport KOTONOHA_JWT_SECRET=...(32 文字以上。秘密管理から注入)\nnpm run seed -- seed.json   # 任意\nnpm start                   # http://127.0.0.1:8787\n```\n\n環境変数: PORT, KOTONOHA_HOST, KOTONOHA_DB(SQLite のパス または postgres://…), KOTONOHA_JWT_SECRET, KOTONOHA_JWKS_FILE / KOTONOHA_JWKS_JSON / KOTONOHA_JWKS_URL, KOTONOHA_JWT_ISSUER, KOTONOHA_JWT_AUDIENCE, KOTONOHA_CAPS_CLAIM, KOTONOHA_ROLES_CLAIM, KOTONOHA_ROLE_MAP, KOTONOHA_RATE_LIMIT_PER_MINUTE, KOTONOHA_PG_POOL\n\nAPI 契約: api.json。意味グラフ: vag.json。\n",
         name = ir.name
     );
-    Ok(vec![
+    let mut out = vec![
         GeneratedFile::text("package.json", serde_json::to_string_pretty(&pkg).unwrap() + "\n"),
         GeneratedFile::text("sbom.cdx.json", crate::sbom(&ir.name, "backend", &[("npm", "pg", PG_VERSION)])),
         GeneratedFile::text("README.md", readme),
@@ -355,7 +473,15 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
         GeneratedFile::text("tools/seed.ts", SEED_TS.to_string()),
         GeneratedFile::text("tests/contract.test.ts", CONTRACT_TEST_TS.to_string()),
         GeneratedFile::text("tests/actions.todo.test.ts", action_todos(ir)),
-    ])
+    ];
+    if !ir.ext.functions.is_empty() || !ir.ext.analyses.is_empty() || !ir.ext.experiments.is_empty() {
+        out.push(GeneratedFile::text("src/runtime/ext.ts", EXT_TS.to_string()));
+    }
+    if ir.ext.functions.iter().any(|f| f.lang == Lang::Python) {
+        out.push(GeneratedFile::text("src/runtime/pyworker.py", PYWORKER_PY.to_string()));
+    }
+    out.extend(ext_files);
+    Ok(out)
 }
 
 /// FR-019: 動作の `を確認 または 失敗(…)` から、業務規則のテスト雛形(test.todo)を作る。

@@ -1,0 +1,15 @@
+[package]
+name = "kotonoha-ext"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kotonoha-diag.workspace = true
+kotonoha-ast.workspace = true
+kotonoha-types.workspace = true
+kotonoha-intent.workspace = true
+sqlparser.workspace = true
+sha2.workspace = true
+serde.workspace = true
+serde_json.workspace = true

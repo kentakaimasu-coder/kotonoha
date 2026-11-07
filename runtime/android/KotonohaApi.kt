@@ -73,6 +73,10 @@ class TokenStore(context: Context) {
 
 class KotonohaApi(context: Context, private val base: String) {
     private val store = TokenStore(context)
+    /** 実験(A/B テスト)の匿名の対象者 ID。端末ごとに 1 つ(個人情報は含めない。ADR-0122) */
+    private val subject: String = context.getSharedPreferences("kotonoha", Context.MODE_PRIVATE).let { p ->
+        p.getString("subject", null) ?: java.util.UUID.randomUUID().toString().also { p.edit().putString("subject", it).apply() }
+    }
     var token: String?
         get() = store.load()
         set(v) = store.save(v)
@@ -90,6 +94,7 @@ class KotonohaApi(context: Context, private val base: String) {
             c.connectTimeout = 10_000
             c.readTimeout = 15_000
             token?.let { c.setRequestProperty("Authorization", "Bearer $it") }
+            c.setRequestProperty("X-Koto-Subject", subject)
             if (body != null) {
                 c.doOutput = true
                 c.setRequestProperty("Content-Type", "application/json; charset=utf-8")
@@ -112,6 +117,14 @@ class KotonohaApi(context: Context, private val base: String) {
     suspend fun getArray(segments: List<String>, query: Map<String, String> = emptyMap()): List<JSONObject> {
         val a = JSONArray(send(url(segments, null, query), "GET", null))
         return (0 until a.length()).map { a.getJSONObject(it) }
+    }
+
+    /** 実験の変種を受け取る(失敗したら対照群 = 先頭。露出は記録されないので結果は偏らない) */
+    suspend fun variant(experiment: String, variants: List<String>): String = try {
+        val v = JSONObject(send(url(listOf("api", "experiments", experiment, "assign"), null, emptyMap()), "POST", "{}")).optString("variant")
+        if (v in variants) v else variants[0]
+    } catch (e: Exception) {
+        variants[0]
     }
 
     suspend fun post(action: String, body: Map<String, Any?>): JSONObject {

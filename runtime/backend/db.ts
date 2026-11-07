@@ -31,6 +31,8 @@ export interface Database {
   conn: Conn;
   /** 本体を取引の中で実行する。失敗(例外)ならロールバックして再送出 */
   transaction<T>(body: (c: Conn) => Promise<T>): Promise<T>;
+  /** 読み取り専用で実行する(分析 SQL の多重防御: ADR-0125) */
+  readOnly<T>(body: (c: Conn) => Promise<T>): Promise<T>;
   close(): Promise<void>;
 }
 
@@ -45,6 +47,8 @@ export interface Ctx {
   dirty: Set<Row> | null;
   principal: Principal | null;
   traceId: string;
+  /** 実験の対象者(未認証の利用者の匿名 ID。X-Koto-Subject。ADR-0122) */
+  subject?: string | null;
 }
 
 export interface Principal {
@@ -166,6 +170,15 @@ async function openSqlite(path: string): Promise<Database> {
           throw e;
         }
       }),
+    readOnly: (body) =>
+      lock.run(async () => {
+        raw.exec("PRAGMA query_only = ON");
+        try {
+          return await body(direct);
+        } finally {
+          raw.exec("PRAGMA query_only = OFF");
+        }
+      }),
     close: async () => raw.close(),
   };
 }
@@ -214,6 +227,21 @@ async function openPostgres(url: string): Promise<Database> {
         } finally {
           client.release();
         }
+      }
+    },
+    async readOnly(body) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN TRANSACTION READ ONLY");
+        await client.query(`SET LOCAL statement_timeout = ${Math.max(100, Number(process.env.KOTONOHA_ANALYSIS_TIMEOUT_MS ?? 10000))}`);
+        const r = await body(wrap(client));
+        await client.query("COMMIT");
+        return r;
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => {});
+        throw e;
+      } finally {
+        client.release();
       }
     },
     close: () => pool.end(),
@@ -344,7 +372,7 @@ export function toSql(v: unknown, w: Wire): unknown {
 }
 
 /** DB 値 → 内部値 */
-function fromSql(v: unknown, w: Wire): unknown {
+export function fromSql(v: unknown, w: Wire): unknown {
   if (v === null || v === undefined) return null;
   const b = baseWire(w);
   if (b.kind === "bool") return v !== 0n && v !== 0;

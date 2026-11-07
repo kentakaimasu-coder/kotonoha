@@ -70,6 +70,7 @@ pub fn node_feature(node: &Value) -> (String, String) {
     let feature = match kind.as_str() {
         "screen" => "screen.page".to_string(),
         "display" => format!("ui.{}", node["detail"]["ui"].as_str().unwrap_or("unknown")),
+        "query" if node["detail"]["analysis"].is_string() => "query.analysis".to_string(),
         "query" => "query.ranking".to_string(),
         "navigation" => "nav.select".to_string(),
         "action" => "action.strict".to_string(),
@@ -106,7 +107,9 @@ pub const ALL_FEATURES: &[(&str, &str)] = &[
     ("display", "ui.detail"),
     ("display", "ui.button"),
     ("display", "ui.form"),
+    ("display", "ui.component"),
     ("query", "query.ranking"),
+    ("query", "query.analysis"),
     ("navigation", "nav.select"),
     ("action", "action.strict"),
     ("validation", "policy.public_read"),
@@ -155,11 +158,7 @@ pub fn check_support(t: &dyn Target, vag: &Value) -> Vec<Diagnostic> {
                 Span::default(),
                 format!("ターゲット {} は {k} / {f} に未対応です(例: {ex})", t.kind().as_str()),
             )
-            .hint(match t.kind() {
-                TargetKind::Ios | TargetKind::Android => "モバイル生成は P1(M4)で実装予定です。現在は契約のみです",
-                TargetKind::Web => "Web 生成は M2 で実装予定です(UI フレームワークは ADR-004 で決定)",
-                TargetKind::Backend => "Backend 生成は M2 で実装予定です(現在は知識クエリの SQL 低水準化のみ)",
-            })
+            .hint("このターゲットの生成器は、この機能にまだ対応していません(対応表: docs/spec/targets.md)")
         })
         .collect()
 }

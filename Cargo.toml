@@ -17,7 +17,7 @@ rusqlite = { version = "0.41.1", features = ["bundled"] }
 ed25519-dalek = { version = "2.2.0", features = ["rand_core"] }
 rand_core = { version = "0.6.4", features = ["getrandom"] }
 proptest = "1.12.0"
-sqlparser = "0.63.0"
+sqlparser = { version = "0.63.0", features = ["visitor"] }
 kotonoha-diag = { path = "crates/diag" }
 kotonoha-ast = { path = "crates/ast" }
 kotonoha-lexer = { path = "crates/lexer" }
@@ -31,3 +31,4 @@ kotonoha-lock = { path = "crates/lock" }
 kotonoha-resolver = { path = "crates/resolver" }
 kotonoha-codegen = { path = "crates/codegen" }
 kotonoha-driver = { path = "crates/driver" }
+kotonoha-ext = { path = "crates/ext" }
