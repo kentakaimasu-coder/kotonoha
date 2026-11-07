@@ -164,6 +164,30 @@ pub fn check_support(t: &dyn Target, vag: &Value) -> Vec<Diagnostic> {
         .collect()
 }
 
+/// SBOM(CycloneDX 1.5 JSON)。生成物が依存する外部部品を列挙する(SEC-07 / NR-02)。
+/// 決定的であるため、時刻・乱数(serialNumber)は含めない。
+pub fn sbom(app_name: &str, target: &str, components: &[(&str, &str, &str)]) -> String {
+    let comps: Vec<serde_json::Value> = components
+        .iter()
+        .map(|(eco, name, ver)| {
+            let purl = match *eco {
+                "npm" => format!("pkg:npm/{}@{ver}", name.replace('@', "%40")),
+                "maven" => format!("pkg:maven/{}@{ver}", name.replace(':', "/")),
+                other => format!("pkg:{other}/{name}@{ver}"),
+            };
+            serde_json::json!({"type": "library", "name": name, "version": ver, "purl": purl})
+        })
+        .collect();
+    let v = serde_json::json!({
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.5",
+        "version": 1,
+        "metadata": {"component": {"type": "application", "name": format!("{app_name} ({target})")}},
+        "components": comps,
+    });
+    serde_json::to_string_pretty(&v).unwrap() + "\n"
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,28 +219,4 @@ mod tests {
         }
         assert!(TargetKind::parse("windows").is_none());
     }
-}
-
-/// SBOM(CycloneDX 1.5 JSON)。生成物が依存する外部部品を列挙する(SEC-07 / NR-02)。
-/// 決定的であるため、時刻・乱数(serialNumber)は含めない。
-pub fn sbom(app_name: &str, target: &str, components: &[(&str, &str, &str)]) -> String {
-    let comps: Vec<serde_json::Value> = components
-        .iter()
-        .map(|(eco, name, ver)| {
-            let purl = match *eco {
-                "npm" => format!("pkg:npm/{}@{ver}", name.replace('@', "%40")),
-                "maven" => format!("pkg:maven/{}@{ver}", name.replace(':', "/")),
-                other => format!("pkg:{other}/{name}@{ver}"),
-            };
-            serde_json::json!({"type": "library", "name": name, "version": ver, "purl": purl})
-        })
-        .collect();
-    let v = serde_json::json!({
-        "bomFormat": "CycloneDX",
-        "specVersion": "1.5",
-        "version": 1,
-        "metadata": {"component": {"type": "application", "name": format!("{app_name} ({target})")}},
-        "components": comps,
-    });
-    serde_json::to_string_pretty(&v).unwrap() + "\n"
 }
