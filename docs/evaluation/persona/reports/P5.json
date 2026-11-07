@@ -1,0 +1,57 @@
+{
+  "persona": "P5",
+  "A": {
+    "completed": true,
+    "attempts": 7,
+    "errors": [
+      "最初に backend を 8787 で起動したら EADDRINUSE で落ちた。しかも curl は別のサーバーから返事が来ていて、一瞬自分のが動いたと勘違いした。PORT を変えて解決",
+      "Web のトップ以外の画面を /イベント一覧 で開こうとして『見つかりません』。画面は /s/画面名 だった(トップのリダイレクト先を見て気づいた)",
+      "Web サーバー(3000 相当)経由で Bearer トークン付きで予約 API を叩いたら 403『X-CSRF ヘッダが必要です』。API を直接試すときは backend のポートを使うものだと理解した",
+      "/api/data/イベント/e3 を試すとき、スラッシュごと URL エンコードしてしまい『API がありません』になった(自分のミス)"
+    ],
+    "confusions": [
+      "権限名が、ソースでは『予約.作成 / イベント.読取 / イベント.更新』、JWT では『予約.create / イベント.read / イベント.update』と別の言い方になるのが最初は不安だった(type_system.md を読んで分かった)",
+      "check は 1 回で合格したが、『未認証なら予約不可』と『予約は参加者が本人のものだけ閲覧可』を両方書いてよいのか、仕様の表を見るまで自信がなかった",
+      "会場別集計を『知識』で書くのか『分析(SQL)』で書くのか迷った。チュートリアルの 9.3 を見て分析にした",
+      "イベント登録の『予約数』を 0 で入れるために、アダプタにも予約数の引数を足す必要があるのか分からず、とりあえず足した",
+      "同時予約で定員を超えないことを自分では何も書いていない(取引: に入れただけ)ので、本当に大丈夫か実際に 10 件同時に送って確かめるまで不安だった",
+      "API と画面を同じポートで、という条件に対して backend と web の 2 つのサーバーを起動する必要があり、どちらのポートを採点に使えばいいのか迷った",
+      "web は npm install と npm run build が必要で、backend は不要という違いが最初分からなかった"
+    ],
+    "tool_calls_approx": 14,
+    "sus": [4, 2, 4, 3, 4, 2, 3, 2, 3, 3],
+    "comment": "正直、思ったよりずっと早くできてびっくりしました。お店の例をまねして日本語で書いたら 1 回で検査に通って、エスケープも CSRF も日本時間や ¥ の表示も勝手にやってくれていました。ただ、自分で書いたというより『例をまねしたら動いた』感じなので、例に無いこと(たとえば検索や絞り込み)をやれと言われたら詰まりそうです。どこまでが言語でできて、どこからできないのかがまだ分からないので、仕事で使うには先輩に聞きたいです。",
+    "how_to_run": "cd A && koto -C . check && koto -C . build --target backend --out out/backend && koto -C . build --target web --out out/web; (backend) cd out/backend && export KOTONOHA_JWT_SECRET=<32文字以上> KOTONOHA_DB=<sqliteのパス> && npm run seed -- <seed.json> && PORT=<APIポート> npm start; (web) cd out/web && npm install && npm run build && PORT=<画面ポート> KOTONOHA_BACKEND_URL=http://127.0.0.1:<APIポート> npm start。API は backend のポート(web のポートの /api 経由でも GET は可、POST は X-CSRF 必須)、画面は web のポートの /s/イベント一覧 など。トークンは out/backend で npm run token -- --sub 名前 --caps 動作.予約する"
+  },
+  "B": {
+    "completed": true,
+    "attempts": 4,
+    "errors": [
+      "app.get('/api/data/イベント') と日本語でルートを書いたら 404。届くパスが URL エンコードされたままなので一致しなかった。encodeURI したパスで登録して直した",
+      "テスト用サーバーを止めようとして node server.js を名前で全部 kill しようとしたら止められた(他の人のプロセスまで止めかねない)。ポートから PID を調べて止めた"
+    ],
+    "confusions": [
+      "同時予約で定員を超えない方法が分からなかった。better-sqlite3 は同期だからトランザクションの中は割り込まれないはず、と思ったが自信がなく、念のため UPDATE に『capacity - reserved >= ?』の条件も付けた",
+      "CSRF 対策をどうするか迷った。トークンを localStorage に入れて Authorization ヘッダで送るのでクッキーを使わない=CSRF にならない、と考えたが、これで合っているかは自信がない",
+      "日本時間の表示で toLocaleString の timeZone を使えばよいことを調べた。登録フォームの datetime-local に +09:00 を付けるやり方が正しいか不安",
+      "ログイン(JWT の発行)をどうするかが課題に無く、画面ではトークンを貼り付ける方式にした",
+      "入力の形が不正(400)と業務の失敗(422)の境目をどこにするか自分で決める必要があった"
+    ],
+    "tool_calls_approx": 9,
+    "sus": [3, 3, 3, 3, 3, 2, 3, 3, 3, 2],
+    "comment": "Express はチュートリアルでやったので書き始めは迷いませんでしたが、日本語のパスが一致しないところで少しハマりました。権限チェック、同時予約、エスケープ、CSRF、日本時間などを全部自分で考えないといけなくて、動きはしたけど『本当にこれで安全なのか』は自分では判断できません。レビューしてもらいたいです。",
+    "how_to_run": "事前に cd B && npm install(express / better-sqlite3 / jsonwebtoken)。起動: PORT=3000 KOTONOHA_JWT_SECRET=<秘密> DB_PATH=<sqliteのパス> ./B/start.sh (B/seed.json を投入してから API と画面を同じ PORT で起動)。画面は http://localhost:PORT/ 、ログインは #/login に JWT を貼り付け。テスト用トークンは KOTONOHA_JWT_SECRET=<秘密> node B/token.js <sub> <cap,cap>"
+  },
+  "unmet_requirements": {
+    "A": [
+      "API と画面が同じポートではない(backend と web の 2 プロセス。web のポートの /api はプロキシだが POST には X-CSRF ヘッダが必要)",
+      "予約一覧にイベント名を出していない(イベントIDだけ)"
+    ],
+    "B": [
+      "画面はブラウザの JavaScript で描画しているので、サーバーが返す HTML には一覧のデータが入っていない(エスケープは textContent で対応)",
+      "CSRF はクッキーを使わない方式で回避しているだけで、CSRF トークンなどの対策はしていない。CSP などのセキュリティヘッダも付けていない",
+      "start.sh を何度も実行すると seed のイベントの予約数が初期値に戻る(予約の記録は残るので数が合わなくなる)",
+      "予約一覧にイベント名を出していない(イベントIDだけ)"
+    ]
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "persona": "P3",
+  "A": {
+    "completed": true,
+    "attempts": 6,
+    "errors": [
+      "最初にバックエンドを起動したら EADDRINUSE(ポート 8801 が使用中)で落ちた。別のポートにしたら動いた(KOTONOHA のせいではない)",
+      "check は 1 回で合格して逆に不安になった。本当に定員チェックや権限が効いているか curl で確かめるまで信用できなかった",
+      "初期データの入れ方がチュートリアルに書いてなくて、生成された backend の README を見て npm run seed を見つけた",
+      "seed.json の開始日時(+09:00)が API では UTC(...Z)に変換されて返ってきて、一瞬データが壊れたのかと思った"
+    ],
+    "confusions": [
+      "権限名はソースでは「イベント.読取/作成/更新」と日本語で書くのに、JWT の caps は「イベント.read」と英語。type_system.md を読むまで対応が分からなかった",
+      "「動作.予約する」という権限でも予約できるのが、自分のソースのどこにも書いていないのに効いている(便利だけど仕組みが見えない)",
+      "画面の文がどこまで書けるのか(文型)が intent_patterns.md を読まないと分からない。「会場別の予約状況を表示」を一覧画面に足せるかは例(lab)を真似して当てずっぽう",
+      "backend と web を別々に build・起動し、web には KOTONOHA_BACKEND_URL を渡す、という 2 つのサーバー構成が最初ピンとこなかった",
+      "ログインは npm run token でトークンを作って /login に貼る方式。JWT をよく知らないので、本番で何をすればいいかは分からないまま",
+      "分析の SQL は普段の SQL と同じで書きやすかったが、列名を日本語で \"\" で囲む・AS で戻り値と同じ名前にする、のルールはチュートリアルを見て真似した"
+    ],
+    "tool_calls_approx": 14,
+    "sus": [4, 2, 4, 3, 4, 2, 3, 2, 3, 3],
+    "comment": "日本語で『人数 > 0 を確認 または 失敗(\"人数不正\")』と書くだけで、取引・権限・CSRF・エスケープ・円と日本時間の表示まで勝手にやってくれたのは正直びっくりした。SQL を書く分析も普段の感覚で書けた。ただ、何もしなくても安全になっている分、中で何が起きているのか分からず、curl で確かめないと自信が持てなかった。権限名の日本語と英語の対応や、生成物の起動手順(backend と web の 2 つ)は最初に誰かに教えてほしい。",
+    "how_to_run": "koto=/home/user/kotonoha/target/debug/koto。$koto -C A check && $koto -C A build --target backend --out A/out/backend && $koto -C A build --target web --out A/out/web。backend: cd A/out/backend && export KOTONOHA_JWT_SECRET=<32文字以上> KOTONOHA_DB=<sqliteパス> && npm run seed -- <seed.json の絶対パス> && PORT=8787 npm start。web: cd A/out/web && npm install && npm run build && KOTONOHA_JWT_SECRET=<同じ秘密> KOTONOHA_BACKEND_URL=http://127.0.0.1:8787 PORT=3000 npm start(画面は http://127.0.0.1:3000、API は backend の 8787 か web の /api 経由)。トークンは cd A/out/backend && npm run token -- --sub 利用者 --caps 動作.予約する で作り、画面の /login に貼る"
+  },
+  "B": {
+    "completed": true,
+    "attempts": 3,
+    "errors": [
+      "FastAPI がそもそも入っていなかったので pip install した(fastapi uvicorn jinja2 pyjwt python-multipart)",
+      "FastAPI は入力の形が不正だと 422 を返すが、課題では 400 なので、RequestValidationError のハンドラを自分で足す必要があった",
+      "人数に \"1\" のような文字列が来ても pydantic が勝手に数値にしてしまうので、StrictInt に変えた",
+      "CSRF が何か分からず調べて、Cookie とフォームに同じトークンを入れて比べる方式を真似して書いた。合っているか自信はない",
+      "同時予約で定員を超えない、は SQL の UPDATE ... WHERE 定員 - 予約数 >= 人数 で 1 文にすれば良いと気付いたので、そこは得意分野だった"
+    ],
+    "confusions": [
+      "JWT の検証(アルゴリズム指定・exp 必須)や、401 と 403 の使い分けを自分で全部書く必要があった",
+      "日本語のパス(/api/data/イベント)が URL エンコードで来ても FastAPI がそのまま扱えるのか不安だった(結果的に問題なし)",
+      "画面のログインをどうするか課題に書いていなかったので、JWT を貼り付けて Cookie に入れるフォームにした",
+      "日本時間の表示は zoneinfo、円表示は自分で Jinja のフィルタを作った",
+      "start.sh を毎回実行すると seed のイベントが INSERT OR REPLACE で初期値(予約数)に戻ってしまう。採点で毎回新しい DB_PATH なら問題ないはず"
+    ],
+    "tool_calls_approx": 7,
+    "sus": [4, 2, 4, 2, 4, 2, 3, 2, 4, 3],
+    "comment": "Python と SQL は慣れているので、業務ロジック(同時予約・集計)は自信を持って書けた。一方でセキュリティ部分(JWT 検証・CSRF・権限のチェック)は全部自分で調べて書くしかなく、抜けがあっても自分では気付けないと思う。書いた量は KOTONOHA の何倍もある。",
+    "how_to_run": "事前に pip install fastapi uvicorn jinja2 pyjwt python-multipart。B/seed.json を置いて PORT=8000 KOTONOHA_JWT_SECRET=<秘密> DB_PATH=/path/app.db ./B/start.sh(seed 投入後に uvicorn が API と画面を同じ PORT で起動。画面は / 、ログインは /login に JWT を貼る、自分の予約は /my、イベント登録は /admin/new)"
+  },
+  "unmet_requirements": {
+    "A": [
+      "画面(web)と API(backend)が別のポート・別プロセスになり、1 つのコマンドでまとめて起動する仕組みは用意していない",
+      "イベント登録の参加費がマイナスでも弾いていない(定員だけ確認)"
+    ],
+    "B": [
+      "CSRF 対策・JWT の扱いは調べながら自作したので、本当に十分か自分では判断できない",
+      "start.sh を同じ DB_PATH で再実行すると seed のイベントの予約数が初期値に戻る(予約の記録は残るので食い違う)",
+      "存在しないイベントへの予約は 404 にしたが、課題に指定がないので正解か分からない"
+    ]
+  }
+}

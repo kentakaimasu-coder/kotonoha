@@ -195,7 +195,13 @@ export function createWebServer(
       }
       // API プロキシ
       if (url.pathname.startsWith("/api/")) {
-        if (req.headers["x-csrf"] !== "1") {
+        // Authorization: Bearer を付けた要求(プログラムからの呼出)は Cookie を使わないので CSRF の対象外。
+        // ブラウザは他サイトからこのヘッダを付けられない(CORS の事前確認に応答しないため)
+        const bearer = /^Bearer ([A-Za-z0-9_\-.]{1,8192})$/.exec(String(req.headers.authorization ?? ""))?.[1] ?? null;
+        // CSRF が成り立つのは「Cookie のログインを使った、状態を変える要求」だけ。その場合に限り X-CSRF を求める
+        const cookieAuth = bearer === null && tokenOf(req) !== null;
+        const unsafe = req.method !== "GET" && req.method !== "HEAD";
+        if (cookieAuth && unsafe && req.headers["x-csrf"] !== "1") {
           res.writeHead(403, securityHeaders({ "Content-Type": "application/json" }));
           return res.end(JSON.stringify({ error: "csrf", message: "X-CSRF ヘッダが必要です" }));
         }
@@ -207,7 +213,7 @@ export function createWebServer(
         const body = req.method === "POST" ? await readBody(req) : undefined;
         const headers: Record<string, string> = {};
         if (req.headers["content-type"]) headers["Content-Type"] = String(req.headers["content-type"]);
-        const r = await backendFetch(url.pathname + url.search, { method: req.method, headers, body }, tokenOf(req), traceId, vidOf(req));
+        const r = await backendFetch(url.pathname + url.search, { method: req.method, headers, body }, bearer ?? tokenOf(req), traceId, bearer ? null : vidOf(req));
         const buf = Buffer.from(await r.arrayBuffer());
         res.writeHead(r.status, securityHeaders({ "Content-Type": r.headers.get("content-type") ?? "application/json", "Cache-Control": "no-store" }));
         return res.end(buf);
@@ -249,6 +255,15 @@ export function createWebServer(
         if (typeof t !== "string" || !TOKEN_RE.test(t)) return fail(`${oidc.token} がありません`);
         res.writeHead(303, securityHeaders({ Location: "/", "Set-Cookie": [`${COOKIE}=${t}; HttpOnly; SameSite=Strict; Path=/${secure}`, `${OIDC_COOKIE}=; HttpOnly; Path=/login; Max-Age=0`] }));
         return res.end();
+      }
+      // ログイン・ログアウトの POST を他サイトから送らせない(ログイン CSRF 対策。ペルソナ評価で指摘)
+      if ((url.pathname === "/login" || url.pathname === "/logout") && req.method === "POST") {
+        const origin = req.headers.origin;
+        const site = req.headers["sec-fetch-site"];
+        if ((origin && origin !== "null" && new URL(origin).host !== req.headers.host) || origin === "null" || site === "cross-site") {
+          res.writeHead(403, securityHeaders({ "Content-Type": "text/plain; charset=utf-8" }));
+          return res.end("別のサイトからの要求は受け付けません");
+        }
       }
       if (url.pathname === "/login") {
         if (req.method === "POST") {
@@ -305,7 +320,9 @@ export function createWebServer(
         }
       }
       res.writeHead(404, securityHeaders({ "Content-Type": "text/html; charset=utf-8" }));
-      res.end(page("見つかりません", `<section class="page"><h1>見つかりません</h1><a href="/">トップへ</a></section>`, null));
+      // 画面の URL は /s/画面名(入力のある画面は /s/画面名/ID)。迷ったときのために入口の画面を並べる
+      const links = app.nav.map((n) => `<li><a href="/s/${encodeURIComponent(n)}">${escHtml(n)}</a></li>`).join("");
+      res.end(page("見つかりません", `<section class="page"><h1>見つかりません</h1><p>画面の URL は <code>/s/画面名</code> の形です。</p><ul>${links}</ul><a href="/">トップへ</a></section>`, null));
     } catch (e) {
       process.stdout.write(JSON.stringify({ ts: new Date().toISOString(), level: "error", trace_id: traceId, msg: String((e as Error)?.stack ?? e) }) + "\n");
       if (!res.headersSent) res.writeHead(500, securityHeaders({ "Content-Type": "text/plain; charset=utf-8" }));

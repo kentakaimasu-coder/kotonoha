@@ -112,7 +112,26 @@ npm start                                   # http://127.0.0.1:8787
 cd ../out/web && npm install && npm run build
 KOTONOHA_BACKEND_URL=http://127.0.0.1:8787 npm start   # http://127.0.0.1:3000
 ```
-開発中のログインは、`npm run token -- --sub 山田 --caps 動作.注文する` で作ったトークンを `/login` に貼り付けます。
+### 6.1 初期データを入れる
+```bash
+cd ../out/backend
+npm run seed -- seed.json      # {"商品": [{"ID": "P01", "名前": "緑茶", ...}]} の形。同じ ID は飛ばすので何度実行してもよい
+```
+
+### 6.2 画面を開く・ログインする
+- 画面の URL は `http://127.0.0.1:3000/s/画面名`(入力のある画面は `/s/画面名/ID`)。`/` を開くと最初の画面へ移ります
+- 開発中のログインは、`npm run token -- --sub 山田 --caps 注文.作成,商品.読取` で作ったトークンを `/login` に貼り付けます。
+  権限はソースと同じ日本語(`注文.作成`)でも、API 契約の英語(`注文.create`)でも書けます。動作ごとの許可は `動作.注文する`
+- `npm run token -- --help` で使い方を表示します
+
+### 6.3 API をプログラムから呼ぶ
+画面のサーバー(3000 番)は API も中継するので、**1 つのポートで画面も API も使えます**。
+```bash
+curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"商品ID": "P01", "数量": 1}' "http://127.0.0.1:3000/api/actions/$(node -e 'console.log(encodeURIComponent("注文する"))')"
+```
+日時は ISO 8601 の UTC(`…Z`)で返ります。画面では日本時間で表示されます。
+
 本番では OIDC(社内の認証基盤)でログインします(`KOTONOHA_OIDC_ISSUER` など。docs/architecture.md)。
 
 ## 7. 困ったとき

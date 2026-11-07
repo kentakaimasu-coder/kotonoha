@@ -132,8 +132,16 @@ test("売れ筋画面は権限が無ければ案内を表示し、権限があ�
 });
 
 test("CSRF: X-CSRF なし・別オリジンの API 呼出は拒否", async () => {
-  const r1 = await fetch(webUrl + "/api/actions/" + encodeURIComponent("商品登録"), { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  // CSRF の本体: ログイン Cookie が自動で付く要求に X-CSRF が無ければ拒否
+  const cookie = `sid=${token(["商品.create"])}`;
+  const r1 = await fetch(webUrl + "/api/actions/" + encodeURIComponent("商品登録"), { method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie }, body: "{}" });
   assert.equal(r1.status, 403);
+  // Cookie も Bearer も無い要求は CSRF の対象外(backend が 401 を返す)
+  const r0 = await fetch(webUrl + "/api/actions/" + encodeURIComponent("商品登録"), { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  assert.equal(r0.status, 401);
+  // 他サイトからのログイン POST(ログイン CSRF)は拒否
+  const rl = await fetch(webUrl + "/login", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Origin: "http://evil.example" }, body: "token=" + token([]), redirect: "manual" });
+  assert.equal(rl.status, 403);
   const r2 = await fetch(webUrl + "/api/actions/" + encodeURIComponent("商品登録"), {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-CSRF": "1", Origin: "http://evil.example" },

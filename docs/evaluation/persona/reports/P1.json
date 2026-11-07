@@ -1,0 +1,61 @@
+{
+  "persona": "P1",
+  "A": {
+    "completed": true,
+    "attempts": 6,
+    "errors": [
+      "エラーらしいエラーは出なかった。koto check は 1 回目で合格して、逆に「本当にこれで合ってるの?」と不安になった",
+      "権限の名前が課題文では「予約.create」なのに、チュートリアルは「注文.作成」。日本語の動詞で書けば英語に変わる、というのは文法の資料(type_system.md)を探して初めて分かった",
+      "初期データの入れ方がチュートリアルに無く、生成された backend の README を見て npm run seed を見つけた",
+      "seed すると開始日時が UTC(…T10:00:00.000Z)で返ってくる。間違いではないけど、入れた形(+09:00)と違うので一瞬ドキッとした",
+      "イベント詳細の画面を ?id=e1 で開こうとして「見つかりません」。一覧のリンクを見たら /s/イベント詳細/e1 の形だった",
+      "トークンの作り方(npm run token -- --sub … --caps …)が生成物の中にあり、どこで作るのか最初迷った"
+    ],
+    "confusions": [
+      "画面の文を「決まった文型」で書くと言われても、どの言い回しが通るのか一覧(intent_patterns.md)を見ないと分からない。今回は例をまねたら通った",
+      "厳密: と 取引: の違い、取引: の中に書くと同時予約でも本当に定員を超えないのかは、自分で 10 件同時に送って確かめるまで信じられなかった",
+      "アダプタ(取得/登録)を自分で書く必要がある理由がよく分からない。登録のアダプタには予約数=0 も引数で渡さないといけなかった",
+      "集計は SQL ファイルを別に書く。SQL は得意なので助かったが、知識(売れ筋商品の書き方)と分析(SQL)のどちらを使うべきか迷った",
+      "backend と web が別々のサーバー(8787 と 3000)で、それぞれ npm の手順が違う",
+      "CSRF やエスケープは自分では何もしていないのに対策済みだった。ありがたいが、何がどこで守られているのか自分では説明できない"
+    ],
+    "tool_calls_approx": 16,
+    "sus": [4, 2, 4, 3, 4, 2, 3, 2, 3, 3],
+    "comment": "日本語で書けるのはとても助かった。データ・動作・画面・約束を書いたら、API も画面もログインも CSRF 対策も全部出来上がって、正直びっくりした。Access でフォームを作る感覚に近い。ただ、通る書き方の「型」が決まっていて、例が無いところを自分で書くのは怖い。生成された中身(Node.js や React)は全く読めないので、何かあったら社内では誰も直せない、という不安は残る。",
+    "how_to_run": "KOTONOHA_JWT_SECRET=(32文字以上) [DB_PATH=/path/app.sqlite] [PORT=3000] A/run.sh を実行。中身: koto -C A check → koto -C A build --target backend --out A/out/backend と --target web --out A/out/web → (A/out/backend で) KOTONOHA_DB=$DB_PATH npm run seed -- ../../../seed.json → PORT=8787 npm start(backend)→ (A/out/web で) npm install && npm run build && KOTONOHA_BACKEND_URL=http://127.0.0.1:8787 PORT=3000 npm start。API は backend(8787)直接でも web(3000)の /api 経由でも同じ。web の /api 経由はログイン Cookie+X-CSRF ヘッダが必要。トークンは A/out/backend で npm run token -- --sub 山田 --caps 動作.予約する。"
+  },
+  "B": {
+    "completed": true,
+    "attempts": 4,
+    "errors": [
+      "pip install flask が「blinker が消せない(debian が入れた)」で失敗。ネットで調べて --ignore-installed で入れた",
+      "JWT の検証は PyJWT の使い方をサンプルで調べた。exp や sub が無い時をどう扱うか、401 と 403 をどう分けるかは自分で考えて書いた",
+      "URL に日本語(/api/data/イベント)をそのまま書いて動くか不安だったが、Flask が自動で直してくれた",
+      "同時予約は、まず SELECT して残席を見てから UPDATE しようとしたが、同時に来たら危ないと思い、UPDATE の WHERE に「定員-予約数 >= 人数」を入れる形にした(SQL なら分かる)",
+      "CSRF は「Flask CSRF」で調べて、フォームに隠しトークンを入れてセッションと比べるやり方をまねた。画面の API 呼び出し側の扱いは自信がない"
+    ],
+    "confusions": [
+      "ログインを JWT でと言われても、画面でどうログインさせるのか分からなかった。トークンを貼り付ける画面にした",
+      "日本時間表示・¥1,000 表示はテンプレートのフィルタを自分で作る必要があった",
+      "入力の形が不正(400)と業務の失敗(422)の線引きを自分で決める必要があった",
+      "Flask の開発用サーバー(app.run)のまま動かしている。本番で使ってよいのか分からない"
+    ],
+    "tool_calls_approx": 5,
+    "sus": [3, 2, 3, 3, 3, 2, 3, 2, 2, 4],
+    "comment": "Python は少し触ったことがあるので、何を書いたかは全部自分で説明できる。SQL を直接書けるのは安心。ただ JWT・CSRF・同時予約・エスケープのような安全面は、調べてまねしただけなので本当に大丈夫かは自信がない。見落としがあっても気づけないと思う。",
+    "how_to_run": "事前に pip install flask pyjwt(debian 環境では pip install --ignore-installed blinker flask pyjwt)。B/seed.json を置いて PORT=5000 KOTONOHA_JWT_SECRET=... DB_PATH=/path/app.db B/start.sh。起動時にテーブル作成と seed.json の投入(同じ ID は上書き)をしてから、API と画面を同じ PORT で配信する。画面: / 一覧、/events/<ID> 詳細と予約、/my 自分の予約、/admin/new イベント登録、/venues 会場別集計、/login トークン貼り付け。"
+  },
+  "unmet_requirements": {
+    "A": [
+      "自分で確かめられた範囲では満たしている。ただし API の開始日時は UTC(Z 付き)で返る(ISO 8601 ではある)",
+      "画面での予約ボタンの動作(JavaScript 経由)はブラウザで押しては確かめていない(curl で CSRF が効くことだけ確認)"
+    ],
+    "B": [
+      "Flask の開発用サーバーで起動している(本番用サーバーではない)",
+      "画面のセッション経由で API(/api/actions/…)を呼ぶ場合の CSRF はヘッダかフォームのトークンで見ているが、画面からは API を直接使っていない(フォーム送信のみ)",
+      "存在しないイベント ID への予約は 404 を返す(課題に指定が無く自分で決めた)",
+      "起動のたびに seed.json で同じ ID のイベントを上書きするので、再起動すると seed のイベントの予約数が初期値に戻る",
+      "Bearer の秘密が空でも起動してしまう(秘密の強さを確認していない)"
+    ]
+  }
+}

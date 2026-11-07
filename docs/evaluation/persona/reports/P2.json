@@ -1,0 +1,54 @@
+{
+  "persona": "P2",
+  "A": {
+    "completed": true,
+    "attempts": 7,
+    "errors": [
+      "koto check は 1 回目で合格した。shop の例とほぼ同じ形だったので、写して名前を変えたら通ってしまった",
+      "npm run token -- --help が ERR_PARSE_ARGS_UNKNOWN_OPTION の生スタックトレースで落ちた。使い方はソース先頭のコメントを読んで分かった",
+      "dev-token は秘密が 32 文字未満だと発行を拒否するので、テスト用の短い秘密が使えなかった(仕様としては正しい)",
+      "画面のルート / はリダイレクト(302)で、curl だと最初は何も返ってこないように見えた"
+    ],
+    "confusions": [
+      "backend(API)と web(画面)が別プロセス・別ポートになる。課題の「API と画面を同じ PORT」をどう満たすのか分からなかった。web の /api プロキシは X-CSRF: 1 ヘッダを要求するので、Bearer で直接たたくなら backend のポートを使う必要がある",
+      "初期データの投入は生成物の README を見るまで分からなかった(tools/seed.ts)。同じ DB に 2 回 seed すると INSERT が重複するので、起動スクリプトでは DB が無いときだけ seed するようにした",
+      "開始日時は API で UTC(...Z)に正規化されて返る。ISO 8601 ではあるが、seed の +09:00 表記のままではない",
+      "アダプタの『登録』は必須フィールドを全部引数に取る仕様なので、予約数 0 を引数で渡す必要があった(既定値の書き方が無い)",
+      "生成された『自分の予約』画面はイベント ID をそのまま表示し、イベント名を結合できない。一覧表示の列を選ぶ文型も見つからなかった",
+      "画面名とデータ・動作の名前空間がどう分かれているか自信が無く、画面名を『イベント登録画面』にして衝突を避けた(本当に必要だったかは不明)",
+      "web の /login と /logout の POST には CSRF トークンが無い(SameSite=Strict の Cookie で守っているだけ)。ログイン CSRF は残っているように見える",
+      "同時予約で定員を超えないことを、取引: と生成コードを信じるしかなく、どうロックしているかはソースから読めない(実測では 6 並列で 3 件だけ成功した)"
+    ],
+    "tool_calls_approx": 16,
+    "sus": [4, 2, 4, 2, 4, 2, 3, 2, 3, 3],
+    "comment": "正直、想像よりかなり速く終わった。データ・アダプタ・動作・約束を書けば、認可(caps の OR 条件まで)・401/403/400/422 の振り分け・本人の行だけ見せる・取引・XSS エスケープ・CSRF・¥表記・日本時間表示まで全部生成物がやってくれて、自分で書いたら一番時間がかかるところが要らなかった。ただし shop のサンプルが課題とほぼ同じ形だったから速かった面が大きく、文型から外れたこと(予約一覧にイベント名を出す、列を選ぶ、既定値)をやろうとすると出口が見えない。生成物は 2 プロセス構成で、中身も自分で書いたコードではないので、本番で問題が起きたときに自信を持って追えるかはまだ分からない。",
+    "how_to_run": "K=/home/user/kotonoha/target/debug/koto; $K -C A check; $K -C A build --target backend --out A/out/backend; $K -C A build --target web --out A/out/web; (cd A/out/web && npm install && npm run build); KOTONOHA_JWT_SECRET=<32文字以上> API_PORT=8787 WEB_PORT=3000 [DB_PATH=...] [SEED=../seed.json] A/run.sh  → DB が無ければ seed.json を投入し、API は http://127.0.0.1:8787/api/...(Bearer で直接)、画面は http://127.0.0.1:3000/(ログインは /login にトークンを貼る。web の /api プロキシは Cookie+X-CSRF: 1 用)。開発用トークン: cd A/out/backend && KOTONOHA_JWT_SECRET=... npm run token -- --sub u1 --caps 動作.予約する"
+  },
+  "B": {
+    "completed": true,
+    "attempts": 4,
+    "errors": [
+      "Express 5 で日本語パスのルートをどう書くか少し迷い、encodeURIComponent した文字列でルートを登録した(大文字小文字は Express が区別しないので %e3 でも通る)",
+      "大きなエラーは無し。tsc は一発で通り、API の動作確認と画面の CSRF 確認もそのまま通った"
+    ],
+    "confusions": [
+      "画面のログイン方法が課題に無かったので、JWT を貼り付けるフォームで HttpOnly・SameSite=Strict の Cookie に入れる方式にした",
+      "イベント登録で定員 0 のときの応答コードが仕様に無かったので、422 {error:failure, value:定員不正} にした。存在しないイベントへの予約は 404 にした",
+      "seed をどう扱うか(毎回上書きか、初回だけか)が仕様に無かったので、ID をキーに upsert するようにした"
+    ],
+    "tool_calls_approx": 12,
+    "sus": [4, 2, 4, 1, 4, 2, 3, 2, 5, 2],
+    "comment": "いつもの道具なので迷いは少なかった。認可の OR 条件、BEGIN IMMEDIATE + 条件付き UPDATE での定員チェック、double-submit の CSRF、エスケープ、Intl での ¥ と JST 表示を全部手で書いたので量はそれなりだが、どこで何をしているかは全部自分で説明できる。zod などを入れずに手で入力チェックを書いたので、項目が増えたらつらくなる。",
+    "how_to_run": "事前に: cd B && npm ci && npm run build。起動: PORT=8080 KOTONOHA_JWT_SECRET=<秘密> DB_PATH=/path/to/app.db B/start.sh (B/seed.json を ID キーで upsert してから起動。API と画面は同じ PORT。画面は / 一覧、/events/:id 詳細と予約ボタン、/me/reservations、/events/new、/venues、/login はトークン貼り付け)"
+  },
+  "unmet_requirements": {
+    "A": [
+      "API と画面が同じポートではない(backend と web の 2 プロセス構成。web 側の /api プロキシは X-CSRF ヘッダが必要)",
+      "自分の予約画面にイベント名が出ず、イベント ID が表示される(課題の必須要件ではない)",
+      "画面の予約ボタン・登録フォームはクライアント JS で動く。ブラウザで実際にクリックしての確認はしておらず、同じ経路の API(Cookie+X-CSRF)を curl でたたいて確認しただけ"
+    ],
+    "B": [
+      "画面はブラウザでは確認しておらず、curl で HTML・CSRF・予約の流れを確認しただけ"
+    ]
+  }
+}

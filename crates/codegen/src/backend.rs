@@ -38,18 +38,22 @@ const DEV_TOKEN_TS: &str = r#"// 開発用トークン発行: node tools/dev-tok
 import { parseArgs } from "node:util";
 import { signToken } from "../src/runtime/auth.ts";
 
-const { values } = parseArgs({ options: { sub: { type: "string" }, caps: { type: "string", default: "" }, ttl: { type: "string", default: "3600" } } });
+const { values } = parseArgs({ options: { sub: { type: "string" }, caps: { type: "string", default: "" }, ttl: { type: "string", default: "3600" }, help: { type: "boolean", short: "h" } }, strict: false });
+if (values.help) {
+  console.log("使い方: npm run token -- --sub 利用者ID --caps 予約.作成,イベント.読取 [--ttl 秒]\n  権限は 予約.作成 / 予約.create のどちらの書き方でもよい。秘密は環境変数 KOTONOHA_JWT_SECRET(32 文字以上)");
+  process.exit(0);
+}
 const secret = process.env.KOTONOHA_JWT_SECRET ?? "";
 if (secret.length < 32) {
   console.error("KOTONOHA_JWT_SECRET(32 文字以上)を設定してください");
   process.exit(2);
 }
-if (!values.sub) {
+if (typeof values.sub !== "string" || values.sub === "") {
   console.error("--sub が必要です");
   process.exit(2);
 }
 const now = Math.floor(Date.now() / 1000);
-const caps = values.caps.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+const caps = String(values.caps ?? "").split(",").map((s) => s.trim()).filter((s) => s.length > 0);
 process.stdout.write(signToken({ sub: values.sub, caps, iat: now, exp: now + Number(values.ttl) }, secret) + "\n");
 "#;
 
@@ -67,18 +71,21 @@ if (!file) {
 }
 const data = JSON.parse(readFileSync(file, "utf8"));
 const db = await openDb(process.env.KOTONOHA_DB ?? "data/app.sqlite", tables);
+let added = 0, total = 0;
 await db.transaction(async (c) => {
   for (const [table, rows] of Object.entries(data)) {
     const fields = app.schema.entities[table];
     if (!fields) throw new Error(`未知のデータ ${table}`);
     for (const [i, row] of (rows as Record<string, unknown>[]).entries()) {
       const vals = fields.map((f) => toSql(decodeInput(row[f.name], f.type, app.schema, `${table}[${i}].${f.name}`), f.type));
-      await c.run(`INSERT INTO ${q(table)} (${fields.map((f) => q(f.name)).join(", ")}) VALUES (${fields.map(() => "?").join(", ")})`, vals);
+      // 同じ ID が既にあれば飛ばす(何度実行しても同じ結果になる)
+      added += await c.run(`INSERT INTO ${q(table)} (${fields.map((f) => q(f.name)).join(", ")}) VALUES (${fields.map(() => "?").join(", ")}) ON CONFLICT DO NOTHING`, vals);
+      total += 1;
     }
   }
 });
 await db.close();
-console.log("投入しました");
+console.log(`投入しました(${added} 件追加、${total - added} 件は既にあるので飛ばしました)`);
 "#;
 
 /// FR-019: API 契約から導いた契約テスト(生成物に同梱。`koto test` が実行する)

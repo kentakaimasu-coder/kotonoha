@@ -120,6 +120,8 @@ function verifySignature(alg: unknown, kid: unknown, signingInput: string, sig: 
 }
 
 /** Bearer トークンを検証して主体を返す。不正なら null(呼出側で 401)。 */
+const JA_VERB: Record<string, string> = { 読取: "read", 作成: "create", 更新: "update", 削除: "delete" };
+
 export function verifyToken(token: string, cfg: AuthConfig, nowSec: number = Math.floor(Date.now() / 1000)): Principal | null {
   const parts = token.split(".");
   if (parts.length !== 3) return null;
@@ -149,6 +151,11 @@ export function verifyToken(token: string, cfg: AuthConfig, nowSec: number = Mat
   for (const c of list) if (typeof c === "string" && c.length > 0) caps.add(c);
   const roles = claims[cfg.rolesClaim];
   if (Array.isArray(roles)) for (const r of roles) if (typeof r === "string") for (const c of cfg.roleMap[r] ?? []) caps.add(c);
+  // ソースと同じ日本語の動詞(読取・作成・更新・削除)でも書ける(ペルソナ評価で全員がつまずいた点)
+  for (const c of [...caps]) {
+    const m = /^(.+)\.(読取|作成|更新|削除)$/.exec(c);
+    if (m) caps.add(`${m[1]}.${JA_VERB[m[2]]}`);
+  }
   return { sub: claims.sub, caps };
 }
 
