@@ -129,7 +129,7 @@ test("NR-04 Web: ブラウザで変種のまま購入でき、ハイドレーシ
   assert.equal(await page.textContent("main"), before);
   const label = (await page.textContent("main"))!.includes("今すぐ購入") ? "今すぐ購入" : "購入";
   await page.click(`button:has-text("${label}")`);
-  await page.waitForSelector(".msg");
+  await page.waitForFunction(() => /完了|失敗|必要|権限/.test(document.querySelector(".msg")?.textContent ?? ""), null, { timeout: 15000 });
   assert.match((await page.textContent(".msg"))!, /完了/);
   assert.deepEqual(errors, []);
   await ctx.close();

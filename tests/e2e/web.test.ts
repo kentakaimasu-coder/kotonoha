@@ -158,7 +158,9 @@ test("ADR-0118 注文履歴は本人の注文だけを表示する", async () =>
   await a.goto(webUrl + "/s/" + encodeURIComponent("商品詳細") + "/P01");
   await a.click("text=購入");
   await a.waitForSelector(".msg.ok");
-  assert.match(await a.textContent(".msg.ok"), /結果: [0-9a-f-]{36}/, "K-13 結果の表示");
+  // K-13(改訂): 完了を伝え、自動採番の ID(UUID)は利用者に見せない
+  assert.match(await a.textContent(".msg.ok"), /完了しました/, "K-13 結果の表示");
+  assert.doesNotMatch(await a.textContent(".msg.ok"), /[0-9a-f]{8}-[0-9a-f]{4}-/, "K-13 UUID を出さない");
   await a.goto(webUrl + "/s/" + encodeURIComponent("注文履歴"));
   const mine = await a.locator("table.list tbody tr").count();
   assert.ok(mine >= 1);

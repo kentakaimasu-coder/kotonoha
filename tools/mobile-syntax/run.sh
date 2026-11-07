@@ -11,4 +11,6 @@ rm -rf "$OUT"
 # 拡張部品・分析・実験を含む例
 "$ROOT/target/debug/koto" -C "$ROOT/examples/lab" build --target ios --out "$OUT/lab-ios" >/dev/null 2>&1
 "$ROOT/target/debug/koto" -C "$ROOT/examples/lab" build --target android --out "$OUT/lab-android" >/dev/null 2>&1
+"$ROOT/target/debug/koto" -C "$ROOT/examples/event" build --target ios --out "$OUT/event-ios" >/dev/null 2>&1
+"$ROOT/target/debug/koto" -C "$ROOT/examples/event" build --target android --out "$OUT/event-android" >/dev/null 2>&1
 node "$HERE/check.cjs" $(find "$OUT" -name '*.swift' -o -name '*.kt' | sort)

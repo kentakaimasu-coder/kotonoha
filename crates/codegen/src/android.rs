@@ -324,6 +324,14 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                                 inputs.push(format!("KotonohaUi.EnumPicker({}, {}, {sv}) {{ {sv} = it }}", kstr(n), tn("ENUM_", e)));
                                 pairs.push(format!("{} to {sv}", kstr(n)));
                             }
+                            Type::DateTime => {
+                                state.push(format!("    var {sv} by remember {{ mutableStateOf(\"\") }}"));
+                                inputs.push(format!(
+                                    "OutlinedTextField(value = {sv}, onValueChange = {{ {sv} = it }}, label = {{ Text({}) }}, placeholder = {{ Text(\"例: 2026-12-05 19:00\") }})",
+                                    kstr(n)
+                                ));
+                                pairs.push(format!("{} to Kotonoha.parseDateTime({sv}, {})", kstr(n), kstr(n)));
+                            }
                             Type::Int | Type::Money(_) => {
                                 state.push(format!("    var {sv} by remember {{ mutableStateOf(\"\") }}"));
                                 inputs.push(format!("OutlinedTextField(value = {sv}, onValueChange = {{ {sv} = it }}, label = {{ Text({}) }}, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))", kstr(n)));

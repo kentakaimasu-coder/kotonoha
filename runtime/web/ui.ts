@@ -54,6 +54,8 @@ export interface Init {
   data: Record<string, LoadResult>;
   tz: string;
   nav: string[];
+  /** ログイン中か(表示の切り替えだけに使う。認可は backend が行う) */
+  loggedIn?: boolean;
 }
 
 export function enc(s: string): string {
@@ -83,7 +85,8 @@ export function formatValue(v: unknown, w: Wire, tz: string): string {
     case "bool":
       return v ? "はい" : "いいえ";
     case "datetime":
-      return new Date(v as string).toLocaleString("ja-JP", { timeZone: tz });
+      // 日本の利用者に読みやすい形: 2026年12月5日(土) 19:00(秒は出さない)
+      return new Date(v as string).toLocaleString("ja-JP", { timeZone: tz, year: "numeric", month: "long", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" });
     default:
       return String(v);
   }
@@ -126,6 +129,8 @@ export class ExtBoundary extends React.Component<{ name: string; children?: Reac
 /** 動作の成功結果の表示(K-13)。値が単純なときだけ添える。 */
 export function okText(prefix: string, r: LoadResult): string {
   const v = r.body?.ok;
+  // 自動採番の ID(UUID)は利用者に意味が無いので出さない
+  if (typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return `${prefix}: 完了しました`;
   if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return `${prefix}: 完了しました(結果: ${String(v)})`;
   return `${prefix}: 完了しました`;
 }
@@ -252,7 +257,7 @@ export function normalizeNumber(raw: string): string {
     .replace(/[,、\s]/g, "");
 }
 
-function readForm(form: HTMLFormElement, fields: Field[]): Record<string, unknown> | string {
+function readForm(form: HTMLFormElement, fields: Field[], tz: string): Record<string, unknown> | string {
   const out: Record<string, unknown> = {};
   for (const f of fields) {
     const el = form.elements.namedItem(f.name) as HTMLInputElement | null;
@@ -274,22 +279,46 @@ function readForm(form: HTMLFormElement, fields: Field[]): Record<string, unknow
       if (!Number.isSafeInteger(n)) return `${f.name} は整数で入力してください`;
       out[f.name] = n;
     } else if (base.kind === "datetime") {
-      const t = new Date(raw);
-      if (Number.isNaN(t.getTime())) return `${f.name} の日時が不正です`;
-      out[f.name] = t.toISOString();
+      // 入力欄の日時は、表示と同じアプリの時刻帯(既定 Asia/Tokyo)の時刻として解釈する(ブラウザの時刻帯に依存しない)
+      const iso = zonedToIso(raw, tz);
+      if (iso === null) return `${f.name} の日時が不正です`;
+      out[f.name] = iso;
     } else out[f.name] = raw;
   }
   return out;
 }
 
-export function ActionForm(p: { action: string; fields: Field[]; reload: () => Promise<void> }) {
+function isDatetime(w: Wire): boolean {
+  return w.kind === "datetime" || (w.kind === "optional" && w.of.kind === "datetime");
+}
+function tzLabel(tz: string): string {
+  return tz === "Asia/Tokyo" ? "日本時間" : tz;
+}
+
+/** 「2026-12-28T13:00」を時刻帯 tz の時刻とみなして ISO 8601(UTC)にする */
+export function zonedToIso(local: string, tz: string): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(local);
+  if (!m) return null;
+  const wall = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+  const fmt = new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  const offset = (t: number) => {
+    const parts = fmt.formatToParts(new Date(t));
+    const g = (k: string) => Number(parts.find((x) => x.type === k)?.value);
+    return Date.UTC(g("year"), g("month") - 1, g("day"), g("hour"), g("minute")) - t;
+  };
+  let t = wall - offset(wall);
+  t = wall - offset(t);
+  return Number.isNaN(t) ? null : new Date(t).toISOString();
+}
+
+export function ActionForm(p: { action: string; fields: Field[]; reload: () => Promise<void>; tz?: string }) {
   const [m, setM] = useMessage();
   const [busy, setBusy] = React.useState(false);
   const formId = "form-" + p.action;
   const onSubmit = async (ev: any) => {
     ev.preventDefault();
     const form = ev.currentTarget as HTMLFormElement;
-    const v = readForm(form, p.fields);
+    const v = readForm(form, p.fields, p.tz ?? "Asia/Tokyo");
     if (typeof v === "string") return setM({ kind: "error", text: v });
     setBusy(true);
     try {
@@ -311,7 +340,7 @@ export function ActionForm(p: { action: string; fields: Field[]; reload: () => P
     "form",
     { className: "form", onSubmit, onKeyDown, "aria-labelledby": formId + "-title" },
     h("h2", { id: formId + "-title" }, p.action),
-    p.fields.map((f) => h("div", { className: "field", key: f.name }, h("label", { htmlFor: `${formId}-${f.name}` }, f.name), inputFor(f, `${formId}-${f.name}`))),
+    p.fields.map((f) => h("div", { className: "field", key: f.name }, h("label", { htmlFor: `${formId}-${f.name}` }, f.name, isDatetime(f.type) ? `(${tzLabel(p.tz ?? "Asia/Tokyo")})` : null), inputFor(f, `${formId}-${f.name}`))),
     h("button", { type: "submit", disabled: busy }, "送信"),
     h(MessageView, { m }),
   );
@@ -334,7 +363,7 @@ export function App(p: { init: Init; screens: Record<string, ScreenDef> }) {
       null,
       h("a", { className: "brand", href: "/" }, p.init.appName),
       h("nav", { "aria-label": "画面" }, p.init.nav.map((n) => h("a", { key: n, href: screenHref(n), "aria-current": n === p.init.screen ? "page" : undefined }, n))),
-      h("a", { className: "login", href: "/login" }, "ログイン"),
+      h("a", { className: "login", href: "/login" }, p.init.loggedIn ? "ログイン中" : "ログイン"),
     ),
     h("main", null, h(def.View, { data, id: p.init.id, tz: p.init.tz, reload })),
   );

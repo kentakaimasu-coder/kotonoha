@@ -290,7 +290,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                 Component::Form { action, params } => {
                     let fs: Vec<Value> = params.iter().map(|(n, t)| field_desc(ir, n, t)).collect();
                     body.push(format!(
-                        "h(ActionForm, {{ key: {ci}, action: {}, fields: {}, reload: p.reload }})",
+                        "h(ActionForm, {{ key: {ci}, action: {}, fields: {}, reload: p.reload, tz: p.tz }})",
                         js_str(action),
                         serde_json::to_string(&fs).unwrap()
                     ));

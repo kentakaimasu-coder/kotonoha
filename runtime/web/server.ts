@@ -297,7 +297,7 @@ export function createWebServer(
             extra["Set-Cookie"] = `${VID}=${vid}; HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000${secure}`;
           }
           const data = await load(def, id, tokenOf(req), traceId, vid);
-          const init: Init = { appName: app.appName, screen: def.name, id, data, tz: opts.tz, nav: app.nav };
+          const init: Init = { appName: app.appName, screen: def.name, id, data, tz: opts.tz, nav: app.nav, loggedIn: tokenOf(req) !== null };
           const html = ReactDOMServer.renderToString(h(App, { init, screens: app.screens }));
           const notFound = Object.values(data).some((d) => d.status === 404);
           res.writeHead(notFound ? 404 : 200, securityHeaders({ "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...extra }));

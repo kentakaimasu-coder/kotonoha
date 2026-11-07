@@ -304,6 +304,14 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                                 ));
                                 submit_fields.push(format!("{}: {sv}", bt(n)));
                             }
+                            Type::DateTime => {
+                                state.push(format!("    @State private var {sv} = Date()"));
+                                inputs.push(format!(
+                                    "DatePicker({}, selection: ${sv}).environment(\\.locale, Locale(identifier: \"ja_JP\"))",
+                                    swift_str(n)
+                                ));
+                                submit_fields.push(format!("{}: {sv}", bt(n)));
+                            }
                             Type::Int | Type::Money(_) => {
                                 state.push(format!("    @State private var {sv} = \"\""));
                                 inputs.push(format!("TextField({}, text: ${sv}).keyboardType(.numberPad)", swift_str(n)));

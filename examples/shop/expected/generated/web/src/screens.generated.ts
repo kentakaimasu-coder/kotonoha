@@ -17,7 +17,7 @@ function Screen_商品詳細(p: ScreenProps) {
 
 function Screen_商品管理(p: ScreenProps) {
   return h(Page, { title: "商品管理" },
-    h(ActionForm, { key: 0, action: "商品登録", fields: [{"name":"名前","type":{"kind":"string"}},{"name":"価格","type":{"currency":"JPY","kind":"money","minor_units":0}},{"name":"在庫","type":{"kind":"int"}}], reload: p.reload }),
+    h(ActionForm, { key: 0, action: "商品登録", fields: [{"name":"名前","type":{"kind":"string"}},{"name":"価格","type":{"currency":"JPY","kind":"money","minor_units":0}},{"name":"在庫","type":{"kind":"int"}}], reload: p.reload, tz: p.tz }),
     h(DataList, { key: 1, r: p.data["list:商品"], fields: [{"name":"名前","type":{"kind":"string"}},{"name":"価格","type":{"currency":"JPY","kind":"money","minor_units":0}},{"name":"在庫","type":{"kind":"int"}}], tz: p.tz, caption: "商品の一覧", link: (row: any) => screenHref("商品詳細", row["ID"]) })
   );
 }
