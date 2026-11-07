@@ -129,12 +129,12 @@ test("売れ筋画面は権限が無ければ案内を表示し、権限があ�
   assert.ok((await page.textContent("caption")).includes("売れ筋商品"));
 });
 
-test("CSRF: X-Kotonoha-Request なし・別オリジンの API 呼出は拒否", async () => {
+test("CSRF: X-CSRF なし・別オリジンの API 呼出は拒否", async () => {
   const r1 = await fetch(webUrl + "/api/actions/" + encodeURIComponent("商品登録"), { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
   assert.equal(r1.status, 403);
   const r2 = await fetch(webUrl + "/api/actions/" + encodeURIComponent("商品登録"), {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Kotonoha-Request": "1", Origin: "http://evil.example" },
+    headers: { "Content-Type": "application/json", "X-CSRF": "1", Origin: "http://evil.example" },
     body: "{}",
   });
   assert.equal(r2.status, 403);

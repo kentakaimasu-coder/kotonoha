@@ -2,6 +2,8 @@ name: CI
 on:
   push:
   pull_request:
+permissions:
+  contents: read   # 最小権限(NR-02)
 jobs:
   test:
     strategy:
@@ -96,3 +98,25 @@ jobs:
         working-directory: ${{ runner.temp }}/ios
       - run: xcodebuild -project KotonohaApp.xcodeproj -scheme KotonohaApp -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
         working-directory: ${{ runner.temp }}/ios
+
+  security:
+    # NR-02 / SEC-07 / SEC-10: 依存関係の既知の脆弱性(Rust・生成物の npm)と SBOM の確認
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - run: cargo audit --deny warnings
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.18.0"
+      - run: cargo build --locked
+      - name: 生成物の npm 依存を監査
+        run: |
+          ./target/debug/koto -C examples/shop build --target web --out "$RUNNER_TEMP/web"
+          ./target/debug/koto -C examples/shop build --target backend --out "$RUNNER_TEMP/backend"
+          (cd "$RUNNER_TEMP/web" && npm install --no-audit --no-fund && npm audit --audit-level=moderate)
+          (cd "$RUNNER_TEMP/backend" && npm install --no-audit --no-fund && npm audit --audit-level=moderate)
+          test -s "$RUNNER_TEMP/web/sbom.cdx.json" && test -s "$RUNNER_TEMP/backend/sbom.cdx.json"

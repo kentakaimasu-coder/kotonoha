@@ -290,14 +290,29 @@ pub fn compute_lock(p: &Project, a: &Analysis, approvals: &ApprovalsFile) -> Loc
         targets,
         approved_interpretations: interp,
         approval_reference: ApprovalReference {
-            kind: LocalUnsigned.kind().into(),
+            kind: if !approvals.records.is_empty() && approvals.records.iter().all(|r| r.signature.is_some()) {
+                "ed25519".into()
+            } else {
+                LocalUnsigned.kind().into()
+            },
             records_hash: approvals.records_hash(),
         },
     }
 }
 
 /// `--locked` の検証: ロックの存在・一致・承認の真正性。
+/// `--locked` の検証。`trust` はリポジトリの外から与える信頼鍵(ADR-007)。無ければ承認入りのビルドは拒否する。
 pub fn verify_lock(p: &Project, a: &Analysis, approvals: &ApprovalsFile, lock_text: Option<&str>) -> Vec<Diagnostic> {
+    verify_lock_with(p, a, approvals, lock_text, None)
+}
+
+pub fn verify_lock_with(
+    p: &Project,
+    a: &Analysis,
+    approvals: &ApprovalsFile,
+    lock_text: Option<&str>,
+    trust: Option<&kotonoha_lock::TrustFile>,
+) -> Vec<Diagnostic> {
     let Some(text) = lock_text else {
         return vec![
             Diagnostic::error(Code::LOCK001, Span::default(), format!("{LOCK_FILE} がありません")).hint("koto approve --write-lock でロックを作成してください")
@@ -310,11 +325,15 @@ pub fn verify_lock(p: &Project, a: &Analysis, approvals: &ApprovalsFile, lock_te
     let current = compute_lock(p, a, approvals);
     let mut d = lock.compare(&current);
     if d.is_empty() {
-        if let Authenticity::Unverified { reason } = LocalUnsigned.verify(approvals) {
+        let result = match trust {
+            Some(t) => kotonoha_lock::Ed25519Verifier { trust: t.clone() }.verify(approvals),
+            None => LocalUnsigned.verify(approvals),
+        };
+        if let Authenticity::Unverified { reason } = result {
             d.push(
-                Diagnostic::error(Code::APP001, Span::default(), "承認済み解釈を含むため本番(--locked)ビルドできません")
+                Diagnostic::error(Code::APP001, Span::default(), "承認の真正性を確認できないため本番(--locked)ビルドできません")
                     .hint(reason)
-                    .hint("署名基盤(ADR-007)の決定後に検証器を実装します"),
+                    .hint("承認を koto approve --sign-key で署名し、信頼鍵を --trust <file> または KOTONOHA_TRUST_FILE で渡してください"),
             );
         }
     }

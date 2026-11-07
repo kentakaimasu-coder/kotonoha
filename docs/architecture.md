@@ -82,7 +82,7 @@ docs/spec/compiler.md を参照。VAG までがターゲット非依存の「意
 - React 19 の SSR(`renderToString`)→ ブラウザで `hydrateRoot`。クライアントは esbuild で 1 ファイルにバンドル。依存は react / react-dom / esbuild を固定版で指定。
 - ルート: `/` → 入口画面、`/s/{画面}`、入力のある画面は `/s/{画面}/{id}`。`/login`、`/logout`。
 - ログイン: OIDC 認可コードフロー(PKCE S256・state・nonce。`/login/oidc` → IdP → `/login/callback`)で得たトークンを HttpOnly・SameSite=Strict の Cookie に保存。OIDC 未設定時のみ開発用のトークン貼り付けログイン。
-- `/api/*` は backend へのプロキシ。Cookie のトークンを `Authorization` に載せ替える。CSRF 対策として `X-Kotonoha-Request: 1` を必須にし、`Origin` が異なる要求を拒否する。
+- `/api/*` は backend へのプロキシ。Cookie のトークンを `Authorization` に載せ替える。CSRF 対策として `X-CSRF: 1` を必須にし、`Origin` が異なる要求を拒否する。
 - セキュリティヘッダ: CSP(`script-src 'self'` 等。インラインスクリプトなし)、`X-Frame-Options: DENY`、`nosniff`。初期データは `<script type="application/json">` に `<` `>` `&` をエスケープして埋め込む。React が全テキストをエスケープする(TC-008)。
 - UI: 一覧(表 + 先頭列から詳細へのリンク)、詳細(定義リスト)、集計表、ボタン(実行 → 結果表示 → 画面データ再取得: FR-012)、フォーム(引数の型に応じた入力)。`lang="ja"`、ラベル・`aria-live`・フォーカス表示・44px のタップ領域(NFR-005 の土台。監査は未実施: K-06)。
 

@@ -14,19 +14,32 @@ export interface WebApp {
   screens: Record<string, ScreenDef>;
 }
 
-const COOKIE = "kotonoha_token";
-const OIDC_COOKIE = "kotonoha_oidc";
 const TOKEN_RE = /^[A-Za-z0-9_\-.]{1,4096}$/;
 const MAX_BODY = 64 * 1024;
 
+let hsts = false;
 function securityHeaders(extra: Record<string, string | number | string[]> = {}): Record<string, string | number | string[]> {
   return {
-    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "same-origin",
     "X-Frame-Options": "DENY",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+    ...(hsts ? { "Strict-Transport-Security": "max-age=31536000; includeSubDomains" } : {}),
     ...extra,
   };
+}
+
+/** 本番モード(KOTONOHA_ENV=production)で安全でない設定なら起動しない(NR-02) */
+export function checkWebProductionConfig(env: NodeJS.ProcessEnv, opts: { secureCookie: boolean; devLogin: boolean; oidc: unknown }): string[] {
+  if (env.KOTONOHA_ENV !== "production") return [];
+  const p: string[] = [];
+  if (!opts.secureCookie) p.push("本番では KOTONOHA_COOKIE_SECURE=1(HTTPS)が必要です");
+  if (opts.devLogin) p.push("本番では開発用のトークン貼り付けログインを有効にできません");
+  if (!opts.oidc) p.push("本番では OIDC(KOTONOHA_OIDC_ISSUER など)の設定が必要です");
+  return p;
 }
 
 function escHtml(s: string): string {
@@ -46,6 +59,10 @@ function cookieOf(req: IncomingMessage, name: string): string | null {
   }
   return null;
 }
+
+// Cookie 名に製品名を含めない(NR-03)。HTTPS では __Host- 接頭辞で Secure・Path=/・ドメイン無しを強制する
+let COOKIE = "sid";
+let OIDC_COOKIE = "oauth";
 
 function tokenOf(req: IncomingMessage): string | null {
   const t = cookieOf(req, COOKIE);
@@ -67,7 +84,7 @@ function page(title: string, body: string, initJson: string | null): string {
   return `<!doctype html>
 <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escHtml(title)}</title><link rel="stylesheet" href="/assets/app.css"></head>
-<body><div id="root">${body}</div>${initJson === null ? "" : `<script id="__KOTONOHA_INIT__" type="application/json">${initJson}</script><script type="module" src="/assets/client.js"></script>`}</body></html>`;
+<body><div id="root">${body}</div>${initJson === null ? "" : `<script id="__init__" type="application/json">${initJson}</script><script type="module" src="/assets/client.js"></script>`}</body></html>`;
 }
 
 /** OIDC 認可コードフロー(PKCE)の設定。issuer が無ければ無効(ADR-002) */
@@ -117,6 +134,11 @@ export function createWebServer(
     return d;
   }
   const secure = opts.secureCookie ? "; Secure" : "";
+  COOKIE = opts.secureCookie ? "__Host-sid" : "sid";
+  OIDC_COOKIE = opts.secureCookie ? "__Secure-oauth" : "oauth";
+  hsts = opts.secureCookie;
+  const problems = checkWebProductionConfig(process.env, { secureCookie: opts.secureCookie, devLogin, oidc });
+  if (problems.length > 0) throw new Error(`本番モードの設定に問題があります:\n- ${problems.join("\n- ")}`);
   const assets: Record<string, [string, string]> = {
     "/assets/client.js": ["dist/client.js", "text/javascript; charset=utf-8"],
     "/assets/app.css": ["assets/app.css", "text/css; charset=utf-8"],
@@ -148,7 +170,7 @@ export function createWebServer(
     return out;
   }
 
-  return createServer(async (req: IncomingMessage, res: ServerResponse) => {
+  const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const traceId = crypto.randomUUID();
     const url = new URL(req.url ?? "/", "http://localhost");
     try {
@@ -165,9 +187,9 @@ export function createWebServer(
       }
       // API プロキシ
       if (url.pathname.startsWith("/api/")) {
-        if (req.headers["x-kotonoha-request"] !== "1") {
+        if (req.headers["x-csrf"] !== "1") {
           res.writeHead(403, securityHeaders({ "Content-Type": "application/json" }));
-          return res.end(JSON.stringify({ error: "csrf", message: "X-Kotonoha-Request ヘッダが必要です" }));
+          return res.end(JSON.stringify({ error: "csrf", message: "X-CSRF ヘッダが必要です" }));
         }
         const origin = req.headers.origin;
         if (origin && new URL(origin).host !== req.headers.host) {
@@ -275,4 +297,9 @@ export function createWebServer(
       res.end("内部エラー");
     }
   });
+  // 遅いリクエストで接続を占有させない(slowloris 対策)
+  server.headersTimeout = 10_000;
+  server.requestTimeout = 30_000;
+  server.keepAliveTimeout = 5_000;
+  return server;
 }

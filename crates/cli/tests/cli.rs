@@ -169,3 +169,40 @@ fn init_doctor_test_and_impact_commands() {
     assert!(nodes.contains(&"screen.売れ筋"), "知識の意味変更 → 売れ筋画面に影響: {nodes:?}");
     assert!(!nodes.contains(&"screen.商品一覧"), "無関係な画面は含まない: {nodes:?}");
 }
+
+#[test]
+fn adr007_signed_approvals_allow_locked_build_only_with_trusted_key() {
+    let src = format!("{SHOP}\n@柔軟(確認)\n画面 人気:\n    人気商品を表示\n");
+    let d = project("signed_flow", &src, r#""backend""#);
+    let keys = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("signed_flow_keys");
+    let _ = std::fs::remove_dir_all(&keys);
+    std::fs::create_dir_all(&keys).unwrap();
+    let (c, trust, err) = koto(&keys, &["keygen", "--out", "approver.key", "--owner", "業務設計者A"]);
+    assert_eq!(c, 0, "{err}");
+    std::fs::write(keys.join("trust.json"), &trust).unwrap();
+    let (c, other, _) = koto(&keys, &["keygen", "--out", "other.key"]);
+    assert_eq!(c, 0);
+    std::fs::write(keys.join("other-trust.json"), &other).unwrap();
+    assert_ne!(koto(&keys, &["keygen", "--out", "approver.key"]).0, 0, "既存の鍵を上書きしない");
+
+    std::fs::write(
+        d.join("fixture.json"),
+        r#"{"人気商品を表示": {"interpretations":[{"canonical":"売れ筋商品を表示","rationale":"r"}],"assumptions":[],"unresolved":[],"required_effects":["data.read"],"evidence_refs":[]}}"#,
+    )
+    .unwrap();
+    let (_, out, _) = koto(&d, &["--json", "resolve", "--adapter", "fixture", "--fixture", "fixture.json"]);
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    let id = v["candidates"][0]["intent_id"].as_str().unwrap().to_string();
+    let key = keys.join("approver.key");
+    let (c, _, err) = koto(&d, &["approve", &id, "1", "--approver", "業務設計者A", "--sign-key", key.to_str().unwrap()]);
+    assert_eq!(c, 0, "{err}");
+    assert_eq!(koto(&d, &["approve", "--write-lock"]).0, 0);
+    let trust = keys.join("trust.json");
+    let (c, _, err) = koto(&d, &["build", "--target", "backend", "--locked", "--trust", trust.to_str().unwrap()]);
+    assert_eq!(c, 0, "信頼鍵で署名を検証できれば本番ビルドできる: {err}");
+    assert_eq!(koto(&d, &["build", "--target", "backend", "--locked"]).0, 3, "信頼鍵なしは拒否");
+    let other = keys.join("other-trust.json");
+    let (c, _, err) = koto(&d, &["build", "--target", "backend", "--locked", "--trust", other.to_str().unwrap()]);
+    assert_eq!(c, 3, "別の鍵では拒否: {err}");
+    assert!(err.contains("信頼されていません"));
+}

@@ -15,11 +15,12 @@ const USAGE: &str = "使い方: koto [-C <dir>] [--json] <command> [args]
   check                           字句/構文/型/知識/意図/効果を検査
   resolve [--adapter offline|fixture] [--fixture file]
                                   @柔軟 の未解決意図の解釈候補を作成(AI は使わない)
-  approve <intent_id> <番号> --approver 名前 [--note 文] [--at 時刻]
+  approve <intent_id> <番号> --approver 名前 [--note 文] [--at 時刻] [--sign-key 鍵]
                                   候補の解釈を承認して記録
   approve --write-lock            検査を通過した状態をロック
+  keygen --out <file>             承認署名用の Ed25519 鍵を作成(公開鍵と信頼鍵ファイルの雛形を表示)
   graph [--draft] [--canonical]   Verified Application Graph を出力
-  build --target web|backend|ios|android [--locked] [--out dir]
+  build --target web|backend|ios|android [--locked [--trust 信頼鍵.json]] [--out dir]
                                   ターゲット生成(未対応機能があれば TGT001 で停止)
   test [--keep]                   backend を生成し、API 契約から導いた契約テストを実行(Node.js 22.18+ が必要)
   impact <名前> | --base <vag.json>
@@ -129,6 +130,7 @@ fn run(mut o: Opts) -> i32 {
         "test" => cmd_test(&mut o),
         "impact" => cmd_impact(&mut o),
         "doctor" => Ok(cmd_doctor(&o)),
+        "keygen" => cmd_keygen(&mut o),
         "ast" => cmd_ast(&mut o),
         "-h" | "--help" | "help" => {
             print!("{USAGE}");
@@ -322,6 +324,12 @@ fn cmd_approve(o: &mut Opts) -> Result<i32, String> {
     let approver = take_value(&mut o.args, "--approver")?;
     let note = take_value(&mut o.args, "--note")?.unwrap_or_default();
     let at = take_value(&mut o.args, "--at")?;
+    let sign_key = match take_value(&mut o.args, "--sign-key")? {
+        None => None,
+        Some(f) => Some(kotonoha_lock::SigningKey::from_hex(
+            &std::fs::read_to_string(&f).map_err(|e| format!("署名鍵 {f} を読めません: {e}"))?,
+        )?),
+    };
     let (p, mut ap) = match load(o) {
         Ok(x) => x,
         Err(c) => return Ok(c),
@@ -390,6 +398,10 @@ fn cmd_approve(o: &mut Opts) -> Result<i32, String> {
         &at.unwrap_or_else(drv::now_rfc3339),
         &note,
     );
+    let mut rec = rec;
+    if let Some(k) = &sign_key {
+        k.sign(&mut rec);
+    }
     ap.upsert(rec.clone());
     let a2 = drv::analyze(&p, &ap);
     if a2.unresolved().iter().any(|x| x.intent_id == intent_id) || a2.diags.errors().any(|d| d.code == Code::APP001) {
@@ -440,6 +452,7 @@ fn cmd_build(o: &mut Opts) -> Result<i32, String> {
     let target = take_value(&mut o.args, "--target")?.ok_or("--target web|backend|ios|android が必要です")?;
     let locked = take_flag(&mut o.args, "--locked");
     let out = take_value(&mut o.args, "--out")?;
+    let trust_path = take_value(&mut o.args, "--trust")?.or_else(|| std::env::var("KOTONOHA_TRUST_FILE").ok());
     no_extra(&o.args)?;
     let (p, ap) = match load(o) {
         Ok(x) => x,
@@ -452,7 +465,14 @@ fn cmd_build(o: &mut Opts) -> Result<i32, String> {
     let mut diags = a.diags.clone();
     if locked {
         let lock_text = std::fs::read_to_string(o.dir.join(drv::LOCK_FILE)).ok();
-        let d = drv::verify_lock(&p, &a, &ap, lock_text.as_deref());
+        let trust = match &trust_path {
+            None => None,
+            Some(t) => {
+                let text = std::fs::read_to_string(t).map_err(|e| format!("信頼鍵ファイル {t} を読めません: {e}"))?;
+                Some(serde_json::from_str::<kotonoha_lock::TrustFile>(&text).map_err(|e| format!("信頼鍵ファイルの形式が不正です: {e}"))?)
+            }
+        };
+        let d = drv::verify_lock_with(&p, &a, &ap, lock_text.as_deref(), trust.as_ref());
         if !d.is_empty() {
             diags.extend(d);
             return Ok(report(o, &diags, json!({})));
@@ -614,4 +634,36 @@ fn cmd_test(o: &mut Opts) -> Result<i32, String> {
     }
     // テスト失敗は終了コード 1(ADR-0103 追補)
     Ok(if status.success() { 0 } else { 1 })
+}
+
+fn cmd_keygen(o: &mut Opts) -> Result<i32, String> {
+    let out = take_value(&mut o.args, "--out")?.ok_or("koto keygen --out <秘密鍵ファイル>")?;
+    let owner = take_value(&mut o.args, "--owner")?.unwrap_or_else(|| "承認者".into());
+    no_extra(&o.args)?;
+    let path = o.dir.join(&out);
+    if path.exists() {
+        return Err(format!("{} は既に存在します(上書きしません)", path.display()));
+    }
+    let k = kotonoha_lock::SigningKey::generate();
+    write_secret(&path, &(k.to_hex() + "\n")).map_err(|e| e.to_string())?;
+    let trust = serde_json::json!({"trusted_keys": [{"owner": owner, "pubkey": k.public_hex()}]});
+    println!("{}", serde_json::to_string_pretty(&trust).unwrap());
+    eprintln!("秘密鍵を {} に書きました(他人に渡さない・リポジトリに入れない)。", path.display());
+    eprintln!("上の JSON が信頼鍵ファイルの雛形です。リポジトリの外(CI の秘密設定など)で管理し、koto build --locked --trust で渡してください。");
+    Ok(0)
+}
+
+#[cfg(unix)]
+fn write_secret(path: &Path, content: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut f = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(path)?;
+    f.write_all(content.as_bytes())
+}
+
+#[cfg(not(unix))]
+fn write_secret(path: &Path, content: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(path)?;
+    f.write_all(content.as_bytes())
 }

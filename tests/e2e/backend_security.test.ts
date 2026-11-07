@@ -144,3 +144,40 @@ test("TC-012 SQLite でも同時注文で在庫が負にならない(取引の�
   assert.deepEqual([rs.filter((r) => r.status === 200).length, rs.filter((r) => r.status === 422).length], [10, 10]);
   assert.equal((await api(url, "GET", p("api", "data", "商品", "P01"))).body.在庫, 0);
 });
+
+test("NR-02/NR-03 痕跡を出さないヘッダ・ヘルスチェック", async () => {
+  const { url } = await boot({ KOTONOHA_JWT_SECRET: SECRET });
+  const r = await fetch(url + "/api/health");
+  assert.deepEqual(await r.json(), { ok: true }, "製品名・アプリ名を返さない");
+  for (const path of ["/api/health", p("api", "data", "商品"), "/api/none"]) {
+    const h = (await fetch(url + path)).headers;
+    assert.equal(h.get("content-security-policy"), "default-src 'none'; frame-ancestors 'none'");
+    assert.equal(h.get("x-content-type-options"), "nosniff");
+    assert.equal(h.get("cross-origin-resource-policy"), "same-origin");
+    assert.equal(h.get("x-powered-by"), null);
+    for (const [k, v] of h) assert.ok(!/kotonoha/i.test(k) && !/kotonoha/i.test(v), `${k}: ${v}`);
+  }
+  const nf = await (await fetch(url + "/api/none")).text();
+  assert.ok(!/kotonoha|node|sqlite/i.test(nf), nf);
+});
+
+test("NR-02 不正なトークンが続く接続元は一時的に遮断(429)", async () => {
+  const { dir, url } = await boot({ KOTONOHA_JWT_SECRET: SECRET, KOTONOHA_AUTH_FAIL_LIMIT: "3" });
+  const codes = [];
+  for (let i = 0; i < 5; i++) codes.push((await api(url, "GET", p("api", "data", "注文"), "bad.token.value")).status);
+  assert.deepEqual(codes, [401, 401, 401, 429, 429], "3 回目の失敗で遮断に入り、以後は 429");
+  // 遮断するのは不正なトークンの試行だけ。同じ接続元(NAT 共有など)の正規の利用者は巻き込まない
+  assert.equal((await api(url, "GET", p("api", "data", "注文"), hs(dir, "a", []))).status, 200);
+});
+
+test("NR-02 本番モードは安全でない設定で起動しない", async () => {
+  const dir = tmp("prod");
+  build("examples/shop", "backend", dir);
+  const run = (env: Record<string, string>) =>
+    spawnSync(process.execPath, ["--no-warnings", "src/main.ts"], { cwd: dir, env: { ...process.env, KOTONOHA_DB: ":memory:", KOTONOHA_ENV: "production", PORT: "0", ...env }, timeout: 10000 });
+  const weak = run({ KOTONOHA_JWT_SECRET: SECRET });
+  assert.notEqual(weak.status, 0);
+  assert.match(weak.stderr.toString(), /64 文字以上/);
+  const none = run({});
+  assert.match(none.stderr.toString(), /認証鍵/);
+});

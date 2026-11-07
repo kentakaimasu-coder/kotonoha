@@ -16,6 +16,8 @@
         "sentence_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         "canonical": {"type": "string"}, "approver": {"type": "string", "minLength": 1},
         "approved_at": {"type": "string"}, "note": {"type": "string"},
-        "record_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}}}
+        "record_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "signature": {"type": "object", "additionalProperties": false, "required": ["alg", "key_id", "sig"],
+          "properties": {"alg": {"const": "ed25519"}, "key_id": {"type": "string", "pattern": "^[0-9a-f]{16}$"}, "sig": {"type": "string", "pattern": "^[0-9a-f]{128}$"}}}}}}
   }
 }

@@ -43,7 +43,7 @@ import { hydrateRoot } from "react-dom/client";
 import { App, h, type Init } from "./runtime/ui.ts";
 import { webApp } from "./screens.generated.ts";
 
-const el = document.getElementById("__KOTONOHA_INIT__");
+const el = document.getElementById("__init__");
 if (el) {
   const init = JSON.parse(el.textContent ?? "{}") as Init;
   hydrateRoot(document.getElementById("root") as HTMLElement, h(App, { init, screens: webApp.screens }));
@@ -234,6 +234,18 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
     );
     Ok(vec![
         GeneratedFile::text("package.json", serde_json::to_string_pretty(&pkg).unwrap() + "\n"),
+        GeneratedFile::text(
+            "sbom.cdx.json",
+            crate::sbom(
+                &ir.name,
+                "web",
+                &[
+                    ("npm", "react", REACT_VERSION),
+                    ("npm", "react-dom", REACT_VERSION),
+                    ("npm", "esbuild", ESBUILD_VERSION),
+                ],
+            ),
+        ),
         GeneratedFile::text("README.md", readme),
         GeneratedFile::text("api.json", serde_json::to_string_pretty(&api_contract(ir)).unwrap() + "\n"),
         GeneratedFile::text("build.ts", BUILD_TS.to_string()),

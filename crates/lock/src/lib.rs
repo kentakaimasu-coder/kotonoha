@@ -37,6 +37,126 @@ pub struct ApprovalRecord {
     pub note: String,
     /// 上記フィールドの正規 JSON の SHA-256
     pub record_hash: String,
+    /// 承認者の Ed25519 署名(record_hash に対する署名。ADR-007)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<RecordSignature>,
+}
+
+/// 承認記録の署名。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecordSignature {
+    pub alg: String,
+    /// 公開鍵の SHA-256 の先頭 16 桁
+    pub key_id: String,
+    /// 署名(hex、64 バイト)
+    pub sig: String,
+}
+
+fn hex(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+fn unhex(s: &str) -> Option<Vec<u8>> {
+    if !s.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok()).collect()
+}
+
+/// 署名鍵(秘密鍵)。ファイルは hex の 32 バイトシード 1 行。
+pub struct SigningKey(ed25519_dalek::SigningKey);
+
+impl SigningKey {
+    pub fn generate() -> Self {
+        SigningKey(ed25519_dalek::SigningKey::generate(&mut rand_core::OsRng))
+    }
+    pub fn from_hex(s: &str) -> Result<Self, String> {
+        let b = unhex(s.trim()).ok_or("署名鍵の形式が不正です(hex 64 桁)")?;
+        let seed: [u8; 32] = b.try_into().map_err(|_| "署名鍵は 32 バイトです".to_string())?;
+        Ok(SigningKey(ed25519_dalek::SigningKey::from_bytes(&seed)))
+    }
+    pub fn to_hex(&self) -> String {
+        hex(&self.0.to_bytes())
+    }
+    pub fn public_hex(&self) -> String {
+        hex(self.0.verifying_key().as_bytes())
+    }
+    pub fn key_id(&self) -> String {
+        key_id_of(&self.public_hex())
+    }
+    /// 記録に署名する(record_hash に対して)
+    pub fn sign(&self, r: &mut ApprovalRecord) {
+        use ed25519_dalek::Signer;
+        let sig = self.0.sign(r.record_hash.as_bytes());
+        r.signature = Some(RecordSignature {
+            alg: "ed25519".into(),
+            key_id: self.key_id(),
+            sig: hex(&sig.to_bytes()),
+        });
+    }
+}
+
+pub fn key_id_of(pubkey_hex: &str) -> String {
+    sha256_hex(pubkey_hex)[..16].to_string()
+}
+
+/// 信頼する承認者の公開鍵の一覧(`kotonoha.trust.json` 形式)。
+/// **リポジトリの外**(CI の秘密設定・配布物)から与える: 承認記録と同じ場所にあると、記録を書き換えられる者が鍵も足せるため。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct TrustFile {
+    pub trusted_keys: Vec<TrustedKey>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrustedKey {
+    pub owner: String,
+    /// 公開鍵(hex、32 バイト)
+    pub pubkey: String,
+}
+
+/// Ed25519 署名の検証器。全記録が信頼鍵の正しい署名を持つときだけ「検証済み」。
+pub struct Ed25519Verifier {
+    pub trust: TrustFile,
+}
+
+impl ApprovalVerifier for Ed25519Verifier {
+    fn kind(&self) -> &'static str {
+        "ed25519"
+    }
+    fn verify(&self, approvals: &ApprovalsFile) -> Authenticity {
+        use ed25519_dalek::Verifier;
+        for r in &approvals.records {
+            if r.compute_hash() != r.record_hash {
+                return Authenticity::Unverified {
+                    reason: format!("承認記録 `{}` が改ざんされています", r.intent_id),
+                };
+            }
+            let Some(s) = &r.signature else {
+                return Authenticity::Unverified {
+                    reason: format!("承認記録 `{}` に署名がありません(koto approve --sign-key で署名してください)", r.intent_id),
+                };
+            };
+            let Some(k) = self.trust.trusted_keys.iter().find(|k| key_id_of(&k.pubkey) == s.key_id) else {
+                return Authenticity::Unverified {
+                    reason: format!("承認記録 `{}` の署名鍵 {} は信頼されていません", r.intent_id, s.key_id),
+                };
+            };
+            let ok = (|| {
+                let pk: [u8; 32] = unhex(&k.pubkey)?.try_into().ok()?;
+                let vk = ed25519_dalek::VerifyingKey::from_bytes(&pk).ok()?;
+                let sig: [u8; 64] = unhex(&s.sig)?.try_into().ok()?;
+                vk.verify(r.record_hash.as_bytes(), &ed25519_dalek::Signature::from_bytes(&sig)).ok()
+            })();
+            if s.alg != "ed25519" || ok.is_none() {
+                return Authenticity::Unverified {
+                    reason: format!("承認記録 `{}` の署名が正しくありません", r.intent_id),
+                };
+            }
+        }
+        Authenticity::Verified {
+            verifier: format!("ed25519({} 件)", approvals.records.len()),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -61,6 +181,7 @@ impl ApprovalRecord {
             approved_at: approved_at.into(),
             note: note.into(),
             record_hash: String::new(),
+            signature: None,
         };
         r.record_hash = r.compute_hash();
         r
@@ -307,5 +428,68 @@ mod tests {
         let l = lock();
         assert_eq!(LockFile::parse(&l.to_pretty_json()).unwrap(), l);
         assert_eq!(LockFile::parse("{}").unwrap_err().code, Code::LOCK001);
+    }
+}
+
+#[cfg(test)]
+mod signing_tests {
+    use super::*;
+
+    fn rec() -> ApprovalRecord {
+        ApprovalRecord::new(
+            "screen.人気#abc",
+            "人気商品を表示",
+            "h",
+            "売れ筋商品を表示",
+            "山田",
+            "2026-11-03T00:00:00+09:00",
+            "",
+        )
+    }
+
+    #[test]
+    fn ed25519_signed_records_verify_only_with_trusted_key() {
+        let key = SigningKey::generate();
+        let mut r = rec();
+        key.sign(&mut r);
+        let mut f = ApprovalsFile::empty();
+        f.upsert(r);
+        let trusted = Ed25519Verifier {
+            trust: TrustFile {
+                trusted_keys: vec![TrustedKey {
+                    owner: "山田".into(),
+                    pubkey: key.public_hex(),
+                }],
+            },
+        };
+        assert!(matches!(trusted.verify(&f), Authenticity::Verified { .. }));
+        // 信頼されていない鍵
+        let other = SigningKey::generate();
+        let untrusted = Ed25519Verifier {
+            trust: TrustFile {
+                trusted_keys: vec![TrustedKey {
+                    owner: "x".into(),
+                    pubkey: other.public_hex(),
+                }],
+            },
+        };
+        assert!(matches!(untrusted.verify(&f), Authenticity::Unverified { .. }));
+        // 記録の改ざん(署名後に解釈を書き換えて record_hash も付け直す)
+        let mut t = f.clone();
+        t.records[0].canonical = "別の解釈を表示".into();
+        t.records[0].record_hash = t.records[0].compute_hash();
+        assert!(matches!(trusted.verify(&t), Authenticity::Unverified { .. }));
+        // 署名なし
+        let mut u = ApprovalsFile::empty();
+        u.upsert(rec());
+        assert!(matches!(trusted.verify(&u), Authenticity::Unverified { .. }));
+    }
+
+    #[test]
+    fn signing_key_roundtrip() {
+        let k = SigningKey::generate();
+        let k2 = SigningKey::from_hex(&k.to_hex()).unwrap();
+        assert_eq!(k.public_hex(), k2.public_hex());
+        assert!(SigningKey::from_hex("zz").is_err());
     }
 }

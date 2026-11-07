@@ -32,3 +32,7 @@
 | [ADR-0117](ADR-0117-wire-format.md) | ワイヤ形式と共通 API 契約 | 提案 | |
 | [ADR-0118](ADR-0118-capability-granularity.md) | 動作単位の許可・行レベル認可 | 提案(実装済み) | |
 | [ADR-0119](ADR-0119-principal-builtin.md) | 組込み値 `本人` | 提案 | |
+| [ADR-0120](ADR-0120-security-and-obscurity.md) | セキュリティ強化と「知られていないこと」の扱い | 提案(実装) | |
+| [ADR-0121](ADR-0121-japanese-usability.md) | 日本人の利用者のための使いやすさ | 提案(実装) | |
+| [ADR-0122](ADR-0122-experiments.md) | 実験(A/B テスト) | 提案(実装) | |
+| [ADR-0123](ADR-0123-extension-components.md) | 拡張部品 | 提案(実装) | |

@@ -1,6 +1,6 @@
 # KOTONOHA — Claude Code 実装ガイド
 
-元の実装指示は [docs/requirements/CLAUDE.original.md](docs/requirements/CLAUDE.original.md)。要件は [01_requirements.md](docs/requirements/01_requirements.md)、技術仕様は [02_technical_spec.md](docs/requirements/02_technical_spec.md)。要件 ID(FR/NFR/SEC/AT)とテスト ID(TC)を追跡し、対応は [docs/spec/test_spec.md](docs/spec/test_spec.md) に記録する。
+元の実装指示は [docs/requirements/CLAUDE.original.md](docs/requirements/CLAUDE.original.md)。要件は [01_requirements.md](docs/requirements/01_requirements.md) と **必須の追補 [03_requirements_addendum.md](docs/requirements/03_requirements_addendum.md)(日本人の使いやすさ・セキュリティ・痕跡を出さない・A/B テストと拡張部品)**、技術仕様は [02_technical_spec.md](docs/requirements/02_technical_spec.md)。要件 ID(FR/NFR/SEC/AT)とテスト ID(TC)を追跡し、対応は [docs/spec/test_spec.md](docs/spec/test_spec.md) に記録する。
 
 ## 不変ルール
 1. 承認されていない仕様を確定と主張しない。不明点は `docs/adr/` に選択肢と推奨案を書き、状態を「未決定」か「提案」にする。ADR 一覧は [docs/adr/README.md](docs/adr/README.md)。

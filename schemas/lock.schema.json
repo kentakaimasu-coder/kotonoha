@@ -18,7 +18,7 @@
       "type": "object", "additionalProperties": false, "required": ["intent_id", "sentence_hash", "canonical", "record_hash"],
       "properties": {"intent_id": {"type": "string"}, "sentence_hash": {"$ref": "#/$defs/sha256"}, "canonical": {"type": "string"}, "record_hash": {"$ref": "#/$defs/sha256"}}}},
     "approval_reference": {"type": "object", "additionalProperties": false, "required": ["kind", "records_hash"],
-      "properties": {"kind": {"enum": ["local-unsigned"]}, "records_hash": {"$ref": "#/$defs/sha256"}}}
+      "properties": {"kind": {"enum": ["local-unsigned", "ed25519"]}, "records_hash": {"$ref": "#/$defs/sha256"}}}
   },
   "$defs": {"sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
 }

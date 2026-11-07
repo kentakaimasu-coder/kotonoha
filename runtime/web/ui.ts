@@ -91,7 +91,7 @@ export function formatValue(v: unknown, w: Wire, tz: string): string {
 export async function callApi(method: "GET" | "POST", url: string, body?: unknown): Promise<LoadResult> {
   const res = await fetch(url, {
     method,
-    headers: method === "POST" ? { "Content-Type": "application/json", "X-Kotonoha-Request": "1" } : { "X-Kotonoha-Request": "1" },
+    headers: method === "POST" ? { "Content-Type": "application/json", "X-CSRF": "1" } : { "X-CSRF": "1" },
     body: body === undefined ? undefined : JSON.stringify(body),
     credentials: "same-origin",
   });

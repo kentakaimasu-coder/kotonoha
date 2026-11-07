@@ -315,6 +315,19 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
     let src = "app/src/main/java/app/kotonoha/generated";
     Ok(vec![
         GeneratedFile::text("settings.gradle.kts", settings.into()),
+        GeneratedFile::text(
+            "sbom.cdx.json",
+            crate::sbom(
+                &ir.name,
+                "android",
+                &[
+                    ("maven", "androidx.compose:compose-bom", "2024.10.01"),
+                    ("maven", "androidx.activity:activity-compose", "1.9.3"),
+                    ("maven", "androidx.navigation:navigation-compose", "2.8.4"),
+                    ("maven", "org.jetbrains.kotlinx:kotlinx-coroutines-android", "1.9.0"),
+                ],
+            ),
+        ),
         GeneratedFile::text("build.gradle.kts", root_build.into()),
         GeneratedFile::text("gradle.properties", "android.useAndroidX=true\nkotlin.code.style=official\n".into()),
         GeneratedFile::text("app/build.gradle.kts", app_build),

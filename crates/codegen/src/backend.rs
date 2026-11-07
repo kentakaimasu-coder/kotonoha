@@ -340,6 +340,7 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
     );
     Ok(vec![
         GeneratedFile::text("package.json", serde_json::to_string_pretty(&pkg).unwrap() + "\n"),
+        GeneratedFile::text("sbom.cdx.json", crate::sbom(&ir.name, "backend", &[("npm", "pg", PG_VERSION)])),
         GeneratedFile::text("README.md", readme),
         GeneratedFile::text("api.json", serde_json::to_string_pretty(&api_contract(ir)).unwrap() + "\n"),
         GeneratedFile::text("vag.json", serde_json::to_string_pretty(vag).unwrap() + "\n"),
