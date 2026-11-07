@@ -1,5 +1,5 @@
 //! iOS 生成(SwiftUI / iOS 16+ 案: ADR-005 未決定)。docs/architecture.md §7。
-//! 共通 API 契約だけを使うクライアント。この環境に Swift ツールチェーンが無いため**コンパイル未検証**(K-01)。
+//! 共通 API 契約だけを使うクライアント。コンパイルは CI の ios-build で確認する(開発環境には Swift が無い)。
 
 use crate::appir::{api_contract, check_ir, AppIr, Component, EndpointKind};
 use crate::GeneratedFile;
@@ -267,7 +267,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
         return Err(errs);
     }
     let project = format!(
-        "# XcodeGen 定義(xcodegen generate で .xcodeproj を作る)\nname: KotonohaApp\noptions:\n  bundleIdPrefix: app.kotonoha.generated\n  deploymentTarget:\n    iOS: \"16.0\"   # ADR-005 未決定(案)\ntargets:\n  KotonohaApp:\n    type: application\n    platform: iOS\n    sources: [Sources]\n    info:\n      path: Sources/Info.plist\n      properties:\n        CFBundleDisplayName: {}\n        KotonohaAPIBase: http://127.0.0.1:8787\n        UILaunchScreen: {{}}\n",
+        "# XcodeGen 定義(xcodegen generate で .xcodeproj を作る)\nname: KotonohaApp\noptions:\n  bundleIdPrefix: app.kotonoha.generated\n  deploymentTarget:\n    iOS: \"16.0\"   # ADR-005 未決定(案)\ntargets:\n  KotonohaApp:\n    type: application\n    platform: iOS\n    sources: [Sources]\n    info:\n      path: Sources/Info.plist\n      properties:\n        CFBundleDisplayName: {}\n        CFBundleDevelopmentRegion: ja\n        KotonohaAPIBase: http://127.0.0.1:8787\n        UILaunchScreen: {{}}\n",
         swift_str(&ir.name)
     );
     Ok(vec![
@@ -278,7 +278,8 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
         GeneratedFile::text("Sources/Runtime/KotonohaRuntime.swift", RUNTIME_SWIFT.to_string()),
         GeneratedFile::text(
             "README.md",
-            format!("# {} iOS(KOTONOHA 生成物)\n\nSwiftUI / iOS 16+(案)。`xcodegen generate` → Xcode でビルド。API の接続先は Info.plist の KotonohaAPIBase。\n\n**注意**: 生成環境に Swift ツールチェーンが無く、コンパイルは未検証です。\n", ir.name),
+            format!("# {} iOS(KOTONOHA 生成物)\n\nSwiftUI / iOS 16+(案)。`xcodegen generate` → Xcode でビルド。API の接続先は Info.plist の KotonohaAPIBase。\n\nコンパイルは KOTONOHA の CI(xcodebuild、iOS シミュレータ向け)で確認しています。
+", ir.name),
         ),
     ])
 }

@@ -108,8 +108,12 @@ enum Kotonoha {
     static func int(_ v: Int64) -> String { String(v) }
     static func bool(_ v: Bool) -> String { v ? "はい" : "いいえ" }
     static func datetime(_ v: Date) -> String { v.formatted(date: .abbreviated, time: .shortened) }
+    /// 全角数字・全角マイナス・カンマ・空白を受け付ける(NR-01)
     static func parseInt(_ s: String, field: String) throws -> Int64 {
-        guard let v = Int64(s.trimmingCharacters(in: .whitespaces)) else { throw KotonohaError.input("\(field) は整数で入力してください") }
+        var t = s.applyingTransform(.fullwidthToHalfwidth, reverse: false) ?? s
+        for m in ["\u{2212}", "\u{30FC}", "\u{FF0D}"] { t = t.replacingOccurrences(of: m, with: "-") }
+        t = t.components(separatedBy: CharacterSet(charactersIn: ",、 \u{3000}")).joined()
+        guard let v = Int64(t) else { throw KotonohaError.input("\(field) は整数で入力してください") }
         return v
     }
     static func describe(_ e: Error) -> String {

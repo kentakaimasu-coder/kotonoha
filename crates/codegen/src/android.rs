@@ -1,5 +1,5 @@
 //! Android 生成(Kotlin / Jetpack Compose / minSdk 26 案: ADR-005 未決定)。docs/architecture.md §7。
-//! 共通 API 契約だけを使うクライアント。この環境に Android SDK が無いため**ビルド未検証**(K-01)。
+//! 共通 API 契約だけを使うクライアント。ビルドは CI の android-build で確認する(開発環境には Android SDK が無い)。
 
 use crate::appir::{api_contract, check_ir, AppIr, Component};
 use crate::GeneratedFile;
@@ -310,7 +310,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
     let app_build = format!(
         "plugins {{\n    id(\"com.android.application\")\n    id(\"org.jetbrains.kotlin.android\")\n    id(\"org.jetbrains.kotlin.plugin.compose\")\n}}\n\nandroid {{\n    namespace = \"{PKG}\"\n    compileSdk = 35\n    defaultConfig {{\n        applicationId = \"{PKG}\"\n        minSdk = 26   // ADR-005 未決定(案)\n        targetSdk = 35\n        versionCode = 1\n        versionName = \"0.1.0\"\n        buildConfigField(\"String\", \"KOTONOHA_API_BASE\", \"\\\"http://10.0.2.2:8787\\\"\")\n    }}\n    buildFeatures {{ compose = true; buildConfig = true }}\n    compileOptions {{ sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }}\n    kotlinOptions {{ jvmTarget = \"17\" }}\n}}\n\ndependencies {{\n    implementation(platform(\"androidx.compose:compose-bom:2024.10.01\"))\n    implementation(\"androidx.compose.material3:material3\")\n    implementation(\"androidx.compose.ui:ui\")\n    implementation(\"androidx.activity:activity-compose:1.9.3\")\n    implementation(\"androidx.navigation:navigation-compose:2.8.4\")\n    implementation(\"org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0\")\n}}\n"
     );
-    let manifest = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <application android:label=\"KOTONOHA\" android:networkSecurityConfig=\"@xml/network_security_config\" android:allowBackup=\"false\">\n        <activity android:name=\".MainActivity\" android:exported=\"true\">\n            <intent-filter>\n                <action android:name=\"android.intent.action.MAIN\" />\n                <category android:name=\"android.intent.category.LAUNCHER\" />\n            </intent-filter>\n        </activity>\n    </application>\n</manifest>\n";
+    let manifest = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <application android:label=\"@string/app_name\" android:networkSecurityConfig=\"@xml/network_security_config\" android:allowBackup=\"false\">\n        <activity android:name=\".MainActivity\" android:exported=\"true\">\n            <intent-filter>\n                <action android:name=\"android.intent.action.MAIN\" />\n                <category android:name=\"android.intent.category.LAUNCHER\" />\n            </intent-filter>\n        </activity>\n    </application>\n</manifest>\n";
     let nsc = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!-- 平文 HTTP はエミュレータからホストの開発サーバー(10.0.2.2)への接続だけ許可する -->\n<network-security-config>\n    <base-config cleartextTrafficPermitted=\"false\" />\n    <domain-config cleartextTrafficPermitted=\"true\">\n        <domain includeSubdomains=\"false\">10.0.2.2</domain>\n    </domain-config>\n</network-security-config>\n";
     let src = "app/src/main/java/app/kotonoha/generated";
     Ok(vec![
@@ -333,6 +333,10 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
         GeneratedFile::text("app/build.gradle.kts", app_build),
         GeneratedFile::text("app/src/main/AndroidManifest.xml", manifest.into()),
         GeneratedFile::text("app/src/main/res/xml/network_security_config.xml", nsc.into()),
+        GeneratedFile::text(
+            "app/src/main/res/values/strings.xml",
+            format!("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!-- 既定の言語は日本語(NR-01) -->\n<resources>\n    <string name=\"app_name\">{}</string>\n</resources>\n", xml_escape(&ir.name)),
+        ),
         GeneratedFile::text("api.json", serde_json::to_string_pretty(&api_contract(ir)).unwrap() + "\n"),
         GeneratedFile::text(&format!("{src}/Models.generated.kt"), m),
         GeneratedFile::text(&format!("{src}/Screens.generated.kt"), v),
@@ -341,7 +345,15 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
         GeneratedFile::text(&format!("{src}/KotonohaUi.kt"), RUNTIME_UI_KT.to_string()),
         GeneratedFile::text(
             "README.md",
-            format!("# {} Android(KOTONOHA 生成物)\n\nKotlin / Jetpack Compose / minSdk 26(案)。Android Studio で開いてビルド。API の接続先は app/build.gradle.kts の KOTONOHA_API_BASE。\n\n**注意**: 生成環境に Android SDK が無く、ビルドは未検証です。\n", ir.name),
+            format!("# {} Android(KOTONOHA 生成物)\n\nKotlin / Jetpack Compose / minSdk 26(案)。Android Studio で開いてビルド。API の接続先は app/build.gradle.kts の KOTONOHA_API_BASE。\n\nビルドは KOTONOHA の CI(`gradle :app:assembleDebug`)で確認しています。\n", ir.name),
         ),
     ])
+}
+
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "\\'")
 }

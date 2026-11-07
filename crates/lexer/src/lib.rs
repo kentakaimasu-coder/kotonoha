@@ -189,7 +189,7 @@ fn fullwidth_hint(c: char) -> String {
         "全角空白は使えません。半角空白を使ってください".to_string()
     } else {
         let half = char::from_u32(c as u32 - 0xFEE0).unwrap_or('?');
-        format!("全角記号は自動で同一視しません。半角の `{half}` を使ってください")
+        format!("全角記号は自動で同一視しません。半角の `{half}` を使ってください(koto fmt --zenkaku で一括変換できます)")
     }
 }
 

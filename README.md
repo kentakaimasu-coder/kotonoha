@@ -39,6 +39,7 @@ cd /tmp/shop-web && npm install && npm run build && npm start   # http://127.0.0
 ```
 
 ## 文書
+- **はじめての方: [チュートリアル](docs/tutorial.md)**
 - 要件・仕様(原本): [docs/requirements/](docs/requirements/)
 - Phase 0 整合性検証: [docs/phase0/consistency_review.md](docs/phase0/consistency_review.md)
 - 言語仕様: [字句](docs/spec/lexical.md) / [文法 EBNF](docs/spec/grammar.md) / [AST](docs/spec/ast.md) / [型](docs/spec/type_system.md) / [意図文型](docs/spec/intent_patterns.md) / [知識](docs/spec/knowledge.md) / [VAG](docs/spec/vag.md) / [エラー](docs/spec/errors.md) / [コンパイラ構成](docs/spec/compiler.md) / [テスト仕様](docs/spec/test_spec.md)

@@ -637,3 +637,66 @@ pub fn impact_diff(base: &Value, current: &Value) -> Vec<Impact> {
     }
     out.into_iter().map(|(node, reason)| Impact { node, reason }).collect()
 }
+
+/// `koto fmt --zenkaku`: 文字列リテラル(`"…"` / `「…」`)とコメントの外にある全角英数記号(U+FF01〜FF5E)と
+/// 全角空白を半角にする(NR-01)。コンパイラは自動で同一視しないため、利用者の明示的な操作として提供する。
+pub fn fix_zenkaku(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for (i, line) in s.split('\n').enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        let (mut in_dq, mut in_kakko, mut esc, mut comment) = (false, false, false, false);
+        for c in line.chars() {
+            if comment {
+                out.push(c);
+                continue;
+            }
+            if in_dq {
+                out.push(c);
+                if esc {
+                    esc = false;
+                } else if c == '\\' {
+                    esc = true;
+                } else if c == '"' {
+                    in_dq = false;
+                }
+                continue;
+            }
+            if in_kakko {
+                out.push(c);
+                if c == '」' {
+                    in_kakko = false;
+                }
+                continue;
+            }
+            let c = match c {
+                '\u{3000}' => ' ',
+                c if ('\u{FF01}'..='\u{FF5E}').contains(&c) => char::from_u32(c as u32 - 0xFEE0).unwrap_or(c),
+                c => c,
+            };
+            match c {
+                '"' => in_dq = true,
+                '「' => in_kakko = true,
+                '#' => comment = true,
+                _ => {}
+            }
+            out.push(c);
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod zenkaku_tests {
+    use super::fix_zenkaku;
+
+    #[test]
+    fn converts_only_outside_strings_and_comments() {
+        assert_eq!(fix_zenkaku("価格：　整数"), "価格: 整数");
+        assert_eq!(fix_zenkaku("ｘ ＝ ｙ ＋ １"), "x = y + 1");
+        assert_eq!(fix_zenkaku("x = \"Ａ：Ｂ\" # コメント：そのまま"), "x = \"Ａ：Ｂ\" # コメント：そのまま");
+        assert_eq!(fix_zenkaku("「全角：ＯＫ」を押すと f（１）"), "「全角：ＯＫ」を押すと f(1)");
+        assert_eq!(fix_zenkaku("a\n　　　　b"), "a\n    b");
+    }
+}

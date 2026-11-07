@@ -11,7 +11,7 @@ const USAGE: &str = "使い方: koto [-C <dir>] [--json] <command> [args]
 
 コマンド:
   init [dir] [--name 名前]        新しいプロジェクトを作成
-  fmt [--check]                   ソースのテキスト正規化(NFC・LF・行末空白)
+  fmt [--check] [--zenkaku]       ソースのテキスト正規化(NFC・LF・行末空白)。--zenkaku で全角英数記号を半角に
   check                           字句/構文/型/知識/意図/効果を検査
   resolve [--adapter offline|fixture] [--fixture file]
                                   @柔軟 の未解決意図の解釈候補を作成(AI は使わない)
@@ -25,6 +25,7 @@ const USAGE: &str = "使い方: koto [-C <dir>] [--json] <command> [args]
   test [--keep]                   backend を生成し、API 契約から導いた契約テストを実行(Node.js 22.18+ が必要)
   impact <名前> | --base <vag.json>
                                   変更の影響を受ける画面・動作・部品を列挙(名前はデータ / データ.フィールド / 知識 / 動作 / 画面)
+  explain <コード>                 エラーコードの意味と直し方を表示(例: koto explain AMB001)
   doctor                          実装状況と未決定事項を表示
   ast <file>                      [開発用] Surface AST を JSON で出力
 ";
@@ -85,6 +86,12 @@ fn report(o: &Opts, diags: &Diagnostics, extra: serde_json::Value) -> i32 {
     } else {
         for d in &diags.items {
             eprintln!("{d}");
+            if let Some(ex) = excerpt(&o.dir, d) {
+                eprint!("{ex}");
+            }
+        }
+        if diags.errors().next().is_some() {
+            eprintln!("(エラーの詳しい説明: koto explain <コード>)");
         }
         let n_err = diags.errors().count();
         let n_warn = diags.items.len() - n_err;
@@ -131,6 +138,16 @@ fn run(mut o: Opts) -> i32 {
         "impact" => cmd_impact(&mut o),
         "doctor" => Ok(cmd_doctor(&o)),
         "keygen" => cmd_keygen(&mut o),
+        "explain" => match o.args.first().and_then(|c| Code::parse(c)) {
+            Some(c) => {
+                println!("{c}: {}", c.explain());
+                Ok(0)
+            }
+            None => Err(format!(
+                "koto explain <コード>(例: koto explain AMB001)。コード: {}",
+                Code::ALL.iter().map(|c| c.as_str()).collect::<Vec<_>>().join(" ")
+            )),
+        },
         "ast" => cmd_ast(&mut o),
         "-h" | "--help" | "help" => {
             print!("{USAGE}");
@@ -190,6 +207,7 @@ fn cmd_init(o: &mut Opts) -> Result<i32, String> {
 
 fn cmd_fmt(o: &mut Opts) -> Result<i32, String> {
     let check = take_flag(&mut o.args, "--check");
+    let zenkaku = take_flag(&mut o.args, "--zenkaku");
     no_extra(&o.args)?;
     let p = match drv::load_project(&o.dir) {
         Ok(p) => p,
@@ -197,7 +215,10 @@ fn cmd_fmt(o: &mut Opts) -> Result<i32, String> {
     };
     let mut changed = Vec::new();
     for (path, content) in p.files.values() {
-        let n = drv::normalize_text(content);
+        let mut n = drv::normalize_text(content);
+        if zenkaku {
+            n = drv::fix_zenkaku(&n);
+        }
         if &n != content {
             changed.push(path.clone());
             if !check {
@@ -666,4 +687,38 @@ fn write_secret(path: &Path, content: &str) -> std::io::Result<()> {
     use std::io::Write;
     let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(path)?;
     f.write_all(content.as_bytes())
+}
+
+/// 診断の位置の行を抜き出し、`^` で位置を示す(NR-01)。
+fn excerpt(dir: &Path, d: &Diagnostic) -> Option<String> {
+    if d.file.is_empty() || d.span.line == 0 {
+        return None;
+    }
+    let text = std::fs::read_to_string(dir.join(&d.file)).ok()?;
+    let line = text.lines().nth(d.span.line as usize - 1)?;
+    let col = d.span.column.max(1) as usize - 1;
+    let prefix: String = line.chars().take(col).collect();
+    // 全角文字は端末で 2 桁の幅になるため、印の位置も幅で合わせる
+    let width: usize = prefix.chars().map(|c| if is_wide(c) { 2 } else { 1 }).sum();
+    let len = {
+        let start = d.span.start as usize;
+        let end = (d.span.end as usize).max(start);
+        let seg = text.get(start..end).unwrap_or("");
+        seg.chars()
+            .take_while(|c| *c != '\n')
+            .map(|c| if is_wide(c) { 2 } else { 1 })
+            .sum::<usize>()
+            .max(1)
+    };
+    let no = d.span.line.to_string();
+    Some(format!(
+        "{pad} |\n{no} | {line}\n{pad} | {sp}{marks}\n",
+        pad = " ".repeat(no.len()),
+        sp = " ".repeat(width),
+        marks = "^".repeat(len)
+    ))
+}
+
+fn is_wide(c: char) -> bool {
+    matches!(c as u32, 0x1100..=0x115F | 0x2E80..=0x303E | 0x3041..=0x33FF | 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xA000..=0xA4CF | 0xAC00..=0xD7A3 | 0xF900..=0xFAFF | 0xFE30..=0xFE4F | 0xFF00..=0xFF60 | 0xFFE0..=0xFFE6)
 }

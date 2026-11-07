@@ -208,7 +208,8 @@ function inputFor(f: Field, id: string) {
   switch (base.kind) {
     case "int":
     case "money":
-      return h("input", { ...common, type: "number", step: 1, inputMode: "numeric" });
+      // type="number" は全角数字を受け付けないブラウザがあるため、text + inputMode で受けて正規化する
+      return h("input", { ...common, type: "text", inputMode: "numeric", autoComplete: "off", pattern: "[-－−ー]?[0-9０-９,、 ]+" });
     case "bool":
       return h("input", { id, name: f.name, type: "checkbox" });
     case "enum":
@@ -222,6 +223,14 @@ function inputFor(f: Field, id: string) {
     default:
       return h("input", { ...common, type: "text", maxLength: base.kind === "id" ? 256 : 10000 });
   }
+}
+
+/** 数値欄の入力を正規化する: 全角数字・全角マイナス(－ − ー)・桁区切りのカンマ・前後の空白を受け付ける(NR-01) */
+export function normalizeNumber(raw: string): string {
+  return raw
+    .normalize("NFKC")
+    .replace(/[\u2212\u30FC\uFF0D\u2010-\u2015]/g, "-")
+    .replace(/[,、\s]/g, "");
 }
 
 function readForm(form: HTMLFormElement, fields: Field[]): Record<string, unknown> | string {
@@ -241,7 +250,8 @@ function readForm(form: HTMLFormElement, fields: Field[]): Record<string, unknow
       continue;
     }
     if (base.kind === "int" || base.kind === "money") {
-      const n = Number(raw);
+      const text = normalizeNumber(raw);
+      const n = /^-?\d+$/.test(text) ? Number(text) : NaN;
       if (!Number.isSafeInteger(n)) return `${f.name} は整数で入力してください`;
       out[f.name] = n;
     } else if (base.kind === "datetime") {
@@ -274,9 +284,13 @@ export function ActionForm(p: { action: string; fields: Field[]; reload: () => P
       setBusy(false);
     }
   };
+  // IME の変換確定の Enter でフォームを送信しない(NR-01)
+  const onKeyDown = (ev: any) => {
+    if (ev.key === "Enter" && (ev.nativeEvent?.isComposing || ev.keyCode === 229)) ev.preventDefault();
+  };
   return h(
     "form",
-    { className: "form", onSubmit, "aria-labelledby": formId + "-title" },
+    { className: "form", onSubmit, onKeyDown, "aria-labelledby": formId + "-title" },
     h("h2", { id: formId + "-title" }, p.action),
     p.fields.map((f) => h("div", { className: "field", key: f.name }, h("label", { htmlFor: `${formId}-${f.name}` }, f.name), inputFor(f, `${formId}-${f.name}`))),
     h("button", { type: "submit", disabled: busy }, "送信"),

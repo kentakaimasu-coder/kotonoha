@@ -128,7 +128,12 @@ object Kotonoha {
     fun bool(v: Boolean): String = if (v) "はい" else "いいえ"
     fun datetime(v: String): String =
         DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm").withZone(ZoneId.systemDefault()).format(Instant.parse(v))
-    fun parseLong(s: String, field: String): Long = s.trim().toLongOrNull() ?: throw KotonohaInputException("$field は整数で入力してください")
+    /** 全角数字・全角マイナス・カンマ・空白を受け付ける(NR-01) */
+    fun parseLong(s: String, field: String): Long =
+        java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFKC)
+            .replace(Regex("[\u2212\u30FC\uFF0D]"), "-")
+            .replace(Regex("[,、\\s\u3000]"), "")
+            .toLongOrNull() ?: throw KotonohaInputException("$field は整数で入力してください")
     fun describe(e: Exception): String = when (e) {
         is KotonohaHttpException -> when (e.status) { 401 -> "ログインが必要です"; 403 -> "権限がありません"; 429 -> "要求が多すぎます"; else -> e.message }
         is KotonohaFailure -> "失敗しました: ${e.value}"

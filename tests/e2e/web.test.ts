@@ -102,11 +102,13 @@ test("AT-03 フォームで商品を追加すると一覧に反映される", as
   await login(page, ["商品.create"]);
   await page.goto(webUrl + "/s/" + encodeURIComponent("商品管理"));
   await page.fill("#form-商品登録-名前", "玄米茶");
-  await page.fill("#form-商品登録-価格", "420");
-  await page.fill("#form-商品登録-在庫", "8");
+  // NR-01: 全角数字・桁区切りも受け付ける
+  await page.fill("#form-商品登録-価格", "４２０");
+  await page.fill("#form-商品登録-在庫", "1,000");
   await page.click("form.form button[type=submit]");
   await page.waitForSelector(".msg.ok");
   await page.waitForFunction(() => document.querySelector("table.list")?.textContent?.includes("玄米茶"));
+  assert.ok((await page.textContent("table.list")).includes("¥420"), "全角の ４２０ が 420 円として登録される");
   // 権限なし(閲覧のみの利用者)は 403
   const { page: p2 } = await newPage();
   await login(p2, ["商品.read"]);

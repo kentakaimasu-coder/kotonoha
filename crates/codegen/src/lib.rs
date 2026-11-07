@@ -119,8 +119,8 @@ pub fn verification_status(kind: TargetKind) -> &'static str {
     match kind {
         TargetKind::Backend => "生成・起動・API テスト済み(Node.js 22)",
         TargetKind::Web => "生成・ビルド・ブラウザ E2E 済み(React SSR)",
-        TargetKind::Ios => "生成のみ(Swift ツールチェーンなしのためコンパイル未検証)",
-        TargetKind::Android => "生成のみ(Android SDK なしのためビルド未検証)",
+        TargetKind::Ios => "生成・CI でコンパイル済み(シミュレータ上の UI テストは未実施)",
+        TargetKind::Android => "生成・CI でビルド済み(エミュレータ上の UI テストは未実施)",
     }
 }
 
