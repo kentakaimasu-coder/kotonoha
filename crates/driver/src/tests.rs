@@ -509,3 +509,47 @@ fn roles_are_checked_and_normalized_to_contract_capabilities() {
     )));
     assert!(e.contains("既に定義"), "{e}");
 }
+
+#[test]
+fn analyses_can_be_made_public_explicitly_even_over_owner_data() {
+    let src = include_str!("../../../examples/izakaya/src/app.koto")
+        .replace("    メニューは誰でも閲覧可\n", "    メニューは誰でも閲覧可\n    品名別の売上は誰でも閲覧可\n");
+    let files = [(
+        "analytics/sales_by_item.sql",
+        include_str!("../../../examples/izakaya/analytics/sales_by_item.sql"),
+    )];
+    let mut p = project_from_sources("居酒屋", &[("src/app.koto", &src)], &["backend"]);
+    for (k, v) in files {
+        p.ext_files.insert(k.into(), v.into());
+    }
+    let a = analyze(&p, &none());
+    assert!(a.ok(), "{:#?}", a.diags.items);
+    let b = build_target(&p, &a, "backend").unwrap();
+    let api: serde_json::Value = serde_json::from_str(&b.files.iter().find(|f| f.0 == "api.json").unwrap().1).unwrap();
+    let e = api["endpoints"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["id"] == "analysis.品名別の売上")
+        .unwrap();
+    assert_eq!(e["access"]["public"], true);
+    // 宣言しなければ全件閲覧の許可が必要
+    let mut p2 = project_from_sources(
+        "居酒屋",
+        &[("src/app.koto", include_str!("../../../examples/izakaya/src/app.koto"))],
+        &["backend"],
+    );
+    for (k, v) in files {
+        p2.ext_files.insert(k.into(), v.into());
+    }
+    let a2 = analyze(&p2, &none());
+    let b2 = build_target(&p2, &a2, "backend").unwrap();
+    let api2: serde_json::Value = serde_json::from_str(&b2.files.iter().find(|f| f.0 == "api.json").unwrap().1).unwrap();
+    let e2 = api2["endpoints"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["id"] == "analysis.品名別の売上")
+        .unwrap();
+    assert!(e2["access"]["capabilities"].as_array().unwrap().iter().any(|c| c == "全件閲覧.注文"));
+}

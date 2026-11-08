@@ -383,7 +383,7 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
         queries.push((spec.clone(), limits));
     }
     for a in &inp.ext.analyses {
-        let access = if a.tables.iter().all(|t| policy.public_read.contains(t)) {
+        let access = if policy.public_read.contains(&a.name) || a.tables.iter().all(|t| policy.public_read.contains(t)) {
             Access::Public
         } else if a.tables.iter().any(|t| policy.owner_read.contains_key(t)) {
             // 本人限定のデータを含む分析は、全員の行を見てよい人(許可 全件閲覧.データ名)だけ

@@ -498,8 +498,11 @@ export async function adCreate(ctx: Ctx, table: string, values: Row, returns: "i
   const of = ctx.owners[table];
   if (of !== undefined) {
     if (ctx.principal === null) throw new HttpError(401, "unauthenticated", "認証が必要です");
-    if (row[of] !== undefined && row[of] !== ctx.principal.sub) throw new HttpError(403, "forbidden", "他人の所有物としては登録できません");
-    row[of] = ctx.principal.sub;
+    // 全件閲覧の許可を持つ人(配車係・受付など)は、他の人の分として登録できる。それ以外は本人の分だけ
+    const staff = ctx.principal.caps.has(`全件閲覧.${table}`);
+    if (row[of] !== undefined && row[of] !== ctx.principal.sub && !staff)
+      throw new HttpError(403, "forbidden", `他の人の分は登録できません(許可 全件閲覧.${table} が必要です)`);
+    if (row[of] === undefined || !staff) row[of] = ctx.principal.sub;
   }
   const cols = fields.filter((f) => f.name in row);
   await ctx.conn.run(

@@ -409,6 +409,12 @@ impl<'e> Checker<'e> {
 
     fn expect(&mut self, e: &Expr, want: &Type) {
         let got = self.expr(e, Some(want));
+        // T は 選択<T> の位置で受け入れる(type_system.md: 自動包装)
+        if let Type::Option(inner) = want {
+            if got.same(inner) {
+                return;
+            }
+        }
         if !got.same(want) {
             self.mismatch(e.span, want, &got);
         }

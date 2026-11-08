@@ -389,7 +389,9 @@ impl Ctx<'_> {
             }
         }
         if let Some(d) = s.strip_suffix("は誰でも閲覧可") {
-            return if self.env.data.contains_key(d) {
+            // 分析(集計)も、作者の判断で誰にでも公開できる(例: 待合室の呼び出し番号。本人限定データの集計でも可)
+            let is_analysis = self.env.externals.get(d).is_some_and(|x| x.kind == kotonoha_ast::ExternalKind::Analysis);
+            return if self.env.data.contains_key(d) || is_analysis {
                 Match::Ok(IntentKind::PublicRead { data: d.into() })
             } else {
                 Match::NoMatch(vec![format!("「{d}」はデータとして定義されていません。どのデータを指しますか")])

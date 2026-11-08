@@ -457,7 +457,7 @@ fn cmd_token(o: &mut Opts) -> Result<i32, String> {
         return Err(String::from_utf8_lossy(&out.stderr).into_owned());
     }
     print!("{}", String::from_utf8_lossy(&out.stdout));
-    if !o.json {
+    if !o.json && std::io::IsTerminal::is_terminal(&std::io::stderr()) {
         let who = match (&role, admin) {
             (Some(r), _) => format!("役割「{r}」"),
             (None, true) => "管理者(全件閲覧あり)".into(),
