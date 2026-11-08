@@ -168,7 +168,8 @@ pub fn sqlite_columns(fields: &[(String, Type)], enums: &std::collections::BTree
                     format!("金額<{c}> の格納精度は未決定です(ADR-0106)"),
                 ))
             }
-            Type::Str | Type::Id | Type::Url | Type::Email | Type::Enum(_) => "TEXT",
+            // 日付は "YYYY-MM-DD" の文字列(並べ替え・比較が暦日の順になる)
+            Type::Str | Type::Id | Type::Url | Type::Email | Type::Enum(_) | Type::Date => "TEXT",
             other => {
                 return Err(Diagnostic::error(
                     Code::GEN001,

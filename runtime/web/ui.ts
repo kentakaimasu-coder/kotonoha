@@ -5,7 +5,7 @@ import React from "react";
 export const h = React.createElement;
 
 export type Wire =
-  | { kind: "bool" | "int" | "string" | "id" | "url" | "email" | "datetime" | "unit" }
+  | { kind: "bool" | "int" | "string" | "id" | "url" | "email" | "datetime" | "date" | "unit" }
   | { kind: "money"; currency: string; minor_units: number }
   | { kind: "enum"; name: string; variants?: string[] }
   | { kind: "entity"; name: string }
@@ -84,6 +84,11 @@ export function formatValue(v: unknown, w: Wire, tz: string): string {
       return (v as number).toLocaleString("ja-JP");
     case "bool":
       return v ? "はい" : "いいえ";
+    case "date": {
+      // 暦日は時刻帯で動かさない: 2026年12月5日(土)
+      const [y, m, d] = String(v).split("-").map(Number);
+      return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("ja-JP", { timeZone: "UTC", year: "numeric", month: "long", day: "numeric", weekday: "short" });
+    }
     case "datetime":
       // 日本の利用者に読みやすい形: 2026年12月5日(土) 19:00(秒は出さない)
       return new Date(v as string).toLocaleString("ja-JP", { timeZone: tz, year: "numeric", month: "long", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" });
@@ -240,6 +245,8 @@ function inputFor(f: Field, id: string) {
       return h("select", common, (base.variants ?? []).map((v) => h("option", { key: v, value: v }, v)));
     case "datetime":
       return h("input", { ...common, type: "datetime-local" });
+    case "date":
+      return h("input", { ...common, type: "date" });
     case "email":
       return h("input", { ...common, type: "email" });
     case "url":

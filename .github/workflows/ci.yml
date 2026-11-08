@@ -74,7 +74,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        example: [shop, lab, event, izakaya]   # lab: 拡張部品(Kotlin)・分析・実験 / event: 実際に作ったアプリ(日時入力を含む)
+        example: [shop, lab, event, izakaya, nippo]   # lab: 拡張部品(Kotlin)・分析・実験 / event: 実際に作ったアプリ(日時入力を含む)
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -97,7 +97,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        example: [shop, lab, event, izakaya]   # lab: 拡張部品(Swift)・分析・実験 / event: 実際に作ったアプリ(日時入力を含む)
+        example: [shop, lab, event, izakaya, nippo]   # lab: 拡張部品(Swift)・分析・実験 / event: 実際に作ったアプリ(日時入力を含む)
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

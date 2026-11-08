@@ -257,7 +257,7 @@ fn cmd_init(o: &mut Opts) -> Result<i32, String> {
             .unwrap_or_else(|| "アプリ".into())
     });
     std::fs::create_dir_all(dir.join("src")).map_err(|e| e.to_string())?;
-    let cfg = json!({"name": name, "sources": ["src/app.koto"], "targets": ["web", "backend"]});
+    let cfg = json!({"name": name, "sources": ["src/app.koto"], "targets": ["web", "backend", "ios", "android"]});
     std::fs::write(dir.join(drv::PROJECT_FILE), serde_json::to_string_pretty(&cfg).unwrap() + "\n").map_err(|e| e.to_string())?;
     let (app, seed) = match tpl {
         Some((_, _, src, seed)) => (src.replace("{name}", &name), seed.to_string()),
@@ -416,6 +416,10 @@ fn run_cmd(cmd: &mut std::process::Command, what: &str) -> Result<(), String> {
 
 /// `koto token`: koto dev の秘密で、動作確認用のトークンを作る
 fn cmd_token(o: &mut Opts) -> Result<i32, String> {
+    if take_flag(&mut o.args, "--help") || take_flag(&mut o.args, "-h") {
+        println!("使い方: koto token --sub 名前 [--role 役割 | --admin | --caps 権限,…]\n  koto dev で動かしているアプリの動作確認用トークン(12 時間有効)を標準出力に出します。\n  ソースに役割があれば --role で役割を指定します。--admin は全ての権限(全件閲覧を含む)。");
+        return Ok(0);
+    }
     let sub = take_value(&mut o.args, "--sub")?.ok_or("--sub 名前 が必要です(例: koto token --sub 花子)")?;
     let admin = take_flag(&mut o.args, "--admin");
     let role = take_value(&mut o.args, "--role")?;
@@ -436,6 +440,18 @@ fn cmd_token(o: &mut Opts) -> Result<i32, String> {
                 )
             })?;
             v.iter().filter_map(|c| c.as_str()).collect::<Vec<_>>().join(",")
+        }
+        (None, None) if !admin => {
+            // ソースに役割があるのに指定が無いと「何でもできる人」になり紛らわしいので、役割を選ばせる
+            let api: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(dev.join("backend/api.json")).map_err(|e| e.to_string())?).unwrap_or_default();
+            if let Some(m) = api["roles"].as_object().filter(|m| !m.is_empty()) {
+                return Err(format!(
+                    "このアプリには役割があります。--role で選んでください(役割: {})。全ての権限が必要なら --admin",
+                    m.keys().cloned().collect::<Vec<_>>().join(" / ")
+                ));
+            }
+            all_caps(&api).into_iter().filter(|c| !c.starts_with("全件閲覧.")).collect::<Vec<_>>().join(",")
         }
         (None, None) => {
             let api: serde_json::Value =
@@ -480,7 +496,9 @@ fn cmd_dev(o: &mut Opts) -> Result<i32, String> {
         Ok(x) => x,
         Err(c) => return Ok(c),
     };
-    let dev = o.dir.join(".koto").join("dev");
+    // 子プロセスは別のフォルダで動くので、絶対パスにしておく(相対の -C だと DB が別の場所にできていた)
+    let root = o.dir.canonicalize().map_err(|e| format!("{} を開けません: {e}", o.dir.display()))?;
+    let dev = root.join(".koto").join("dev");
     let mut api = serde_json::Value::Null;
     for t in ["backend", "web"] {
         let b = match drv::build_target(&p, &a, t) {
@@ -532,8 +550,22 @@ fn cmd_dev(o: &mut Opts) -> Result<i32, String> {
         }
     };
     let db = dev.join("data.sqlite");
-    let seed = o.dir.join("seed.json");
+    let seed = root.join("seed.json");
     if seed.exists() {
+        // データの形(項目や型)を変えて、既存のデータを自動で移せないときは、消してやり直す方法を案内する
+        let out = std::process::Command::new("node")
+            .args(["--no-warnings", "-e", "import('./src/runtime/db.ts').then(m => import('./src/app.generated.ts').then(a => m.openDb(process.env.KOTONOHA_DB, a.tables))).then(d => d.close()).catch(e => { console.error(String(e?.message ?? e)); process.exit(3); })"])
+            .env("KOTONOHA_DB", &db)
+            .current_dir(&be)
+            .output()
+            .map_err(|e| format!("node を実行できません: {e}"))?;
+        if !out.status.success() {
+            return Err(format!(
+                "開発用データベースを今のデータの形に合わせられません: {}\n  開発中のデータを消してやり直すなら: {} を削除してから koto dev",
+                String::from_utf8_lossy(&out.stderr).trim(),
+                db.display()
+            ));
+        }
         run_cmd(
             std::process::Command::new("node")
                 .args(["--no-warnings", "tools/seed.ts"])

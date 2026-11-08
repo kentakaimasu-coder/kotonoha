@@ -38,6 +38,7 @@ fn swift_type(t: &Type) -> String {
         Type::Int | Type::Money(_) => "Int64".into(),
         Type::Str | Type::Id | Type::Url | Type::Email => "String".into(),
         Type::DateTime => "Date".into(),
+        Type::Date => "String".into(),
         Type::Enum(e) => type_name("Enum_", e),
         Type::Data(d) => type_name("Entity_", d),
         Type::Option(i) => format!("{}?", swift_type(i)),
@@ -52,6 +53,7 @@ fn display_expr(v: &str, t: &Type) -> String {
         Type::Int => format!("Kotonoha.int({v})"),
         Type::Bool => format!("Kotonoha.bool({v})"),
         Type::DateTime => format!("Kotonoha.datetime({v})"),
+        Type::Date => format!("Kotonoha.date({v})"),
         Type::Enum(_) => format!("{v}.rawValue"),
         Type::Option(i) => format!("({v}.map {{ {} }} ?? \"—\")", display_expr("$0", i)),
         _ => format!("String(describing: {v})"),
@@ -303,6 +305,14 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                                     swift_str(n)
                                 ));
                                 submit_fields.push(format!("{}: {sv}", bt(n)));
+                            }
+                            Type::Date => {
+                                state.push(format!("    @State private var {sv} = Date()"));
+                                inputs.push(format!(
+                                    "DatePicker({}, selection: ${sv}, displayedComponents: .date).environment(\\.locale, Locale(identifier: \"ja_JP\"))",
+                                    swift_str(n)
+                                ));
+                                submit_fields.push(format!("{}: Kotonoha.dateString({sv})", bt(n)));
                             }
                             Type::DateTime => {
                                 state.push(format!("    @State private var {sv} = Date()"));

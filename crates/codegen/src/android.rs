@@ -48,7 +48,7 @@ fn kt_type(t: &Type) -> String {
     match t {
         Type::Bool => "Boolean".into(),
         Type::Int | Type::Money(_) => "Long".into(),
-        Type::Str | Type::Id | Type::Url | Type::Email | Type::DateTime => "String".into(),
+        Type::Str | Type::Id | Type::Url | Type::Email | Type::DateTime | Type::Date => "String".into(),
         Type::Enum(_) => "String".into(),
         Type::Option(i) => format!("{}?", kt_type(i)),
         _ => "Nothing".into(),
@@ -70,6 +70,7 @@ fn display(v: &str, t: &Type) -> String {
         Type::Money(c) if c == "JPY" => format!("Kotonoha.yen({v})"),
         Type::Bool => format!("Kotonoha.bool({v})"),
         Type::DateTime => format!("Kotonoha.datetime({v})"),
+        Type::Date => format!("Kotonoha.date({v})"),
         Type::Option(i) => format!("({v}?.let {{ {} }} ?: \"—\")", display("it", i)),
         _ => format!("{v}.toString()"),
     }
@@ -323,6 +324,14 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                                 state.push(format!("    var {sv} by remember {{ mutableStateOf({}.first()) }}", tn("ENUM_", e)));
                                 inputs.push(format!("KotonohaUi.EnumPicker({}, {}, {sv}) {{ {sv} = it }}", kstr(n), tn("ENUM_", e)));
                                 pairs.push(format!("{} to {sv}", kstr(n)));
+                            }
+                            Type::Date => {
+                                state.push(format!("    var {sv} by remember {{ mutableStateOf(\"\") }}"));
+                                inputs.push(format!(
+                                    "OutlinedTextField(value = {sv}, onValueChange = {{ {sv} = it }}, label = {{ Text({}) }}, placeholder = {{ Text(\"例: 2026-12-05\") }})",
+                                    kstr(n)
+                                ));
+                                pairs.push(format!("{} to Kotonoha.parseDate({sv}, {})", kstr(n), kstr(n)));
                             }
                             Type::DateTime => {
                                 state.push(format!("    var {sv} by remember {{ mutableStateOf(\"\") }}"));

@@ -509,6 +509,8 @@ pub fn wire_type(t: &Type) -> Result<Value, String> {
         Type::Email => json!({"kind": "email"}),
         Type::Money(c) if c == "JPY" => json!({"kind": "money", "currency": "JPY", "minor_units": 0}),
         Type::DateTime => json!({"kind": "datetime"}),
+        // 日付(時刻なし)。ワイヤでは "2026-12-05"(暦日。時刻帯に依存しない)
+        Type::Date => json!({"kind": "date"}),
         Type::Enum(e) => json!({"kind": "enum", "name": e}),
         Type::Data(d) => json!({"kind": "entity", "name": d}),
         Type::Option(inner) => json!({"kind": "optional", "of": wire_type(inner)?}),

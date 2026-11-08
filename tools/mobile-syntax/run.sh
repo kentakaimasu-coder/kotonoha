@@ -15,4 +15,6 @@ rm -rf "$OUT"
 "$ROOT/target/debug/koto" -C "$ROOT/examples/event" build --target android --out "$OUT/event-android" >/dev/null 2>&1
 "$ROOT/target/debug/koto" -C "$ROOT/examples/izakaya" build --target ios --out "$OUT/izakaya-ios" >/dev/null 2>&1
 "$ROOT/target/debug/koto" -C "$ROOT/examples/izakaya" build --target android --out "$OUT/izakaya-android" >/dev/null 2>&1
+"$ROOT/target/debug/koto" -C "$ROOT/examples/nippo" build --target ios --out "$OUT/nippo-ios" >/dev/null 2>&1
+"$ROOT/target/debug/koto" -C "$ROOT/examples/nippo" build --target android --out "$OUT/nippo-android" >/dev/null 2>&1
 node "$HERE/check.cjs" $(find "$OUT" -name '*.swift' -o -name '*.kt' | sort)

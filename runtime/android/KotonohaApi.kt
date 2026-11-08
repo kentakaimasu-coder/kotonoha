@@ -147,6 +147,15 @@ object Kotonoha {
             .replace(Regex("[\u2212\u30FC\uFF0D]"), "-")
             .replace(Regex("[,、\\s\u3000]"), "")
             .toLongOrNull() ?: throw KotonohaInputException("$field は整数で入力してください")
+    /** 暦日 "2026-12-05" → 2026年12月5日(土) */
+    fun date(v: String): String =
+        runCatching { java.time.LocalDate.parse(v).format(DateTimeFormatter.ofPattern("yyyy年M月d日(E)", Locale.JAPAN)) }.getOrDefault(v)
+    /** 日付の入力。「2026-12-05」「2026/12/5」、全角数字も受け付ける(NR-01) */
+    fun parseDate(s: String, field: String): String {
+        val t = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFKC).trim().replace('/', '-')
+        return runCatching { java.time.LocalDate.parse(t, DateTimeFormatter.ofPattern("yyyy-M-d")).toString() }.getOrNull()
+            ?: throw KotonohaInputException("$field は「2026-12-05」の形で入力してください")
+    }
     /** 日時の入力(端末の時刻帯)。「2026-12-05 19:00」「2026/12/05 19:00」、全角数字も受け付ける(NR-01) */
     fun parseDateTime(s: String, field: String): String {
         val t = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFKC).trim().replace('/', '-').replace(Regex("\\s+"), " ")

@@ -132,6 +132,22 @@ enum Kotonoha {
     static func int(_ v: Int64) -> String { String(v) }
     static func bool(_ v: Bool) -> String { v ? "はい" : "いいえ" }
     static func datetime(_ v: Date) -> String { v.formatted(date: .abbreviated, time: .shortened) }
+    /// 暦日 "2026-12-05" → 2026年12月5日(土)(時刻帯で動かさない)
+    static func date(_ v: String) -> String {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd"
+        guard let d = f.date(from: v) else { return v }
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "yyyy年M月d日(E)"
+        return f.string(from: d)
+    }
+    /// 端末の暦日を "2026-12-05" にする(フォームの日付入力)
+    static func dateString(_ d: Date) -> String {
+        let c = Calendar(identifier: .gregorian).dateComponents([.year, .month, .day], from: d)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
     /// 全角数字・全角マイナス・カンマ・空白を受け付ける(NR-01)
     static func parseInt(_ s: String, field: String) throws -> Int64 {
         var t = s.applyingTransform(.fullwidthToHalfwidth, reverse: false) ?? s

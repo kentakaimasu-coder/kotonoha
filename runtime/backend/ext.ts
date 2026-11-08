@@ -175,6 +175,7 @@ function cell(v: unknown, w: Wire, col: string): unknown {
     case "bool":
       return fromSql(v, b);
     case "enum":
+    case "date":
     case "string":
     case "id":
     case "url":

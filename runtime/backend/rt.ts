@@ -86,7 +86,7 @@ export function eq(a: unknown, b: unknown): boolean {
 
 // ---- ワイヤ形式(全クライアント共通) ----
 export type Wire =
-  | { kind: "bool" | "int" | "string" | "id" | "url" | "email" | "datetime" | "unit" }
+  | { kind: "bool" | "int" | "string" | "id" | "url" | "email" | "datetime" | "date" | "unit" }
   | { kind: "money"; currency: string; minor_units: number }
   | { kind: "enum"; name: string }
   | { kind: "entity"; name: string }
@@ -116,6 +116,8 @@ export function encode(v: unknown, w: Wire, s: Schema): unknown {
     }
     case "datetime":
       return new Date(Number(v as bigint)).toISOString();
+    case "date":
+      return v;
     case "bool":
     case "string":
     case "id":
@@ -174,6 +176,16 @@ export function decodeInput(v: unknown, w: Wire, s: Schema, path: string): unkno
     case "enum":
       if (typeof v !== "string" || !s.enums[w.name].includes(v)) throw bad(`${s.enums[w.name].join(" / ")} のいずれかが必要です`);
       return v;
+    case "date": {
+      // 暦日 "2026-12-05"(全角数字・/ 区切りも受け付ける: NR-01)
+      const t = typeof v === "string" ? v.normalize("NFKC").trim().replace(/\//g, "-") : "";
+      const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t);
+      if (!m) throw bad("日付(例: 2026-12-05)が必要です");
+      const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+      const dt = new Date(Date.UTC(y, mo - 1, d));
+      if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) throw bad("存在しない日付です");
+      return `${m[1]}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    }
     case "datetime": {
       if (typeof v !== "string" || !/(Z|[+-]\d\d:\d\d)$/.test(v)) throw bad("タイムゾーン付きの ISO 8601 日時が必要です");
       const t = Date.parse(v);

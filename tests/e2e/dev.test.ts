@@ -37,7 +37,7 @@ test("ひな形 → koto dev → 名前を入れてすぐ入る → 予約 → �
   assert.equal(await page.textContent("h1"), "枠一覧");
   await page.click("text=ログイン");
   await page.fill("#dev-name", "花子");
-  await page.click("text=一般の利用者として入る");
+  await page.click("text=利用者として入る");
   await page.waitForURL(/\/s\//);
   assert.match((await page.textContent("header"))!, /ログイン中/);
   await page.click("text=午後の回");
@@ -76,4 +76,34 @@ test("本番モードでは開発用ワンクリックログインを有効に�
     setTimeout(() => p.kill(), 10000);
   });
   assert.match(out, /ワンクリックログイン/);
+});
+
+test("日付型(時刻なし): 全角や / でも入力でき、存在しない日付は 400、画面は「2026年12月5日(土)」", async () => {
+  const d = join(tmp("nippo"), "日報");
+  execFileSync(KOTO, ["init", d, "--template", "日報"], { stdio: "pipe" });
+  const port = await freePort();
+  const p = spawn(KOTO, ["-C", d, "dev", "--port", String(port)], { stdio: ["ignore", "pipe", "pipe"] });
+  try {
+    const u = `http://127.0.0.1:${port}`;
+    await waitHttp(u + "/login", 240000);
+    const tok = execFileSync(KOTO, ["-C", d, "token", "--sub", "太郎"]).toString().trim();
+    const post = (日付: string) =>
+      fetch(`${u}/api/actions/${enc("日報を書く")}`, { method: "POST", headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" }, body: JSON.stringify({ 日付, 作業内容: "検品", 作業時間: 3 }) });
+    assert.equal((await post("2026-12-05")).status, 200);
+    assert.equal((await post("２０２６/１２/６")).status, 200);
+    assert.equal((await post("2026-02-30")).status, 400);
+    const rows = await (await fetch(`${u}/api/data/${enc("日報")}`, { headers: { Authorization: `Bearer ${tok}` } })).json();
+    assert.deepEqual(rows.map((r: any) => r.日付).sort(), ["2026-12-05", "2026-12-06"]);
+    const ctx = await browser.newContext({ locale: "ja-JP", timezoneId: "America/Los_Angeles" });
+    const page = await ctx.newPage();
+    await page.goto(u + "/login");
+    await page.fill("#dev-name", "太郎");
+    await page.click("text=一般の利用者として入る");
+    await page.goto(`${u}/s/${enc("自分の日報")}`);
+    // 時刻帯の違うブラウザでも暦日はずれない
+    assert.match((await page.textContent("main"))!, /2026年12月5日\(土\)/);
+    await ctx.close();
+  } finally {
+    p.kill();
+  }
 });

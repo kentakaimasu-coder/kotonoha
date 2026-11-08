@@ -168,7 +168,7 @@ fn load_file(reader: &Reader, value: &str, span: Span, exts: &[&str], diags: &mu
 
 fn wire_ok(t: &Type) -> bool {
     match t {
-        Type::Bool | Type::Int | Type::Str | Type::Id | Type::Url | Type::Email | Type::DateTime | Type::Enum(_) => true,
+        Type::Bool | Type::Int | Type::Str | Type::Id | Type::Url | Type::Email | Type::DateTime | Type::Date | Type::Enum(_) => true,
         Type::Money(c) => c == "JPY",
         Type::Option(i) | Type::List(i) | Type::Array(i) => wire_ok(i),
         Type::Record(fs) => fs.iter().all(|(_, t)| wire_ok(t)),
