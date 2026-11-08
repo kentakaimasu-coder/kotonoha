@@ -27,10 +27,26 @@ pub struct AccessPolicy {
     pub owner_read: BTreeMap<String, String>,
     /// 重複不可: データ → フィールドの組の一覧(約束 C-UNIQUE。ADR-0129)
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub unique: BTreeMap<String, Vec<Vec<String>>>,
+    pub unique: BTreeMap<String, Vec<UniqueRule>>,
     /// 状態の順番: データ → フィールド → 値の順(約束 C-SEQUENCE。ADR-0129)
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub sequences: BTreeMap<String, BTreeMap<String, Vec<String>>>,
+    pub sequences: BTreeMap<String, BTreeMap<String, SequenceRule>>,
+}
+
+/// 重複不可の約束 1 つ(フィールドの組と、判定から外す行の条件)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UniqueRule {
+    pub fields: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub except: Vec<kotonoha_intent::ListFilter>,
+}
+
+/// 状態の順番(どの値からでも移れる値を含む)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SequenceRule {
+    pub values: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub anytime: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -219,25 +235,31 @@ pub fn validate(env: &Env, facts: &BTreeMap<String, Facts>, intents: &IntentMode
             IntentKind::AuthRequired { data } => {
                 v.policy.auth_required.insert(data.clone());
             }
-            IntentKind::Sequence { data, field, values } => {
+            IntentKind::Sequence { data, field, values, anytime } => {
                 if v.policy
                     .sequences
                     .entry(data.clone())
                     .or_default()
-                    .insert(field.clone(), values.clone())
+                    .insert(
+                        field.clone(),
+                        SequenceRule {
+                            values: values.clone(),
+                            anytime: anytime.clone(),
+                        },
+                    )
                     .is_some()
                 {
                     diags.push(Diagnostic::error(Code::AMB002, c.span, format!("{data}.{field} の順番が 2 回書かれています")));
                 }
             }
-            IntentKind::Unique { data, fields } => {
+            IntentKind::Unique { data, fields, except } => {
                 let mut key = fields.clone();
                 key.sort();
                 let sets = v.policy.unique.entry(data.clone()).or_default();
                 if sets.iter().any(|x| {
-                    let mut y = x.clone();
+                    let mut y = x.fields.clone();
                     y.sort();
-                    y == key
+                    y == key && &x.except == except
                 }) {
                     diags.push(Diagnostic::warning(
                         Code::AMB002,
@@ -245,7 +267,10 @@ pub fn validate(env: &Env, facts: &BTreeMap<String, Facts>, intents: &IntentMode
                         format!("{data} の同じ重複不可の約束が 2 回書かれています"),
                     ));
                 } else {
-                    sets.push(fields.clone());
+                    sets.push(UniqueRule {
+                        fields: fields.clone(),
+                        except: except.clone(),
+                    });
                 }
             }
             IntentKind::OwnerRead { data, field } => {

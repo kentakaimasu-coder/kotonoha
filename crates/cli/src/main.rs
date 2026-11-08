@@ -348,7 +348,11 @@ fn safety_text(api: &serde_json::Value) -> String {
             if let Some(g) = a["grant"].as_str() {
                 v.push(format!("許可 {g}"));
             }
-            format!("ログイン + {}", v.join(" または "))
+            if v.is_empty() {
+                "ログインした人".to_string()
+            } else {
+                format!("ログイン + {}", v.join(" または "))
+            }
         };
         s.push_str(&format!(
             "  {} {}  … {who}\n",

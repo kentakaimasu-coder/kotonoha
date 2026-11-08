@@ -116,3 +116,29 @@ test("他の人の日報は 404 で、理由の候補が日本語で出る・月
     ], s.name);
   }
 });
+
+test("取下げ: どの状態からでも取り下げられ、取り下げた日報は重複の判定から外れる(同じ日に書き直せる)", async () => {
+  for (const s of servers) {
+    const t = tokenOf("七郎", "日報.作成,日報.読取,日報.更新");
+    const id = (await act(s.url, t, "日報を書く", { 日付: "2026-12-20", 作業内容: "検品", 作業時間: 2 })).body.ok;
+    assert.equal((await act(s.url, t, "提出する", { 日報ID: id })).status, 200, s.name);
+    assert.equal((await act(s.url, t, "日報を書く", { 日付: "2026-12-20", 作業内容: "検品", 作業時間: 2 })).status, 409, s.name);
+    assert.equal((await act(s.url, t, "取り下げる", { 日報ID: id })).status, 200, s.name);
+    const again = await act(s.url, t, "日報を書く", { 日付: "2026-12-20", 作業内容: "検品(書き直し)", 作業時間: 3 });
+    assert.equal(again.status, 200, `${s.name} ${JSON.stringify(again)}`);
+    const back = await act(s.url, t, "提出する", { 日報ID: id });
+    assert.equal(back.status, 409, s.name);
+    assert.match(back.body.message, /「取下げ」で終わり/);
+  }
+});
+
+test("期限切れの絞り込み: 提出期限が今日より前・今日以降(日付の比較)", async () => {
+  for (const s of servers) {
+    const t = tokenOf("八郎", "日報.作成,日報.読取,日報.更新");
+    await act(s.url, t, "日報を書く", { 日付: "2020-01-01", 作業内容: "昔の分", 作業時間: 1 });
+    await act(s.url, t, "日報を書く", { 日付: "2099-01-01", 作業内容: "先の分", 作業時間: 1 });
+    const get = async (q: string) => (await (await fetch(`${s.url}/api/data/${enc("日報")}?${q}`, { headers: { Authorization: `Bearer ${t}` } })).json()).map((r: any) => r.作業内容);
+    assert.deepEqual(await get(`${enc("lt_today.提出期限")}=1`), ["昔の分"], s.name);
+    assert.deepEqual(await get(`${enc("ge_today.提出期限")}=1`), ["先の分"], s.name);
+  }
+});

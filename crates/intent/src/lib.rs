@@ -96,11 +96,24 @@ pub enum IntentKind {
     #[serde(rename = "owner_read")]
     OwnerRead { data: String, field: String },
     /// C-UNIQUE `{データ}は{フィールド}(と{フィールド})*の組で重複不可` / `{データ}は{フィールド}が重複不可`(ADR-0129)
+    /// 末尾に `(状態が取消のものを除く)` を付けると、その行は重複の判定から外す(部分一意索引)
     #[serde(rename = "unique")]
-    Unique { data: String, fields: Vec<String> },
+    Unique {
+        data: String,
+        fields: Vec<String>,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        except: Vec<ListFilter>,
+    },
     /// C-SEQUENCE `{データ}の{フィールド}は {値} → {値} → … の順`(列挙の値を決めた順にしか進めない。ADR-0129)
+    /// 末尾に `(取消はいつでも)` を付けると、その値にはどの値からでも移れる(移ったら終わり)
     #[serde(rename = "sequence")]
-    Sequence { data: String, field: String, values: Vec<String> },
+    Sequence {
+        data: String,
+        field: String,
+        values: Vec<String>,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        anytime: Vec<String>,
+    },
     /// C-AUTH `未認証なら{データ}不可`
     #[serde(rename = "auth_required")]
     AuthRequired { data: String },
@@ -151,6 +164,14 @@ pub enum FilterOp {
     Today,
     /// `{フィールド}が本人`(識別子・文字列。ログイン中の人)
     Me,
+    /// `{フィールド}が今日より前`(延滞など)
+    BeforeToday,
+    /// `{フィールド}が今日より後`
+    AfterToday,
+    /// `{フィールド}が今日以降`
+    FromToday,
+    /// `{フィールド}が今日まで`
+    UntilToday,
 }
 
 /// 一覧の絞り込み(ADR-0128)。値は JSON の表記(数値・真偽・文字列)で持つ
@@ -170,6 +191,10 @@ impl ListFilter {
             FilterOp::Ne => "ne",
             FilterOp::Today => "today",
             FilterOp::Me => "me",
+            FilterOp::BeforeToday => "lt_today",
+            FilterOp::AfterToday => "gt_today",
+            FilterOp::FromToday => "ge_today",
+            FilterOp::UntilToday => "le_today",
         };
         (format!("{op}.{}", self.field), self.value.clone().unwrap_or_else(|| "1".into()))
     }
@@ -185,6 +210,11 @@ pub fn list_query(order: &Option<ListOrder>, filters: &[ListFilter]) -> Vec<(Str
         }
     }
     q
+}
+
+/// 条件の終わりの「のもの」(「調理中のもの」)と「もの」(「提供済みでないもの」)を外す
+fn strip_mono(x: &str) -> Option<&str> {
+    x.strip_suffix("のもの").or_else(|| x.strip_suffix("もの"))
 }
 
 fn shown(v: Option<&str>) -> &str {
@@ -205,6 +235,10 @@ pub fn list_caption(data: &str, order: &Option<ListOrder>, filters: &[ListFilter
             FilterOp::Ne => format!("{}が{}でない", f.field, shown(f.value.as_deref())),
             FilterOp::Today => format!("{}が今日", f.field),
             FilterOp::Me => format!("{}が自分", f.field),
+            FilterOp::BeforeToday => format!("{}が今日より前", f.field),
+            FilterOp::AfterToday => format!("{}が今日より後", f.field),
+            FilterOp::FromToday => format!("{}が今日以降", f.field),
+            FilterOp::UntilToday => format!("{}が今日まで", f.field),
         })
         .collect();
     if let Some(o) = order {
@@ -529,11 +563,15 @@ impl Ctx<'_> {
                 };
             }
         }
-        // C-SEQUENCE
-        if let Some(rest) = s
+        // C-SEQUENCE(末尾の「(取消はいつでも)」は、どの値からでも移れる値)
+        let (seq_s, anytime_text) = match s.strip_suffix("はいつでも)").and_then(|x| x.rsplit_once('(')) {
+            Some((head, vals)) => (head, Some(vals)),
+            None => (s, None),
+        };
+        if let Some(rest) = seq_s
             .strip_suffix("の順に進む")
-            .or_else(|| s.strip_suffix("の順に変わる"))
-            .or_else(|| s.strip_suffix("の順"))
+            .or_else(|| seq_s.strip_suffix("の順に変わる"))
+            .or_else(|| seq_s.strip_suffix("の順"))
         {
             if let Some((left, vals)) = rest.split_once('は') {
                 if vals.contains('→') || vals.contains("->") {
@@ -567,7 +605,21 @@ impl Ctx<'_> {
                     if uniq.len() != values.len() || values.len() < 2 {
                         return Match::Invalid(Diagnostic::error(Code::AMB002, span, "順番には 2 つ以上の異なる値を書きます"));
                     }
-                    let missing: Vec<&String> = all.iter().filter(|v| !values.contains(v)).collect();
+                    let anytime: Vec<String> = anytime_text
+                        .map(|t| t.split(['・', '、']).map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect())
+                        .unwrap_or_default();
+                    for v in &anytime {
+                        if !all.contains(v) {
+                            return Match::Invalid(
+                                Diagnostic::error(Code::TYP001, span, format!("「{v}」は列挙 `{e}` の値ではありません"))
+                                    .hint(format!("値: {}", all.join(" / "))),
+                            );
+                        }
+                        if values.contains(v) {
+                            return Match::Invalid(Diagnostic::error(Code::AMB002, span, format!("「{v}」は順番といつでもの両方に書かれています")));
+                        }
+                    }
+                    let missing: Vec<&String> = all.iter().filter(|v| !values.contains(v) && !anytime.contains(v)).collect();
                     if !missing.is_empty() {
                         return Match::Invalid(
                             Diagnostic::error(
@@ -578,19 +630,27 @@ impl Ctx<'_> {
                                     missing.iter().map(|x| format!("「{x}」")).collect::<Vec<_>>().join("")
                                 ),
                             )
-                            .hint("どの値にも進める・戻れる値は、今は書けません(すべての値を順番に並べてください)"),
+                            .hint(format!(
+                                "順番の途中に入らない値(取消など)は、末尾に「({}はいつでも)」と書くと、どの値からでも移れます",
+                                missing[0]
+                            )),
                         );
                     }
                     return Match::Ok(IntentKind::Sequence {
                         data: d.into(),
                         field: f.into(),
                         values,
+                        anytime,
                     });
                 }
             }
         }
-        // C-UNIQUE
-        if let Some(rest) = s.strip_suffix("重複不可") {
+        // C-UNIQUE(末尾の「(状態が取消のものを除く)」は判定から外す行)
+        let (uniq_s, except_text) = match s.strip_suffix("を除く)").and_then(|x| x.rsplit_once("重複不可(")) {
+            Some((head, cond)) => (format!("{head}重複不可"), Some(cond.to_string())),
+            None => (s.to_string(), None),
+        };
+        if let Some(rest) = uniq_s.strip_suffix("重複不可") {
             if let Some((d, fs)) = rest.split_once('は') {
                 let fs = fs
                     .strip_suffix("の組で")
@@ -640,7 +700,30 @@ impl Ctx<'_> {
                         }
                         fields.push(f.into());
                     }
-                    return Match::Ok(IntentKind::Unique { data: d.into(), fields });
+                    let except = match &except_text {
+                        None => vec![],
+                        Some(t) => {
+                            let Some(cond) = strip_mono(t) else {
+                                return Match::Invalid(Diagnostic::error(Code::SYN001, span, "除く条件は「(状態が取消のものを除く)」の形で書きます"));
+                            };
+                            match self.parse_filters(d, info, Some(cond), span) {
+                                Err(m) => return m,
+                                Ok(f) if f.iter().all(|x| matches!(x.op, FilterOp::Eq | FilterOp::Ne)) => f,
+                                Ok(_) => {
+                                    return Match::Invalid(Diagnostic::error(
+                                        Code::TYP001,
+                                        span,
+                                        "除く条件には「フィールドが値」「フィールドが値でない」だけを使えます",
+                                    ))
+                                }
+                            }
+                        }
+                    };
+                    return Match::Ok(IntentKind::Unique {
+                        data: d.into(),
+                        fields,
+                        except,
+                    });
                 }
             }
         }
@@ -877,7 +960,7 @@ impl Ctx<'_> {
         } else {
             (rest.strip_suffix('を')?, None)
         };
-        let (d, conds) = match target.strip_suffix("のもの").and_then(|x| x.split_once("のうち")) {
+        let (d, conds) = match strip_mono(target).and_then(|x| x.split_once("のうち")) {
             Some((d, c)) => (d, Some(c)),
             None => (target, None),
         };
@@ -958,6 +1041,29 @@ impl Ctx<'_> {
                 Type::Option(x) => x.as_ref().clone(),
                 x => x.clone(),
             };
+            let rel = match v {
+                "今日" => Some(FilterOp::Today),
+                "今日より前" | "今日より以前" => Some(FilterOp::BeforeToday),
+                "今日より後" | "今日より先" => Some(FilterOp::AfterToday),
+                "今日以降" => Some(FilterOp::FromToday),
+                "今日まで" | "今日以前" => Some(FilterOp::UntilToday),
+                _ => None,
+            };
+            if let Some(op) = rel.filter(|o| *o != FilterOp::Today) {
+                if !matches!(base, Type::DateTime | Type::Date) {
+                    return Err(Match::Invalid(Diagnostic::error(
+                        Code::TYP001,
+                        span,
+                        format!("「{f}が{v}」は日時か日付のフィールドに使います(`{f}` は {t})"),
+                    )));
+                }
+                filters.push(ListFilter {
+                    field: f.into(),
+                    op,
+                    value: None,
+                });
+                continue;
+            }
             if v == "今日" {
                 if !matches!(base, Type::DateTime | Type::Date) {
                     return Err(Match::Invalid(Diagnostic::error(
@@ -1070,14 +1176,14 @@ impl Ctx<'_> {
         // 対象: {D} / {D}のうち{条件}のもの(集計)、{D}の{F}と{F} / {D}のうち{条件}のものの{F}と{F}(合計)
         let (d, conds, sums_text) = if explicit {
             if let Some((d, r)) = target.split_once("のうち") {
-                let (c, f) = r.rsplit_once("のものの")?;
+                let (c, f) = r.rsplit_once("のものの").or_else(|| r.rsplit_once("ものの"))?;
                 (d, Some(c), Some(f))
             } else {
                 let (d, f) = self.split_data_prefix(target)?;
                 (d, None, Some(f))
             }
         } else {
-            match target.strip_suffix("のもの").and_then(|x| x.split_once("のうち")) {
+            match strip_mono(target).and_then(|x| x.split_once("のうち")) {
                 Some((d, c)) => (d, Some(c), None),
                 None => (target, None, None),
             }
@@ -1349,6 +1455,7 @@ pub fn example_sentences(env: &Env, reg: &Registry, contract: bool) -> Vec<Strin
                     out.push(format!("{d}を{f}の新しい順に一覧表示"));
                     out.push(format!("{d}のうち{f}が今日のものを一覧表示"));
                     out.push(format!("{d}を{f}の日ごとに集計"));
+                    out.push(format!("{d}のうち{f}が今日より前のものを一覧表示"));
                 }
                 kotonoha_types::Type::Enum(e) => {
                     if let Some(v) = env.enums.get(e).and_then(|vs| vs.first()) {

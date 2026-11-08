@@ -244,19 +244,19 @@ pub fn build_vag(inp: &GraphInput, status: Status) -> Value {
             IntentKind::PublicRead { data } => ("public_read", data, None),
             IntentKind::AuthRequired { data } => ("auth_required", data, None),
             IntentKind::OwnerRead { data, field } => ("owner_read", data, Some(field.clone())),
-            IntentKind::Sequence { data, field, values } => {
+            IntentKind::Sequence { data, field, values, anytime } => {
                 nodes.push(json!({
                     "id": c.id, "kind": "validation", "title": c.sentence, "sentence": c.sentence,
                     "inputs": [], "outputs": [], "effects": [], "capabilities": [], "knowledge_refs": [],
-                    "source_span": span_json(inp.files, c.span), "detail": json!({"policy": "sequence", "data": data, "field": field, "values": values}),
+                    "source_span": span_json(inp.files, c.span), "detail": if anytime.is_empty() { json!({"policy": "sequence", "data": data, "field": field, "values": values}) } else { json!({"policy": "sequence", "data": data, "field": field, "values": values, "anytime": anytime}) },
                 }));
                 continue;
             }
-            IntentKind::Unique { data, fields } => {
+            IntentKind::Unique { data, fields, except } => {
                 nodes.push(json!({
                     "id": c.id, "kind": "validation", "title": c.sentence, "sentence": c.sentence,
                     "inputs": [], "outputs": [], "effects": [], "capabilities": [], "knowledge_refs": [],
-                    "source_span": span_json(inp.files, c.span), "detail": json!({"policy": "unique", "data": data, "fields": fields}),
+                    "source_span": span_json(inp.files, c.span), "detail": if except.is_empty() { json!({"policy": "unique", "data": data, "fields": fields}) } else { json!({"policy": "unique", "data": data, "fields": fields, "except": except}) },
                 }));
                 continue;
             }

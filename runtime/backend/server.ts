@@ -36,7 +36,7 @@ export interface App {
   /** 重複不可: データ → フィールドの組(ADR-0129) */
   uniques?: Record<string, string[][]>;
   /** 状態の順番: データ → フィールド → 値の順(ADR-0129) */
-  sequences?: Record<string, Record<string, string[]>>;
+  sequences?: Record<string, Record<string, { values: string[]; anytime?: string[] }>>;
 }
 
 /** 書込み系(POST)のレート制限: 主体または IP ごとのトークンバケット */

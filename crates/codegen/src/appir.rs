@@ -76,6 +76,7 @@ pub enum EndpointKind {
     /// 日本語の文で書いた集計(ADR-0128)。ir.aggregates の名前
     Aggregate {
         name: String,
+        data: String,
     },
     /// 実験の割付(誰でも。露出を記録する。ADR-0122)
     ExperimentAssign {
@@ -114,6 +115,8 @@ impl Endpoint {
     pub fn owner(&self) -> Option<&str> {
         match (&self.kind, &self.access) {
             (EndpointKind::ListData { data } | EndpointKind::GetData { data }, Access::Owner) => Some(data),
+            // 本人限定データの集計は、本人の行だけを数える(全件閲覧の許可があれば全員)
+            (EndpointKind::Aggregate { data, .. }, Access::Owner) => Some(data),
             _ => None,
         }
     }
@@ -438,10 +441,20 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
                             .unwrap_or_default(),
                     });
                 }
-                IntentKind::Form { action, submit } => comps.push(Component::Form {
-                    submit: submit.clone().unwrap_or_else(|| "送信".into()),
-                    action: action.clone(),
-                    params: env.actions.get(action).map(|a| a.params.clone()).unwrap_or_default(),
+                IntentKind::Form { action, submit } => comps.push({
+                    // 引数「データ名ID」を一覧から選べるよう、そのデータの一覧 API を用意する(権限は通常の読取と同じ)
+                    for (n, t) in env.actions.get(action).map(|a| a.params.clone()).unwrap_or_default() {
+                        if let (Some(x), Type::Id) = (n.strip_suffix("ID"), &t) {
+                            if env.data.contains_key(x) {
+                                list_data.insert(x.to_string());
+                            }
+                        }
+                    }
+                    Component::Form {
+                        submit: submit.clone().unwrap_or_else(|| "送信".into()),
+                        action: action.clone(),
+                        params: env.actions.get(action).map(|a| a.params.clone()).unwrap_or_default(),
+                    }
                 }),
                 IntentKind::NavigateOnSelect { .. }
                 | IntentKind::PublicRead { .. }
@@ -526,7 +539,10 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
             method: "GET",
             segments: vec!["api".into(), "aggregates".into(), a.name.clone()],
             has_id: false,
-            kind: EndpointKind::Aggregate { name: a.name.clone() },
+            kind: EndpointKind::Aggregate {
+                name: a.name.clone(),
+                data: a.data.clone(),
+            },
             access: read_access(&policy, &a.data),
         });
     }
@@ -722,7 +738,7 @@ pub fn api_contract(ir: &AppIr) -> Value {
                     v["query"] = json!({"limit": {"allowed": limits}, "base": {"kind": "datetime", "optional": true}});
                     v["response"] = wire_type(&spec.result_type()).unwrap_or(Value::Null);
                 }
-                EndpointKind::Aggregate { name } => {
+                EndpointKind::Aggregate { name, .. } => {
                     let a = ir.aggregates.iter().find(|x| &x.name == name).unwrap();
                     v["aggregate"] = json!({"data": a.data, "by": a.by, "bucket": a.bucket, "sums": a.sums, "filters": a.filters});
                     v["response"] = json!({"kind": "list", "of": wire_type(&a.row_type()).unwrap_or(Value::Null)});

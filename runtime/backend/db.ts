@@ -46,7 +46,7 @@ export interface Ctx {
   /** 重複不可: データ → フィールドの組(ADR-0129) */
   uniques?: Record<string, string[][]>;
   /** 状態の順番: データ → フィールド → 値の順(ADR-0129) */
-  sequences?: Record<string, Record<string, string[]>>;
+  sequences?: Record<string, Record<string, { values: string[]; anytime?: string[] }>>;
   /** 取引中に更新されたエンティティ */
   dirty: Set<Row> | null;
   principal: Principal | null;
@@ -268,29 +268,34 @@ export interface TableDef {
   ddl: string;
   pg_ddl: string;
   columns: ColumnDef[];
-  /** 重複不可のフィールドの組(約束 C-UNIQUE。ADR-0129) */
-  unique?: string[][];
+  /** 重複不可のフィールドの組と、判定から外す行の条件(約束 C-UNIQUE。ADR-0129) */
+  unique?: { fields: string[]; where?: string }[];
 }
 
 /** 重複不可の索引名(PostgreSQL の 63 バイト制限に収まるよう、表とフィールドのハッシュから作る) */
-export function uniqueIndexName(table: string, fields: string[]): string {
-  return "uq_" + createHash("sha256").update([table, ...fields].join("\u0000")).digest("hex").slice(0, 24);
+export function uniqueIndexName(table: string, fields: string[], where: string = ""): string {
+  return "uq_" + createHash("sha256").update([table, ...fields, where].join("\u0000")).digest("hex").slice(0, 24);
 }
 
-/** 状態の順番(約束 C-SEQUENCE)の検査: 作るときは最初の値、変えるときは同じ値か次の値だけ */
+/** 状態の順番(約束 C-SEQUENCE)の検査: 作るときは最初の値、変えるときは同じ値か次の値だけ。
+ *  「いつでも」の値(取消など)には、どの値からでも移れる(移ったら、そこで終わり) */
 function checkSequence(ctx: Ctx, table: string, before: Row | null, after: Row): void {
   const seqs = (ctx.sequences ?? {})[table];
   if (!seqs) return;
-  for (const [field, order] of Object.entries(seqs)) {
+  for (const [field, rule] of Object.entries(seqs)) {
     if (!(field in after)) continue;
+    const order = rule.values;
+    const anytime = rule.anytime ?? [];
     const to = after[field] as string;
-    const chain = order.map((x) => `「${x}」`).join("→");
+    const chain = order.map((x) => `「${x}」`).join("→") + (anytime.length ? `(${anytime.map((x) => `「${x}」`).join("")}はいつでも)` : "");
     if (before === null) {
       if (to !== order[0]) throw new HttpError(409, "invalid_transition", `${field}は「${order[0]}」から始まります(${chain} の順)`);
       continue;
     }
     const from = before[field] as string;
     if (from === to) continue;
+    if (anytime.includes(from)) throw new HttpError(409, "invalid_transition", `${field}は「${from}」で終わりです(${chain} の順)`);
+    if (anytime.includes(to)) continue;
     if (order.indexOf(to) !== order.indexOf(from) + 1) {
       const next = order[order.indexOf(from) + 1];
       throw new HttpError(409, "invalid_transition", next === undefined ? `${field}は「${from}」で終わりです(${chain} の順)` : `${field}は「${from}」の次は「${next}」です(${chain} の順)`);
@@ -397,7 +402,7 @@ export async function migrate(db: Database, tables: TableDef[]): Promise<string[
     }
     // 重複不可(約束 C-UNIQUE): 宣言どおりの一意索引にそろえる
     for (const t of tables) {
-      const want = new Map((t.unique ?? []).map((fs) => [uniqueIndexName(t.name, fs), fs]));
+      const want = new Map((t.unique ?? []).map((u) => [uniqueIndexName(t.name, u.fields, u.where ?? ""), u]));
       const have = pg
         ? await c.all("SELECT indexname AS name FROM pg_indexes WHERE schemaname = current_schema() AND tablename = ? AND indexname LIKE 'uq\\_%'", [t.name])
         : await c.all("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND name LIKE 'uq\\_%' ESCAPE '\\'", [t.name]);
@@ -408,10 +413,11 @@ export async function migrate(db: Database, tables: TableDef[]): Promise<string[
           applied.push(`drop unique ${t.name}`);
         }
       }
-      for (const [n, fs] of want) {
+      for (const [n, u] of want) {
         if (haveNames.has(n)) continue;
+        const fs = u.fields;
         try {
-          await c.exec(`CREATE UNIQUE INDEX ${q(n)} ON ${q(t.name)} (${fs.map(q).join(", ")})`);
+          await c.exec(`CREATE UNIQUE INDEX ${q(n)} ON ${q(t.name)} (${fs.map(q).join(", ")})${u.where ? ` WHERE ${u.where}` : ""}`);
         } catch (e) {
           throw new MigrationError(`表 ${t.name} に ${fs.join("と")} が同じデータが既に複数あるため「重複不可」を設定できません。重複を解消してから起動してください(${String((e as Error).message ?? e)})`);
         }
@@ -560,9 +566,24 @@ export function listView(ctx: Ctx, table: string, query: URLSearchParams = new U
     const dot = key.indexOf(".");
     if (dot < 0) continue;
     const op = key.slice(0, dot);
-    if (!["eq", "ne", "today", "me"].includes(op)) continue;
+    if (!["eq", "ne", "today", "me", "lt_today", "gt_today", "ge_today", "le_today"].includes(op)) continue;
     const f = fieldOf(key.slice(dot + 1));
     const w = baseWire(f.type);
+    if (op.endsWith("_today")) {
+      // 今日より前・後・以降・まで(アプリの時刻帯の暦日)
+      const t = todayIn(appTz());
+      const cmp = { lt_today: "<", gt_today: ">", ge_today: ">=", le_today: "<=" }[op]!;
+      if (w.kind === "datetime") {
+        const bound = op === "lt_today" || op === "ge_today" ? t.start : t.end;
+        const c = op === "gt_today" ? ">=" : op === "le_today" ? "<" : cmp;
+        sql += ` AND ${q(f.name)} ${c} ?`;
+        params.push(BigInt(bound));
+      } else if (w.kind === "date") {
+        sql += ` AND ${q(f.name)} ${cmp} ?`;
+        params.push(t.date);
+      } else throw new HttpError(400, "invalid_input", `${f.name} は日時・日付ではありません`);
+      continue;
+    }
     if (op === "today") {
       const t = todayIn(appTz());
       if (w.kind === "datetime") {

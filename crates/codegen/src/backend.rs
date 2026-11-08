@@ -221,7 +221,7 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
         if let (Ok(cols), Ok(pg)) = (sqlite_columns(&e.fields, &ir.enums), pg_ddl_for(&e.name, &e.fields, &ir.enums)) {
             let mut t = json!({"name": e.name, "ddl": d, "pg_ddl": pg, "columns": cols});
             if let Some(u) = ir.policy.unique.get(&e.name) {
-                t["unique"] = json!(u);
+                t["unique"] = json!(u.iter().map(|r| unique_def(&e.fields, r)).collect::<Vec<_>>());
             }
             tables.push(t);
         }
@@ -375,7 +375,7 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
                     }
                 }
             }
-            EndpointKind::Aggregate { name } => {
+            EndpointKind::Aggregate { name, .. } => {
                 let a = ir.aggregates.iter().find(|x| &x.name == name).unwrap();
                 let spec = serde_json::json!({
                     "by": a.by,
@@ -475,7 +475,9 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
     let uniques = if ir.policy.unique.is_empty() {
         String::new()
     } else {
-        format!(", uniques: {}", serde_json::to_string(&ir.policy.unique).unwrap())
+        let m: std::collections::BTreeMap<&String, Vec<&Vec<String>>> =
+            ir.policy.unique.iter().map(|(d, rs)| (d, rs.iter().map(|r| &r.fields).collect())).collect();
+        format!(", uniques: {}", serde_json::to_string(&m).unwrap())
     };
     let uniques = if ir.policy.sequences.is_empty() {
         uniques
@@ -580,4 +582,41 @@ fn action_todos(ir: &AppIr) -> String {
 
 fn kotonoha_parser_expr(e: &kotonoha_ast::Expr) -> String {
     kotonoha_parser::printer::expr_str(e)
+}
+
+/// 重複不可の一意索引の定義。「…を除く」は部分索引の条件(SQLite / PostgreSQL 共通の SQL)にする。
+/// 値はコンパイル時に型を検査済みのリテラルだけ(利用者の入力は入らない)
+fn unique_def(fields: &[(String, Type)], r: &kotonoha_validator::UniqueRule) -> serde_json::Value {
+    let mut v = json!({"fields": r.fields});
+    if !r.except.is_empty() {
+        let lit = |f: &str, x: &str| -> String {
+            let t = fields.iter().find(|(n, _)| n == f).map(|(_, t)| t.clone()).unwrap_or(Type::Str);
+            let base = if let Type::Option(i) = &t { i.as_ref().clone() } else { t };
+            match base {
+                Type::Int | Type::Money(_) => x.to_string(),
+                Type::Bool => {
+                    if x == "true" {
+                        "1".into()
+                    } else {
+                        "0".into()
+                    }
+                }
+                _ => format!("'{}'", x.replace('\'', "''")),
+            }
+        };
+        let q = |n: &str| format!("\"{}\"", n.replace('"', "\"\""));
+        let conds: Vec<String> = r
+            .except
+            .iter()
+            .map(|c| {
+                let val = lit(&c.field, c.value.as_deref().unwrap_or(""));
+                match c.op {
+                    kotonoha_intent::FilterOp::Ne => format!("({} IS NULL OR {} <> {val})", q(&c.field), q(&c.field)),
+                    _ => format!("{} = {val}", q(&c.field)),
+                }
+            })
+            .collect();
+        v["where"] = json!(format!("NOT ({})", conds.join(" AND ")));
+    }
+    v
 }

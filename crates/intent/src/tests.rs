@@ -161,6 +161,15 @@ fn list_of(lines: &str) -> (Vec<IntentKind>, Vec<Code>) {
 
 #[test]
 fn list_order_and_filters() {
+    // 「でない」のあとは「のもの」ではなく「もの」(評価で見つかった不具合)
+    let (k2, c2) = list_of("    注文のうち状態が提供済みでないものを注文日時順に一覧表示\n    注文のうち状態が提供済みでないものの数量を品名ごとに合計\n");
+    assert!(c2.is_empty(), "{c2:?}");
+    assert!(matches!(&k2[0], IntentKind::ListData { filters, .. } if filters[0].op == FilterOp::Ne));
+    assert!(matches!(&k2[1], IntentKind::Aggregate { filters, .. } if filters[0].op == FilterOp::Ne));
+    let (k3, c3) = list_of("    注文のうち注文日時が今日より前のものを一覧表示\n    注文のうち注文日時が今日以降のものを一覧表示\n");
+    assert!(c3.is_empty(), "{c3:?}");
+    assert!(matches!(&k3[0], IntentKind::ListData { filters, .. } if filters[0].op == FilterOp::BeforeToday));
+    assert!(matches!(&k3[1], IntentKind::ListData { filters, .. } if filters[0].op == FilterOp::FromToday));
     let (k, c) = list_of("    注文を注文日時の新しい順に一覧表示\n    注文のうち状態が調理中かつ数量が2のものを数量順に一覧表示\n    注文のうち注文日時が今日のものを一覧表示\n    注文のうち状態が提供済みでないかつ卓が本人かつ急ぎが真のものを一覧表示\n");
     assert!(c.is_empty(), "{c:?}");
     let IntentKind::ListData { order, filters, .. } = &k[0] else { panic!() };
@@ -266,14 +275,16 @@ fn unique_and_sequence_contracts() {
         k[0],
         IntentKind::Unique {
             data: "注文".into(),
-            fields: vec!["卓".into(), "品名".into()]
+            fields: vec!["卓".into(), "品名".into()],
+            except: vec![]
         }
     );
     assert_eq!(
         k[1],
         IntentKind::Unique {
             data: "注文".into(),
-            fields: vec!["品名".into()]
+            fields: vec!["品名".into()],
+            except: vec![]
         }
     );
     assert_eq!(
@@ -281,7 +292,8 @@ fn unique_and_sequence_contracts() {
         IntentKind::Sequence {
             data: "注文".into(),
             field: "状態".into(),
-            values: vec!["調理中".into(), "提供済み".into()]
+            values: vec!["調理中".into(), "提供済み".into()],
+            anytime: vec![]
         }
     );
     for (line, code) in [
@@ -296,4 +308,20 @@ fn unique_and_sequence_contracts() {
         let (_, c) = contracts_of(&format!("    {line}\n"));
         assert_eq!(c, vec![code], "{line}");
     }
+}
+
+#[test]
+fn unique_except_and_sequence_anytime() {
+    let src = format!("{IZAKAYA}約束:\n    注文は卓と品名の組で重複不可(状態が提供済みのものを除く)\n");
+    let (m, d) = run(&src, &[]);
+    assert!(codes(&d).is_empty(), "{d:?}");
+    assert!(matches!(&m.contracts[0].kind, IntentKind::Unique { except, .. } if except.len() == 1 && except[0].op == FilterOp::Eq));
+    // 列挙に「取消」を足して、いつでも移れる値にする
+    let src2 = IZAKAYA.replace("    提供済み\n", "    提供済み\n    取消\n");
+    let (m, d) = run(&format!("{src2}約束:\n    注文の状態は 調理中 → 提供済み の順(取消はいつでも)\n"), &[]);
+    assert!(codes(&d).is_empty(), "{d:?}");
+    assert!(matches!(&m.contracts[0].kind, IntentKind::Sequence { anytime, .. } if anytime == &vec!["取消".to_string()]));
+    // 書き忘れた値は、いつでも の書き方を案内
+    let (_, d) = run(&format!("{src2}約束:\n    注文の状態は 調理中 → 提供済み の順\n"), &[]);
+    assert!(d.iter().any(|x| x.hints.iter().any(|h| h.contains("(取消はいつでも)"))), "{d:?}");
 }
