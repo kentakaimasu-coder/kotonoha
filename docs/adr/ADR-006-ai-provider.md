@@ -7,4 +7,4 @@ FR-006(候補提示)、NFR-010(明示同意・秘密情報除去)、SEC-08(未�
 ## 推奨
 送信範囲は「未解決の文 + 宣言名と知識名の一覧」に限定(ソース本文・知識の値は送らない)。同意はプロジェクト設定に明示フラグ + 初回実行時の確認。
 ## 現状
-AI を呼ぶ実装は持たない。`ResolverAdapter` trait(`sends_source()` を持つ)と `offline` / `fixture` アダプタのみ。`sends_source() == true` のアダプタは CLI が拒否する。
+外部の AI を呼ぶ実装は持たない(この機械の中で動くオープンモデルだけは ADR-0127 の `local` アダプタで使える)。`ResolverAdapter` trait(`sends_source()` を持つ)と `offline` / `fixture` アダプタのみ。`sends_source() == true` のアダプタは CLI が拒否する。

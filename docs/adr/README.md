@@ -10,7 +10,7 @@
 | [ADR-003](ADR-003-database.md) | DB 方針 | 提案(SQLite / PostgreSQL 実装済み) | |
 | [ADR-004](ADR-004-ui-framework.md) | UI 生成フレームワーク | 未決定(暫定: React SSR + esbuild) | |
 | [ADR-005](ADR-005-mobile-min-os.md) | モバイル最低 OS | 未決定 | FR-013/014(P1) |
-| [ADR-006](ADR-006-ai-provider.md) | AI プロバイダーと送信方針 | 未決定 | AI による候補生成 |
+| [ADR-006](ADR-006-ai-provider.md) | AI プロバイダーと送信方針 | 未決定(手元のモデルは ADR-0127) | 外部 AI への送信 |
 | [ADR-007](ADR-007-approval-signing.md) | 承認署名基盤 | 未決定 | 承認入りの `--locked` ビルド |
 | [ADR-008](ADR-008-build-compat.md) | ビルド互換性ポリシー | 未決定(暫定運用あり) | コンパイラ更新時のロック再利用 |
 | [ADR-0101](ADR-0101-lexical.md) | 字句規則(語の最長一致・NFC 拒否・コメント) | 提案 | |
@@ -39,3 +39,4 @@
 | [ADR-0124](ADR-0124-functions-and-externals.md) | 関数・組込み関数・外部関数(TypeScript / Python) | 提案(実装) | 外部コードの隔離方式 |
 | [ADR-0125](ADR-0125-analysis-sql.md) | 分析(読み取り専用 SQL) | 提案(実装) | SQL 方言差の吸収 |
 | [ADR-0126](ADR-0126-roles.md) | 役割(ロール)と全件閲覧の許可 | 提案(実装) | 役割の継承・テナント |
+| [ADR-0127](ADR-0127-local-model-and-learning.md) | 手元のオープンモデルと、承認から育つ解釈(学習記録) | 提案(実装) | 実モデルでの検証 |

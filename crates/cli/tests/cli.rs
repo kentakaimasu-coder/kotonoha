@@ -7,7 +7,17 @@ const SHOP: &str = include_str!("../../../examples/shop/src/app.koto");
 const SPEC_SAMPLE: &str = include_str!("../../../tests/fixtures/spec_sample/app.koto");
 
 fn koto(dir: &Path, args: &[&str]) -> (i32, String, String) {
-    let out = Command::new(env!("CARGO_BIN_EXE_koto")).arg("-C").arg(dir).args(args).output().unwrap();
+    // 利用者の学習記録(~/.kotonoha/learn)に書かないよう、存在しない場所を指す
+    let learn = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("no-learn-dir");
+    koto_env(dir, args, &[("KOTONOHA_LEARN_DIR", learn.to_str().unwrap())])
+}
+
+fn koto_env(dir: &Path, args: &[&str], env: &[(&str, &str)]) -> (i32, String, String) {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_koto"));
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    let out = cmd.arg("-C").arg(dir).args(args).output().unwrap();
     (
         out.status.code().unwrap_or(-1),
         String::from_utf8_lossy(&out.stdout).into_owned(),
@@ -247,4 +257,132 @@ fn beginner_flow_templates_patterns_safety_and_suggestions() {
     assert_ne!(c, 0);
     assert!(err.contains("近い書き方") && err.contains("「枠を一覧表示」"), "{err}");
     let _ = std::fs::remove_dir_all(&base);
+}
+
+/// 模擬の手元モデル(OpenAI 互換)。過去の承認例を見せられたときだけ「売れ筋商品を表示」を先頭に出す。
+/// good=false なら常に外れを返す(評価で採用を止められることの確認用)。
+fn mock_model(good: bool) -> String {
+    use std::io::{Read, Write};
+    let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = l.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        for s in l.incoming() {
+            let mut s = s.unwrap();
+            let mut buf = Vec::new();
+            let mut tmp = [0u8; 8192];
+            let body = loop {
+                let n = s.read(&mut tmp).unwrap();
+                buf.extend_from_slice(&tmp[..n]);
+                if let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let head = String::from_utf8_lossy(&buf[..i]).to_ascii_lowercase();
+                    let len: usize = head
+                        .lines()
+                        .find_map(|l| l.strip_prefix("content-length:"))
+                        .map(|x| x.trim().parse().unwrap())
+                        .unwrap();
+                    if buf.len() >= i + 4 + len {
+                        break String::from_utf8_lossy(&buf[i + 4..]).to_string();
+                    }
+                }
+            };
+            let req: serde_json::Value = serde_json::from_str(&body).unwrap();
+            let user = req["messages"][1]["content"].as_str().unwrap();
+            let learned = user.contains("→「売れ筋商品を表示」");
+            let its = if good && learned {
+                serde_json::json!([{"canonical": "売れ筋商品を表示", "rationale": "過去の承認と同じく人気=売れ筋"}])
+            } else {
+                serde_json::json!([{"canonical": "商品を一覧表示", "rationale": "人気=全商品"}, {"canonical": "売れ筋商品を表示", "rationale": "人気=売れ筋"}])
+            };
+            let content = serde_json::json!({"interpretations": its, "assumptions": [], "unresolved": []}).to_string();
+            let resp = serde_json::json!({"choices": [{"message": {"role": "assistant", "content": content}}]}).to_string();
+            let _ = s.write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{resp}",
+                    resp.len()
+                )
+                .as_bytes(),
+            );
+        }
+    });
+    format!("http://127.0.0.1:{port}/v1")
+}
+
+fn first_candidate(d: &Path) -> (String, Vec<String>) {
+    let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(d.join("kotonoha.candidates.json")).unwrap()).unwrap();
+    let c = &v["candidates"][0];
+    (
+        c["intent_id"].as_str().unwrap().to_string(),
+        c["interpretations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x["canonical"].as_str().unwrap().to_string())
+            .collect(),
+    )
+}
+
+#[test]
+fn local_open_model_grows_from_approvals() {
+    let learn = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("learn-grow");
+    let _ = std::fs::remove_dir_all(&learn);
+    let env = [("KOTONOHA_LEARN_DIR", learn.to_str().unwrap())];
+    let ep = mock_model(true);
+    let k = |d: &Path, args: &[&str]| koto_env(d, args, &env);
+
+    let (c, _, err) = k(Path::new("."), &["learn", "status"]);
+    assert_eq!(c, 0);
+    assert!(err.contains("まだ有効ではありません"), "{err}");
+    assert_eq!(k(Path::new("."), &["learn", "init"]).0, 0);
+
+    // 1 つ目のプロジェクト: まだ何も学んでいないので、外れが先頭に来る → 人が 2 番目を承認
+    let d1 = project("learn_p1", &format!("{SHOP}\n@柔軟(確認)\n画面 人気:\n    人気商品を表示\n"), r#""backend""#);
+    let (c, _, err) = k(&d1, &["resolve", "--adapter", "local", "--model", "m", "--endpoint", &ep]);
+    assert_eq!(c, 0, "{err}");
+    let (id, its) = first_candidate(&d1);
+    assert_eq!(its[0], "商品を一覧表示");
+    let (c, _, err) = k(&d1, &["approve", &id, "2", "--approver", "花子"]);
+    assert_eq!(c, 0, "{err}");
+    assert!(err.contains("学習記録に追加"), "{err}");
+
+    // 2 つ目のプロジェクト: 似た文。過去の承認を例として見せるので、承認された解釈が先頭に来る
+    let d2 = project("learn_p2", &format!("{SHOP}\n@柔軟(確認)\n画面 人気:\n    人気の商品を表示\n"), r#""backend""#);
+    k(&d2, &["resolve", "--adapter", "local", "--model", "m", "--endpoint", &ep]);
+    let (id2, its) = first_candidate(&d2);
+    assert_eq!(its[0], "売れ筋商品を表示", "承認から学んで当たりやすくなる");
+    assert_eq!(k(&d2, &["approve", &id2, "1", "--approver", "花子"]).0, 0);
+
+    // 同じ文ならモデルなしでも過去の承認から候補が出る
+    let d3 = project("learn_p3", &format!("{SHOP}\n@柔軟(確認)\n画面 人気:\n    人気商品を表示\n"), r#""backend""#);
+    k(&d3, &["resolve", "--adapter", "memory"]);
+    assert_eq!(first_candidate(&d3).1, vec!["売れ筋商品を表示".to_string()]);
+
+    // 追加学習用データ
+    let out = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("learn-export");
+    let (c, _, err) = k(&d1, &["learn", "export", "--out", out.to_str().unwrap()]);
+    assert_eq!(c, 0, "{err}");
+    assert_eq!(std::fs::read_to_string(out.join("sft.jsonl")).unwrap().lines().count(), 2);
+    assert_eq!(
+        std::fs::read_to_string(out.join("dpo.jsonl")).unwrap().lines().count(),
+        1,
+        "選ばれなかった候補が負例になる"
+    );
+    assert!(out.join("README.md").exists());
+
+    // 評価: 良いモデルは基準を満たす。悪いモデルは --min で止まる。推移は status で見られる
+    let (c, _, err) = k(&d1, &["learn", "eval", "--model", "good", "--endpoint", &ep, "--min", "0.9"]);
+    assert_eq!(c, 0, "{err}");
+    let bad = mock_model(false);
+    let (c, _, err) = k(&d1, &["learn", "eval", "--model", "bad", "--endpoint", &bad, "--min", "0.9"]);
+    assert_ne!(c, 0);
+    assert!(err.contains("採用しないでください"), "{err}");
+    let (_, _, err) = k(&d1, &["learn", "status"]);
+    assert!(err.contains("承認した言い換え 2 件") && err.contains("good") && err.contains("bad"), "{err}");
+
+    // 機械の外のサーバーには送らない
+    let (c, _, err) = k(
+        &d1,
+        &["resolve", "--adapter", "local", "--model", "m", "--endpoint", "https://api.example.com/v1"],
+    );
+    assert_ne!(c, 0);
+    assert!(err.contains("ADR-006"), "{err}");
 }

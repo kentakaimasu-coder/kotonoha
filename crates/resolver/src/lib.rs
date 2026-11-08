@@ -2,8 +2,12 @@
 //!
 //! - アダプタの出力は**未信頼データ**(SEC-08)。[`validate_candidate`] で厳格なスキーマ検査を行い、
 //!   さらに driver が各解釈を既知の文型で再照合してから承認対象にする。出力をコードとして評価することはない。
-//! - 実 AI プロバイダとソース送信方針は ADR-006 で未決定のため、本クレートは AI を呼ぶ実装を持たない。
-//!   `offline`(質問だけを返す)と `fixture`(人が書いた/テスト用の候補 JSON を読む)の 2 つだけを提供する。
+//! - 外部の AI へソースを送る方針は ADR-006 で未決定のため、外部送信するアダプタは持たない。
+//!   `offline`(質問だけを返す)、`fixture`(人が書いた/テスト用の候補 JSON を読む)に加え、
+//!   ADR-0127 の `local`(この機械の中で動くオープンモデル)と `memory`(過去の承認だけ)を提供する。
+
+pub mod learn;
+pub mod local;
 
 use kotonoha_intent::Unresolved;
 use serde::{Deserialize, Serialize};
@@ -274,3 +278,6 @@ mod tests {
         assert!(validate_candidate(&Value::String("x".into()), &u()).is_err());
     }
 }
+
+#[cfg(test)]
+mod local_tests;

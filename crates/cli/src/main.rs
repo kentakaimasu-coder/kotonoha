@@ -24,8 +24,14 @@ const USAGE: &str = "使い方: koto [-C <dir>] [--json] <command> [args]
                                   koto dev で動かしているアプリ用の動作確認トークンを作る(curl などで Authorization: Bearer に使う)
   fmt [--check] [--zenkaku]       ソースのテキスト正規化(NFC・LF・行末空白)。--zenkaku で全角英数記号を半角に
   check                           字句/構文/型/知識/意図/効果を検査
-  resolve [--adapter offline|fixture] [--fixture file]
-                                  @柔軟 の未解決意図の解釈候補を作成(AI は使わない)
+  resolve [--adapter offline|fixture|local|memory] [--fixture file] [--model 名前] [--endpoint URL]
+                                  @柔軟 の未解決意図の解釈候補を作成。local は手元で動くオープンモデル
+                                  (Ollama など OpenAI 互換。既定 http://127.0.0.1:11434/v1。外部送信はしない)、
+                                  memory は過去の承認だけから候補を出す(AI を使わない)
+  learn init|status|collect|export --out dir|eval [--model 名前] [--min 0.8]
+                                  承認した解釈を学習記録として貯め、手元のモデルを育てる(~/.kotonoha/learn。
+                                  KOTONOHA_LEARN_DIR で変更)。export は追加学習用の SFT / DPO データ、
+                                  eval は過去の承認をどれだけ当てられるかの評価(新しいモデルを入れる前の確認)
   approve <intent_id> <番号> --approver 名前 [--note 文] [--at 時刻] [--sign-key 鍵]
                                   候補の解釈を承認して記録
   approve --write-lock            検査を通過した状態をロック
@@ -146,6 +152,7 @@ fn run(mut o: Opts) -> i32 {
         "fmt" => cmd_fmt(&mut o),
         "check" => cmd_check(&mut o),
         "resolve" => cmd_resolve(&mut o),
+        "learn" => cmd_learn(&mut o),
         "approve" => cmd_approve(&mut o),
         "graph" => cmd_graph(&mut o),
         "build" => cmd_build(&mut o),
@@ -698,11 +705,13 @@ fn cmd_resolve(o: &mut Opts) -> Result<i32, String> {
     use kotonoha_resolver::{validate_candidate, CandidatesFile, FixtureAdapter, OfflineAdapter, ResolverAdapter};
     let adapter_name = take_value(&mut o.args, "--adapter")?.unwrap_or_else(|| "offline".into());
     let fixture = take_value(&mut o.args, "--fixture")?;
-    no_extra(&o.args)?;
     let (p, ap) = match load(o) {
         Ok(x) => x,
         Err(c) => return Ok(c),
     };
+    let local = LocalOpts::take(&mut o.args)?;
+    no_extra(&o.args)?;
+    let a = drv::analyze(&p, &ap);
     let adapter: Box<dyn ResolverAdapter> = match adapter_name.as_str() {
         "offline" => Box::new(OfflineAdapter),
         "fixture" => {
@@ -710,12 +719,17 @@ fn cmd_resolve(o: &mut Opts) -> Result<i32, String> {
             let t = std::fs::read_to_string(o.dir.join(&f)).map_err(|e| format!("{f} を読めません: {e}"))?;
             Box::new(FixtureAdapter::from_json(&t)?)
         }
-        other => return Err(format!("未知のアダプタ `{other}` です(offline / fixture。AI プロバイダは ADR-006 で未決定)")),
+        "local" => Box::new(local.adapter(&a, learn_memory())?),
+        "memory" => Box::new(kotonoha_resolver::local::MemoryAdapter { memory: learn_memory() }),
+        other => {
+            return Err(format!(
+                "未知のアダプタ `{other}` です(offline / fixture / local / memory。外部の AI への送信は ADR-006 で未決定)"
+            ))
+        }
     };
     if adapter.sends_source() {
         return Err("ソースを外部送信するアダプタは明示同意の仕組み(NFR-010)が未実装のため使えません".into());
     }
-    let a = drv::analyze(&p, &ap);
     let mut diags = Diagnostics::new();
     let mut cands = Vec::new();
     for u in a.unresolved() {
@@ -868,6 +882,21 @@ fn cmd_approve(o: &mut Opts) -> Result<i32, String> {
     }
     let v = serde_json::to_string_pretty(&ap).unwrap() + "\n";
     std::fs::write(o.dir.join(drv::APPROVALS_FILE), v).map_err(|e| e.to_string())?;
+    // 学習記録(koto learn init で有効にした人だけ): 選んだ解釈と、選ばなかった候補を貯める
+    if let Some(dir) = kotonoha_resolver::learn::default_dir().filter(|d| d.is_dir()) {
+        let rejected = cand
+            .interpretations
+            .iter()
+            .filter(|x| x.canonical != it.canonical)
+            .map(|x| x.canonical.clone())
+            .collect();
+        let r = learn_record(&p, &a, u, &it.canonical, &it.rationale, rejected, &rec.approved_at);
+        match kotonoha_resolver::learn::Memory::append(&dir, r) {
+            Ok(_) if !o.json => eprintln!("学習記録に追加しました({})", dir.display()),
+            Ok(_) => {}
+            Err(e) => eprintln!("注意: {e}"),
+        }
+    }
     if !o.json {
         eprintln!("承認しました: 「{}」→「{}」(承認者 {approver})", u.sentence, it.canonical);
         eprintln!("注意: 承認の真正性(署名)は ADR-007 未決定のため検証されません。本番ビルドは拒否されます");
@@ -960,7 +989,7 @@ fn cmd_build(o: &mut Opts) -> Result<i32, String> {
 fn cmd_doctor(o: &Opts) -> i32 {
     let info = json!({
         "compiler_version": drv::COMPILER_VERSION,
-        "implemented": ["lexer", "parser", "ast-printer", "type-check(strict layer)", "knowledge-registry(ranking)", "intent-patterns", "effects/capabilities", "vag", "lock", "approval-records(ed25519 signing)", "resolver(offline/fixture)", "sql-lowering(ranking: sqlite/postgres)", "app-ir + api-contract", "functions + builtins", "external functions(typescript/python)", "analysis(read-only sql)", "extension components", "experiments(a/b)", "backend(node/ts/sqlite/postgres)", "web(react ssr)", "ios(swiftui, CI build)", "android(compose, CI build)"],
+        "implemented": ["lexer", "parser", "ast-printer", "type-check(strict layer)", "knowledge-registry(ranking)", "intent-patterns", "effects/capabilities", "vag", "lock", "approval-records(ed25519 signing)", "resolver(offline/fixture/local open model/memory)", "learning memory(koto learn: export sft/dpo, eval gate)", "sql-lowering(ranking: sqlite/postgres)", "app-ir + api-contract", "functions + builtins", "external functions(typescript/python)", "analysis(read-only sql)", "extension components", "experiments(a/b)", "backend(node/ts/sqlite/postgres)", "web(react ssr)", "ios(swiftui, CI build)", "android(compose, CI build)"],
         "targets": {
             "web": kotonoha_codegen::verification_status(kotonoha_codegen::TargetKind::Web),
             "backend": kotonoha_codegen::verification_status(kotonoha_codegen::TargetKind::Backend),
@@ -1156,3 +1185,291 @@ fn excerpt(dir: &Path, d: &Diagnostic) -> Option<String> {
 fn is_wide(c: char) -> bool {
     matches!(c as u32, 0x1100..=0x115F | 0x2E80..=0x303E | 0x3041..=0x33FF | 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xA000..=0xA4CF | 0xAC00..=0xD7A3 | 0xF900..=0xFAFF | 0xFE30..=0xFE4F | 0xFF00..=0xFF60 | 0xFFE0..=0xFFE6)
 }
+
+/// 手元のモデルの指定(--model / --endpoint、または環境変数)。
+struct LocalOpts {
+    model: Option<String>,
+    endpoint: String,
+}
+
+impl LocalOpts {
+    fn take(args: &mut Vec<String>) -> Result<LocalOpts, String> {
+        let model = take_value(args, "--model")?.or_else(|| std::env::var("KOTONOHA_LOCAL_MODEL").ok().filter(|x| !x.is_empty()));
+        let endpoint = take_value(args, "--endpoint")?
+            .or_else(|| std::env::var("KOTONOHA_LOCAL_ENDPOINT").ok().filter(|x| !x.is_empty()))
+            .unwrap_or_else(|| kotonoha_resolver::local::DEFAULT_ENDPOINT.into());
+        kotonoha_resolver::local::parse_local_endpoint(&endpoint)?;
+        Ok(LocalOpts { model, endpoint })
+    }
+    fn adapter(&self, a: &drv::Analysis, memory: kotonoha_resolver::learn::Memory) -> Result<kotonoha_resolver::local::LocalModelAdapter, String> {
+        let model = self
+            .model
+            .clone()
+            .ok_or("--model でモデル名を指定してください(例: --model qwen2.5:7b。環境変数 KOTONOHA_LOCAL_MODEL でも可)")?;
+        let secs = std::env::var("KOTONOHA_LOCAL_TIMEOUT").ok().and_then(|x| x.parse().ok()).unwrap_or(180);
+        Ok(kotonoha_resolver::local::LocalModelAdapter {
+            endpoint: self.endpoint.clone(),
+            model,
+            timeout: std::time::Duration::from_secs(secs),
+            api_key: std::env::var("KOTONOHA_LOCAL_API_KEY").ok().filter(|x| !x.is_empty()),
+            screen_examples: kotonoha_intent::example_sentences(&a.env, &a.registry, false),
+            contract_examples: kotonoha_intent::example_sentences(&a.env, &a.registry, true),
+            memory,
+        })
+    }
+}
+
+fn learn_memory() -> kotonoha_resolver::learn::Memory {
+    kotonoha_resolver::learn::default_dir()
+        .map(|d| kotonoha_resolver::learn::Memory::load(&d).0)
+        .unwrap_or_default()
+}
+
+fn learn_record(
+    p: &drv::Project,
+    a: &drv::Analysis,
+    u: &kotonoha_intent::Unresolved,
+    chosen: &str,
+    rationale: &str,
+    rejected: Vec<String>,
+    at: &str,
+) -> kotonoha_resolver::learn::MemoryRecord {
+    let pool = kotonoha_intent::example_sentences(&a.env, &a.registry, u.owner.starts_with("action."));
+    let ctx = kotonoha_resolver::learn::PromptContext::new(&u.sentence, &u.questions, &pool);
+    kotonoha_resolver::learn::MemoryRecord {
+        v: 1,
+        sentence: u.sentence.clone(),
+        chosen: chosen.into(),
+        rationale: rationale.into(),
+        rejected,
+        context: ctx.examples,
+        questions: u.questions.clone(),
+        project: p.config.name.clone(),
+        at: at.into(),
+    }
+}
+
+fn cmd_learn(o: &mut Opts) -> Result<i32, String> {
+    use kotonoha_resolver::learn::{self, Memory};
+    let sub = if o.args.is_empty() { String::from("status") } else { o.args.remove(0) };
+    let dir = learn::default_dir().ok_or("学習記録の置き場所が決められません(KOTONOHA_LEARN_DIR を指定してください)")?;
+    match sub.as_str() {
+        "init" => {
+            no_extra(&o.args)?;
+            std::fs::create_dir_all(&dir).map_err(|e| format!("{} を作れません: {e}", dir.display()))?;
+            if !o.json {
+                eprintln!("学習記録を有効にしました: {}", dir.display());
+                eprintln!("これから koto approve で承認した解釈が記録され、koto resolve --adapter local / memory で使われます");
+                eprintln!("今あるプロジェクトの承認を取り込むには、各プロジェクトで koto learn collect を実行してください");
+            }
+            Ok(report(o, &Diagnostics::new(), json!({"dir": dir})))
+        }
+        "status" => {
+            no_extra(&o.args)?;
+            let (m, bad) = Memory::load(&dir);
+            let evals = learn::load_evals(&dir);
+            let projects: std::collections::BTreeSet<&str> = m.records.iter().map(|r| r.project.as_str()).collect();
+            let negatives: usize = m.records.iter().map(|r| r.rejected.len()).sum();
+            if !o.json {
+                if !dir.is_dir() {
+                    eprintln!("学習記録はまだ有効ではありません(koto learn init で有効にします)");
+                } else {
+                    eprintln!("学習記録: {}", dir.display());
+                    eprintln!(
+                        "  承認した言い換え {} 件(プロジェクト {} 個)、選ばれなかった候補 {} 件",
+                        m.records.len(),
+                        projects.len(),
+                        negatives
+                    );
+                    if bad > 0 {
+                        eprintln!("  読めなかった行 {bad} 件");
+                    }
+                    if evals.is_empty() {
+                        eprintln!("  評価の記録はまだありません(koto learn eval --model 名前)");
+                    } else {
+                        eprintln!("  評価の推移(1 番目の候補が当たった割合):");
+                        for e in &evals {
+                            eprintln!(
+                                "    {}  {}  {:.0}%({}/{}、壊れた応答 {})",
+                                e.at,
+                                e.model,
+                                e.top1_rate() * 100.0,
+                                e.top1,
+                                e.cases,
+                                e.broken
+                            );
+                        }
+                    }
+                }
+            }
+            Ok(report(
+                o,
+                &Diagnostics::new(),
+                json!({"dir": dir, "records": m.records.len(), "negatives": negatives, "evals": evals}),
+            ))
+        }
+        "collect" => {
+            no_extra(&o.args)?;
+            if !dir.is_dir() {
+                return Err("学習記録が有効ではありません。先に koto learn init を実行してください".into());
+            }
+            let (p, ap) = match load(o) {
+                Ok(x) => x,
+                Err(c) => return Ok(c),
+            };
+            // 承認記録が当たる前の状態(未解決の意図)を作り、その文脈で記録する
+            let a0 = drv::analyze(&p, &kotonoha_lock::ApprovalsFile::empty());
+            let mut added = 0;
+            for r in &ap.records {
+                let Some(u) = a0
+                    .unresolved()
+                    .iter()
+                    .find(|u| u.intent_id == r.intent_id && u.sentence_hash == r.sentence_hash)
+                else {
+                    continue;
+                };
+                if Memory::append(&dir, learn_record(&p, &a0, u, &r.canonical, &r.note, vec![], &r.approved_at))? {
+                    added += 1;
+                }
+            }
+            if !o.json {
+                eprintln!("このプロジェクトの承認 {} 件のうち {added} 件を学習記録に追加しました", ap.records.len());
+            }
+            Ok(report(o, &Diagnostics::new(), json!({"added": added})))
+        }
+        "export" => {
+            let out = take_value(&mut o.args, "--out")?.ok_or("--out <ディレクトリ> を指定してください")?;
+            no_extra(&o.args)?;
+            let (m, _) = Memory::load(&dir);
+            if m.records.is_empty() {
+                return Err("学習記録が空です(koto approve で承認すると貯まります)".into());
+            }
+            let (sft, dpo) = learn::export(&m);
+            let out = PathBuf::from(out);
+            std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+            std::fs::write(out.join("sft.jsonl"), &sft).map_err(|e| e.to_string())?;
+            std::fs::write(out.join("dpo.jsonl"), &dpo).map_err(|e| e.to_string())?;
+            std::fs::write(out.join("README.md"), LEARN_EXPORT_README).map_err(|e| e.to_string())?;
+            if !o.json {
+                eprintln!(
+                    "{} に書き出しました: sft.jsonl {} 件、dpo.jsonl {} 件(使い方は README.md)",
+                    out.display(),
+                    sft.lines().count(),
+                    dpo.lines().count()
+                );
+            }
+            Ok(report(o, &Diagnostics::new(), json!({"sft": sft.lines().count(), "dpo": dpo.lines().count()})))
+        }
+        "eval" => {
+            let min: Option<f64> = match take_value(&mut o.args, "--min")? {
+                None => None,
+                Some(x) => Some(x.parse().map_err(|_| "--min は 0〜1 の数です(例: 0.8)")?),
+            };
+            let local = LocalOpts::take(&mut o.args)?;
+            no_extra(&o.args)?;
+            let (m, _) = Memory::load(&dir);
+            if m.records.is_empty() {
+                return Err("学習記録が空のため評価できません".into());
+            }
+            let model = local.model.clone().ok_or("--model でモデル名を指定してください")?;
+            let ad = kotonoha_resolver::local::LocalModelAdapter {
+                endpoint: local.endpoint.clone(),
+                model: model.clone(),
+                timeout: std::time::Duration::from_secs(std::env::var("KOTONOHA_LOCAL_TIMEOUT").ok().and_then(|x| x.parse().ok()).unwrap_or(180)),
+                api_key: std::env::var("KOTONOHA_LOCAL_API_KEY").ok().filter(|x| !x.is_empty()),
+                screen_examples: vec![],
+                contract_examples: vec![],
+                memory: Memory::default(),
+            };
+            let mut seen = std::collections::BTreeSet::new();
+            let (mut cases, mut top1, mut any, mut broken) = (0, 0, 0, 0);
+            let mut misses = Vec::new();
+            for (i, r) in m.records.iter().enumerate() {
+                if !seen.insert((learn::normalize(&r.sentence), r.chosen.clone())) {
+                    continue;
+                }
+                cases += 1;
+                let u = kotonoha_intent::Unresolved {
+                    intent_id: format!("評価#{i}"),
+                    owner: "評価".into(),
+                    sentence: r.sentence.clone(),
+                    sentence_hash: "評価".into(),
+                    mode: kotonoha_intent::Mode::FlexConfirm,
+                    questions: r.questions.clone(),
+                    span: Span::default(),
+                };
+                let ctx = learn::PromptContext {
+                    sentence: r.sentence.clone(),
+                    questions: r.questions.clone(),
+                    examples: r.context.clone(),
+                };
+                // その文の答えは見せない(他の文の承認だけを例にする)
+                let got = ad
+                    .ask(&u, &ctx, &m.without(&r.sentence))
+                    .and_then(|v| kotonoha_resolver::validate_candidate(&v, &u).map_err(|e| e.join("; ")));
+                match got {
+                    Err(e) => {
+                        broken += 1;
+                        misses.push(format!("「{}」: 応答が使えません({e})", r.sentence));
+                    }
+                    Ok(c) => {
+                        let names: Vec<String> = c.interpretations.iter().map(|x| learn::normalize(&x.canonical)).collect();
+                        let want = learn::normalize(&r.chosen);
+                        if names.first() == Some(&want) {
+                            top1 += 1;
+                        } else {
+                            misses.push(format!("「{}」: 期待「{}」/ 候補 {:?}", r.sentence, r.chosen, names));
+                        }
+                        if names.contains(&want) {
+                            any += 1;
+                        }
+                    }
+                }
+            }
+            let e = learn::EvalRecord {
+                at: drv::now_rfc3339(),
+                model,
+                cases,
+                top1,
+                any,
+                broken,
+            };
+            learn::append_eval(&dir, &e)?;
+            let prev = learn::load_evals(&dir).into_iter().rev().nth(1);
+            if !o.json {
+                eprintln!(
+                    "評価: {} 件中、1 番目の候補が承認と一致 {} 件({:.0}%)、いずれかの候補に含む {} 件、壊れた応答 {} 件",
+                    cases,
+                    top1,
+                    e.top1_rate() * 100.0,
+                    any,
+                    broken
+                );
+                if let Some(p) = &prev {
+                    eprintln!("  前回({} {}): {:.0}%", p.at, p.model, p.top1_rate() * 100.0);
+                }
+                for x in misses.iter().take(10) {
+                    eprintln!("  外れ: {x}");
+                }
+            }
+            let mut diags = Diagnostics::new();
+            if let Some(min) = min {
+                if e.top1_rate() < min {
+                    diags.push(Diagnostic::error(
+                        Code::AMB001,
+                        Span::default(),
+                        format!(
+                            "一致率 {:.0}% が基準 {:.0}% に届きません。このモデルは採用しないでください",
+                            e.top1_rate() * 100.0,
+                            min * 100.0
+                        ),
+                    ));
+                }
+            }
+            Ok(report(o, &diags, json!({"eval": e, "misses": misses})))
+        }
+        other => Err(format!("未知のサブコマンド `{other}` です(init / status / collect / export / eval)")),
+    }
+}
+
+const LEARN_EXPORT_README: &str = include_str!("../templates/learn_export_README.md");
