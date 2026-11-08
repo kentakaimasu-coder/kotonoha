@@ -200,3 +200,16 @@ test("K-06 アクセシビリティ自動監査(axe-core: WCAG 2.2 A/AA)で違�
   }
   assert.deepEqual(results, []);
 });
+
+test("backend に届かないときの API は 503 と日本語の案内(内部エラーにしない)", async () => {
+  const [wp, dead] = [await freePort(), await freePort()];
+  const p = start(web, ["src/server-main.ts"], { PORT: String(wp), KOTONOHA_BACKEND_URL: `http://127.0.0.1:${dead}` });
+  try {
+    await waitHttp(`http://127.0.0.1:${wp}/login`);
+    const r = await fetch(`http://127.0.0.1:${wp}/api/data/${encodeURIComponent("商品")}`);
+    assert.equal(r.status, 503);
+    assert.match((await r.json()).message, /接続できません/);
+  } finally {
+    p.kill();
+  }
+});

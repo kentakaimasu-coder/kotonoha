@@ -250,7 +250,16 @@ export function createWebServer(
         const body = req.method === "POST" ? await readBody(req) : undefined;
         const headers: Record<string, string> = {};
         if (req.headers["content-type"]) headers["Content-Type"] = String(req.headers["content-type"]);
-        const r = await backendFetch(url.pathname + url.search, { method: req.method, headers, body }, bearer ?? tokenOf(req), traceId, bearer ? null : vidOf(req));
+        let r: Response;
+        try {
+          r = await backendFetch(url.pathname + url.search, { method: req.method, headers, body }, bearer ?? tokenOf(req), traceId, bearer ? null : vidOf(req));
+        } catch (e) {
+          // backend に届かない(起動中・停止中): 内部エラーではなく、しばらく待てばよいことを伝える
+          const cause = (e as { cause?: unknown })?.cause;
+          process.stdout.write(JSON.stringify({ ts: new Date().toISOString(), level: "warn", trace_id: traceId, msg: "backend unreachable", cause: cause ? String((cause as Error)?.message ?? cause) : String(e) }) + "\n");
+          res.writeHead(503, securityHeaders({ "Content-Type": "application/json", "Retry-After": "2" }));
+          return res.end(JSON.stringify({ error: "unavailable", message: "サーバーに接続できません(起動中かもしれません。少し待ってからやり直してください)" }));
+        }
         const buf = Buffer.from(await r.arrayBuffer());
         res.writeHead(r.status, securityHeaders({ "Content-Type": r.headers.get("content-type") ?? "application/json", "Cache-Control": "no-store" }));
         return res.end(buf);

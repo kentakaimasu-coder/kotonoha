@@ -621,6 +621,22 @@ fn cmd_dev(o: &mut Opts) -> Result<i32, String> {
         .current_dir(&be)
         .spawn()
         .map_err(|e| format!("backend を起動できません: {e}"))?;
+    // backend が接続を受け付けるまで待ってから画面のサーバーを起動する
+    // (先に画面だけ開けると、最初の操作が「内部エラー」になることがある)
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], bport));
+    let started = std::time::Instant::now();
+    while std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(200)).is_err() {
+        if backend.try_wait().map_err(|e| e.to_string())?.is_some() {
+            eprintln!("backend が起動できませんでした(上のメッセージを確認してください)");
+            return Ok(1);
+        }
+        if started.elapsed() > std::time::Duration::from_secs(120) {
+            let _ = backend.kill();
+            eprintln!("backend の起動を 120 秒待ちましたが応答がありません");
+            return Ok(1);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
     let mut webp = std::process::Command::new("node")
         .args(["--no-warnings", "src/server-main.ts"])
         .env("PORT", port.to_string())
