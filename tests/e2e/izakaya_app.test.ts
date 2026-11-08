@@ -136,6 +136,15 @@ test("客 2 卓が同時に注文 → それぞれ自分の注文だけ → 厨�
   await m.page.goto(`${url}/s/${enc("売上")}`);
   const sales = (await m.page.textContent("main"))!;
   assert.ok(sales.includes("生ビール") && sales.includes("¥1,100") && sales.includes("¥680") && sales.includes("¥380"), sales);
+  // SQL を書かない集計: 日ごとの件数と金額の合計、提供済みだけの品名ごとの合計(唐揚げだけ提供済み)
+  assert.match(sales, /注文の注文日時の日ごとの集計/);
+  const daily = await m.page.locator("table", { hasText: "日ごとの集計" }).locator("tbody tr").allTextContents();
+  assert.equal(daily.length, 1, daily.join(" | "));
+  assert.match(daily[0], /年.*月.*日/);
+  assert.match(daily[0], /¥2,160/);
+  const served2 = await m.page.locator("table", { hasText: "品名ごとの集計" }).locator("tbody tr").allTextContents();
+  assert.equal(served2.length, 1, served2.join(" | "));
+  assert.ok(served2[0].includes("唐揚げ") && served2[0].includes("¥680"), served2.join(" | "));
 
   // A/B: 注文ボタン文言の成果が数えられている(店長は結果を見られる)
   const res = await fetch(`${url}/api/experiments/${enc("注文ボタン文言")}/results`, { headers: { Authorization: `Bearer ${token("店長", MANAGER)}` } });

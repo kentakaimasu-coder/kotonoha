@@ -219,3 +219,35 @@ fn list_filter_errors_are_reported() {
     let (_, c) = list_of("    会計のうち状態が調理中のものを一覧表示\n");
     assert_eq!(c, vec![Code::AMB001]);
 }
+
+#[test]
+fn aggregate_patterns() {
+    let (k, c) = list_of(
+        "    注文を状態ごとに集計\n    注文を注文日時の月ごとに集計\n    注文のうち状態が提供済みのものの数量を品名ごとに合計\n    注文の数量を卓ごとに合計\n",
+    );
+    assert!(c.is_empty(), "{c:?}");
+    let IntentKind::Aggregate { by, bucket, sums, filters, .. } = &k[0] else {
+        panic!()
+    };
+    assert_eq!((by.as_str(), *bucket, sums.clone(), filters.len()), ("状態", None, vec!["数量".to_string()], 0));
+    let IntentKind::Aggregate { by, bucket, .. } = &k[1] else { panic!() };
+    assert_eq!((by.as_str(), *bucket), ("注文日時", Some(Bucket::Month)));
+    let IntentKind::Aggregate { by, sums, filters, .. } = &k[2] else { panic!() };
+    assert_eq!(
+        (by.as_str(), sums.clone(), filters[0].value.as_deref()),
+        ("品名", vec!["数量".to_string()], Some("提供済み"))
+    );
+    assert_eq!(aggregate_caption("注文", by, None, filters), "注文の品名ごとの集計(状態が提供済み)");
+    let IntentKind::Aggregate { by, .. } = &k[3] else { panic!() };
+    assert_eq!(by, "卓");
+    for (line, code) in [
+        ("注文を色ごとに集計", Code::REF001),
+        ("注文を注文日時ごとに集計", Code::TYP001),
+        ("注文を品名の日ごとに集計", Code::TYP001),
+        ("注文の品名を卓ごとに合計", Code::TYP001),
+        ("注文の重さを卓ごとに合計", Code::REF001),
+    ] {
+        let (_, c) = list_of(&format!("    {line}\n"));
+        assert_eq!(c, vec![code], "{line}");
+    }
+}

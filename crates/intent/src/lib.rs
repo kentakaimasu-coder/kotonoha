@@ -69,6 +69,18 @@ pub enum IntentKind {
     /// P-ANALYSIS `{分析}を表示`(引数なしの分析。ADR-0125)
     #[serde(rename = "analysis")]
     Analysis { analysis: String },
+    /// P-AGGREGATE `{データ}を{フィールド}ごとに集計` / `{データ}の{F}と{F}を{フィールド}(の日|の月)ごとに合計`
+    /// (件数と合計。SQL を書かずに集計する。ADR-0128)
+    #[serde(rename = "aggregate")]
+    Aggregate {
+        data: String,
+        by: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        bucket: Option<Bucket>,
+        sums: Vec<String>,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        filters: Vec<ListFilter>,
+    },
     /// P-FORM `{動作}のフォームを表示`(ADR-0115 提案)
     #[serde(rename = "form")]
     Form { action: String },
@@ -91,6 +103,29 @@ pub struct ListOrder {
     /// 書かれた言い方(「注文日時の新しい」)。見出しに使う
     #[serde(skip)]
     pub label: String,
+}
+
+/// 日時の集計の単位(アプリの時刻帯での暦日・暦月)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Bucket {
+    Day,
+    Month,
+}
+
+/// 集計の見出し(「注文の品名ごとの集計(状態が提供済み)」)
+pub fn aggregate_caption(data: &str, by: &str, bucket: Option<Bucket>, filters: &[ListFilter]) -> String {
+    let unit = match bucket {
+        None => by.to_string(),
+        Some(Bucket::Day) => format!("{by}の日"),
+        Some(Bucket::Month) => format!("{by}の月"),
+    };
+    let base = format!("{data}の{unit}ごとの集計");
+    let cond = list_caption(data, &None, filters);
+    match cond.strip_prefix(&format!("{data}の一覧")) {
+        Some(rest) if !rest.is_empty() => format!("{base}{rest}"),
+        _ => base,
+    }
 }
 
 /// 一覧の絞り込み条件の種類
@@ -571,6 +606,17 @@ impl Ctx<'_> {
                 });
             }
         }
+        // P-AGGREGATE
+        if let Some(rest) = s.strip_suffix("ごとに集計") {
+            if let Some(m) = self.match_aggregate(rest, false, span) {
+                return m;
+            }
+        }
+        if let Some(rest) = s.strip_suffix("ごとに合計") {
+            if let Some(m) = self.match_aggregate(rest, true, span) {
+                return m;
+            }
+        }
         // P-LIST(並べ替え・絞り込み付きを含む)
         if let Some(rest) = s.strip_suffix("一覧表示") {
             if let Some(m) = self.match_list(rest, span) {
@@ -736,25 +782,45 @@ impl Ctx<'_> {
                 label: o.into(),
             });
         }
+        let filters = match self.parse_filters(d, info, conds, span) {
+            Ok(f) => f,
+            Err(m) => return Some(m),
+        };
+        Some(Match::Ok(IntentKind::ListData {
+            data: d.into(),
+            order,
+            filters,
+        }))
+    }
+
+    /// 絞り込み条件(`{F}が{値}` を `かつ` でつないだもの)
+    fn parse_filters(&self, d: &str, info: &kotonoha_types::DataInfo, conds: Option<&str>, span: Span) -> Result<Vec<ListFilter>, Match> {
+        let field = |f: &str| -> Result<Type, Match> {
+            info.field(f).cloned().ok_or_else(|| {
+                Match::Invalid(
+                    Diagnostic::error(Code::REF001, span, format!("データ `{d}` にフィールド `{f}` はありません")).hint(format!(
+                        "フィールド: {}",
+                        info.fields.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(" / ")
+                    )),
+                )
+            })
+        };
         let mut filters = Vec::new();
         for c in conds.map(|c| c.split("かつ").collect::<Vec<_>>()).unwrap_or_default() {
             let Some((f, v)) = c.split_once('が') else {
-                return Some(Match::Invalid(
+                return Err(Match::Invalid(
                     Diagnostic::error(Code::SYN001, span, format!("条件「{c}」は「フィールドが値」の形で書きます"))
                         .hint(format!("例: 「{d}のうち状態が受付のものを一覧表示」「{d}のうち日時が今日のものを一覧表示」")),
                 ));
             };
-            let t = match field(f) {
-                Err(m) => return Some(m),
-                Ok(t) => t,
-            };
+            let t = field(f)?;
             let base = match &t {
                 Type::Option(x) => x.as_ref().clone(),
                 x => x.clone(),
             };
             if v == "今日" {
                 if !matches!(base, Type::DateTime | Type::Date) {
-                    return Some(Match::Invalid(Diagnostic::error(
+                    return Err(Match::Invalid(Diagnostic::error(
                         Code::TYP001,
                         span,
                         format!("「{f}が今日」は日時か日付のフィールドに使います(`{f}` は {t})"),
@@ -769,7 +835,7 @@ impl Ctx<'_> {
             }
             if v == "本人" {
                 if !matches!(base, Type::Id | Type::Str) {
-                    return Some(Match::Invalid(Diagnostic::error(
+                    return Err(Match::Invalid(Diagnostic::error(
                         Code::TYP001,
                         span,
                         format!("「{f}が本人」は識別子か文字列のフィールドに使います(`{f}` は {t})"),
@@ -790,7 +856,7 @@ impl Ctx<'_> {
             let value = match &base {
                 Type::Enum(e) => {
                     if !self.env.enum_has(e, raw) {
-                        return Some(Match::Invalid(
+                        return Err(Match::Invalid(
                             Diagnostic::error(Code::TYP001, span, format!("「{raw}」は列挙 `{e}` の値ではありません"))
                                 .hint(format!("値: {}", self.env.enums[e].join(" / "))),
                         ));
@@ -801,7 +867,7 @@ impl Ctx<'_> {
                     "真" | "はい" => "true".into(),
                     "偽" | "いいえ" => "false".into(),
                     _ => {
-                        return Some(Match::Invalid(Diagnostic::error(
+                        return Err(Match::Invalid(Diagnostic::error(
                             Code::TYP001,
                             span,
                             format!("真偽のフィールド `{f}` の値は 真 / 偽 です"),
@@ -823,7 +889,7 @@ impl Ctx<'_> {
                     match n.parse::<i64>() {
                         Ok(x) if x.unsigned_abs() <= (1u64 << 53) => x.to_string(),
                         _ => {
-                            return Some(Match::Invalid(Diagnostic::error(
+                            return Err(Match::Invalid(Diagnostic::error(
                                 Code::TYP001,
                                 span,
                                 format!("`{f}` は整数のフィールドです(「{raw}」は整数ではありません)"),
@@ -835,7 +901,7 @@ impl Ctx<'_> {
                 Type::Date => {
                     let ok = raw.len() == 10 && raw.as_bytes()[4] == b'-' && raw.as_bytes()[7] == b'-';
                     if !ok {
-                        return Some(Match::Invalid(Diagnostic::error(
+                        return Err(Match::Invalid(Diagnostic::error(
                             Code::TYP001,
                             span,
                             format!("日付の値は 2026-12-05 の形で書きます(「{raw}」)"),
@@ -844,7 +910,7 @@ impl Ctx<'_> {
                     raw.to_string()
                 }
                 _ => {
-                    return Some(Match::Invalid(
+                    return Err(Match::Invalid(
                         Diagnostic::error(Code::TYP001, span, format!("{t} のフィールド `{f}` は値で絞り込めません")).hint("日時は「…が今日」で絞り込めます"),
                     ))
                 }
@@ -855,9 +921,109 @@ impl Ctx<'_> {
                 value: Some(value),
             });
         }
-        Some(Match::Ok(IntentKind::ListData {
+        Ok(filters)
+    }
+
+    /// `…ごとに集計` / `…ごとに合計` の前半(`{対象}を{単位}`)を照合する
+    fn match_aggregate(&self, rest: &str, explicit: bool, span: Span) -> Option<Match> {
+        let (target, by_text) = rest.rsplit_once('を')?;
+        // 対象: {D} / {D}のうち{条件}のもの(集計)、{D}の{F}と{F} / {D}のうち{条件}のものの{F}と{F}(合計)
+        let (d, conds, sums_text) = if explicit {
+            if let Some((d, r)) = target.split_once("のうち") {
+                let (c, f) = r.rsplit_once("のものの")?;
+                (d, Some(c), Some(f))
+            } else {
+                let (d, f) = self.split_data_prefix(target)?;
+                (d, None, Some(f))
+            }
+        } else {
+            match target.strip_suffix("のもの").and_then(|x| x.split_once("のうち")) {
+                Some((d, c)) => (d, Some(c), None),
+                None => (target, None, None),
+            }
+        };
+        let Some(info) = self.env.data.get(d) else {
+            return Some(Match::NoMatch(vec![format!(
+                "「{d}」はデータとして定義されていません。どのデータを集計しますか"
+            )]));
+        };
+        let (by, bucket) = if let Some(f) = by_text.strip_suffix("の日") {
+            (f, Some(Bucket::Day))
+        } else if let Some(f) = by_text.strip_suffix("の月") {
+            (f, Some(Bucket::Month))
+        } else {
+            (by_text, None)
+        };
+        let base = |t: &Type| match t {
+            Type::Option(x) => x.as_ref().clone(),
+            x => x.clone(),
+        };
+        let Some(bt) = info.field(by).map(base) else {
+            return Some(Match::Invalid(Diagnostic::error(
+                Code::REF001,
+                span,
+                format!("データ `{d}` にフィールド `{by}` はありません"),
+            )));
+        };
+        if bucket.is_some() && !matches!(bt, Type::DateTime | Type::Date) {
+            return Some(Match::Invalid(Diagnostic::error(
+                Code::TYP001,
+                span,
+                format!("「{by_text}ごと」は日時か日付のフィールドに使います(`{by}` は {bt})"),
+            )));
+        }
+        if bucket.is_none() && matches!(bt, Type::DateTime) {
+            return Some(Match::Invalid(
+                Diagnostic::error(Code::TYP001, span, format!("日時 `{by}` はそのままでは集計できません"))
+                    .hint(format!("「{by}の日ごとに集計」「{by}の月ごとに集計」と書きます")),
+            ));
+        }
+        if !matches!(
+            bt,
+            Type::Bool | Type::Int | Type::Money(_) | Type::DateTime | Type::Date | Type::Str | Type::Id | Type::Enum(_) | Type::Email
+        ) {
+            return Some(Match::Invalid(Diagnostic::error(
+                Code::TYP001,
+                span,
+                format!("{bt} のフィールド `{by}` ごとには集計できません"),
+            )));
+        }
+        let numeric = |t: &Type| matches!(base(t), Type::Int | Type::Money(_));
+        let sums: Vec<String> = match sums_text {
+            None => info.fields.iter().filter(|(n, t)| n != by && numeric(t)).map(|(n, _)| n.clone()).collect(),
+            Some(text) => {
+                let mut v = Vec::new();
+                for f in text.split('と') {
+                    match info.field(f) {
+                        None => {
+                            return Some(Match::Invalid(Diagnostic::error(
+                                Code::REF001,
+                                span,
+                                format!("データ `{d}` にフィールド `{f}` はありません"),
+                            )))
+                        }
+                        Some(t) if !numeric(t) => {
+                            return Some(Match::Invalid(Diagnostic::error(
+                                Code::TYP001,
+                                span,
+                                format!("合計できるのは整数か金額のフィールドです(`{f}` は {t})"),
+                            )))
+                        }
+                        Some(_) => v.push(f.to_string()),
+                    }
+                }
+                v
+            }
+        };
+        let filters = match self.parse_filters(d, info, conds, span) {
+            Ok(f) => f,
+            Err(m) => return Some(m),
+        };
+        Some(Match::Ok(IntentKind::Aggregate {
             data: d.into(),
-            order,
+            by: by.into(),
+            bucket,
+            sums,
             filters,
         }))
     }
@@ -1032,11 +1198,13 @@ pub fn example_sentences(env: &Env, reg: &Registry, contract: bool) -> Vec<Strin
                 kotonoha_types::Type::DateTime | kotonoha_types::Type::Date => {
                     out.push(format!("{d}を{f}の新しい順に一覧表示"));
                     out.push(format!("{d}のうち{f}が今日のものを一覧表示"));
+                    out.push(format!("{d}を{f}の日ごとに集計"));
                 }
                 kotonoha_types::Type::Enum(e) => {
                     if let Some(v) = env.enums.get(e).and_then(|vs| vs.first()) {
                         out.push(format!("{d}のうち{f}が{v}のものを一覧表示"));
                     }
+                    out.push(format!("{d}を{f}ごとに集計"));
                 }
                 _ => {}
             }

@@ -353,6 +353,20 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         props.join(", ")
                     ));
                 }
+                Component::Aggregate { name, columns, caption } => {
+                    let key = format!("aggregate:{name}");
+                    if !loaders.iter().any(|l| l["key"] == key) {
+                        loaders.push(json!({"key": key, "segments": ["api", "aggregates", name], "withId": false}));
+                    }
+                    let fs: Vec<Value> = columns.iter().map(|(n, t)| field_desc(ir, n, t)).collect();
+                    let refs = refs_js(ir, columns, &mut loaders);
+                    body.push(format!(
+                        "h(DataList, {{ key: {ci}, r: p.data[{}], fields: {}, tz: p.tz, caption: {}{refs} }})",
+                        js_str(&key),
+                        serde_json::to_string(&fs).unwrap(),
+                        js_str(caption)
+                    ));
+                }
                 Component::Analysis { analysis, columns } => {
                     let key = format!("analysis:{analysis}");
                     if !loaders.iter().any(|l| l["key"] == key) {

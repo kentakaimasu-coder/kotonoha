@@ -73,6 +73,10 @@ pub enum EndpointKind {
     Analysis {
         analysis: String,
     },
+    /// 日本語の文で書いた集計(ADR-0128)。ir.aggregates の名前
+    Aggregate {
+        name: String,
+    },
     /// 実験の割付(誰でも。露出を記録する。ADR-0122)
     ExperimentAssign {
         experiment: String,
@@ -172,6 +176,32 @@ pub enum Component {
         analysis: String,
         columns: Vec<(String, Type)>,
     },
+    /// 集計の結果表(ADR-0128)
+    Aggregate {
+        name: String,
+        columns: Vec<(String, Type)>,
+        caption: String,
+    },
+}
+
+/// 日本語の文で書いた集計(ADR-0128)。同じ内容の集計は 1 つの API にまとめる
+#[derive(Debug, Clone, PartialEq)]
+pub struct AggIr {
+    /// API の名前(見出しと同じ。重複したら ~2 を付ける)
+    pub name: String,
+    pub data: String,
+    pub by: String,
+    pub bucket: Option<kotonoha_intent::Bucket>,
+    pub sums: Vec<String>,
+    pub filters: Vec<kotonoha_intent::ListFilter>,
+    /// 結果の列: 単位・件数・各合計
+    pub columns: Vec<(String, Type)>,
+}
+
+impl AggIr {
+    pub fn row_type(&self) -> Type {
+        Type::Record(self.columns.clone())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -223,6 +253,8 @@ pub struct AppIr {
     pub ext: ExtModel,
     /// 役割 → 権限(ADR-0126)
     pub roles: BTreeMap<String, Vec<String>>,
+    /// 日本語の文で書いた集計(ADR-0128)
+    pub aggregates: Vec<AggIr>,
 }
 
 pub struct IrInput<'a> {
@@ -259,6 +291,7 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
     let mut list_data = BTreeSet::new();
     let mut get_data = BTreeSet::new();
     let mut query_limits: BTreeMap<String, BTreeSet<u32>> = BTreeMap::new();
+    let mut aggregates: Vec<AggIr> = Vec::new();
     for s in &inp.intents.screens {
         if let Some(d) = &s.input {
             get_data.insert(d.clone());
@@ -320,6 +353,67 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
                         variants: e.variants.clone(),
                     }),
                 }),
+                IntentKind::Aggregate {
+                    data,
+                    by,
+                    bucket,
+                    sums,
+                    filters,
+                } => {
+                    let info = &env.data[data];
+                    let unit_t = match (bucket, info.field(by)) {
+                        (Some(kotonoha_intent::Bucket::Day), _) => Type::Date,
+                        (Some(kotonoha_intent::Bucket::Month), _) => Type::Str,
+                        (None, Some(t)) => match t {
+                            Type::Option(x) => Type::Option(x.clone()),
+                            t => Type::Option(Box::new(t.clone())),
+                        },
+                        (None, None) => Type::Error,
+                    };
+                    let unit_name = match bucket {
+                        None => by.clone(),
+                        Some(kotonoha_intent::Bucket::Day) => format!("{by}の日"),
+                        Some(kotonoha_intent::Bucket::Month) => format!("{by}の月"),
+                    };
+                    let mut columns = vec![(unit_name, unit_t), ("件数".to_string(), Type::Int)];
+                    for f in sums {
+                        let t = match info.field(f) {
+                            Some(Type::Option(x)) => x.as_ref().clone(),
+                            Some(t) => t.clone(),
+                            None => Type::Error,
+                        };
+                        columns.push((format!("{f}の合計"), t));
+                    }
+                    let caption = kotonoha_intent::aggregate_caption(data, by, *bucket, filters);
+                    let spec = AggIr {
+                        name: caption.clone(),
+                        data: data.clone(),
+                        by: by.clone(),
+                        bucket: *bucket,
+                        sums: sums.clone(),
+                        filters: filters.clone(),
+                        columns: columns.clone(),
+                    };
+                    let name = match aggregates.iter().find(|a: &&AggIr| {
+                        AggIr {
+                            name: a.name.clone(),
+                            ..spec.clone()
+                        } == **a
+                    }) {
+                        Some(a) => a.name.clone(),
+                        None => {
+                            let mut name = caption.clone();
+                            let mut n = 2;
+                            while aggregates.iter().any(|a: &AggIr| a.name == name) {
+                                name = format!("{caption}~{n}");
+                                n += 1;
+                            }
+                            aggregates.push(AggIr { name: name.clone(), ..spec });
+                            name
+                        }
+                    };
+                    comps.push(Component::Aggregate { name, columns, caption });
+                }
                 IntentKind::Analysis { analysis } => {
                     let columns = match inp.ext.analyses.iter().find(|a| &a.name == analysis).map(|a| &a.ret) {
                         Some(Type::List(r)) => match r.as_ref() {
@@ -407,6 +501,16 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
             has_id: false,
             kind: EndpointKind::Analysis { analysis: a.name.clone() },
             access,
+        });
+    }
+    for a in &aggregates {
+        endpoints.push(Endpoint {
+            id: format!("aggregate.{}", a.name),
+            method: "GET",
+            segments: vec!["api".into(), "aggregates".into(), a.name.clone()],
+            has_id: false,
+            kind: EndpointKind::Aggregate { name: a.name.clone() },
+            access: read_access(&policy, &a.data),
         });
     }
     for x in &inp.ext.experiments {
@@ -500,6 +604,7 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
         functions,
         ext: inp.ext.clone(),
         roles: env.roles.clone(),
+        aggregates,
     }
 }
 
@@ -599,6 +704,11 @@ pub fn api_contract(ir: &AppIr) -> Value {
                     let spec = &ir.queries.iter().find(|q| &q.0.name == knowledge).unwrap().0;
                     v["query"] = json!({"limit": {"allowed": limits}, "base": {"kind": "datetime", "optional": true}});
                     v["response"] = wire_type(&spec.result_type()).unwrap_or(Value::Null);
+                }
+                EndpointKind::Aggregate { name } => {
+                    let a = ir.aggregates.iter().find(|x| &x.name == name).unwrap();
+                    v["aggregate"] = json!({"data": a.data, "by": a.by, "bucket": a.bucket, "sums": a.sums, "filters": a.filters});
+                    v["response"] = json!({"kind": "list", "of": wire_type(&a.row_type()).unwrap_or(Value::Null)});
                 }
                 EndpointKind::Analysis { analysis } => {
                     let a = ir.ext.analyses.iter().find(|x| &x.name == analysis).unwrap();

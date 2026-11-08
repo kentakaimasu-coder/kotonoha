@@ -141,6 +141,9 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
             }
         }
     }
+    for a in &ir.aggregates {
+        record(tn("Agg_", &a.name), &a.columns, &mut m);
+    }
     let mut ext_files: Vec<GeneratedFile> = Vec::new();
 
     let mut v = format!(
@@ -297,6 +300,24 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                     } else {
                         items.push(format!("item {{ {view} }}"));
                     }
+                }
+                Component::Aggregate { name, columns, caption } => {
+                    let var = format!("aggregate{ci}");
+                    let rt = tn("Agg_", name);
+                    state.push(format!("    var {var} by remember {{ mutableStateOf<List<{rt}>>(emptyList()) }}"));
+                    loads.push(format!(
+                        "{var} = api.getArray(listOf(\"api\", \"aggregates\", {})).map {{ parse{rt}(it) }}",
+                        kstr(name)
+                    ));
+                    let texts: Vec<String> = columns
+                        .iter()
+                        .map(|(n, t)| format!("Text({})", display(&format!("row.{}", bt(n)), t)))
+                        .collect();
+                    items.push(format!("item {{ Text({}, style = MaterialTheme.typography.titleMedium) }}", kstr(caption)));
+                    items.push(format!(
+                        "items({var}) {{ row -> Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {{ {} }} }}",
+                        texts.join("; ")
+                    ));
                 }
                 Component::Analysis { analysis, columns } => {
                     let var = format!("analysis{ci}");

@@ -134,6 +134,33 @@ pub fn build_vag(inp: &GraphInput, status: Status) -> Value {
                             json!({"ui": "component", "component": component, "args": args}),
                         )
                     }
+                    IntentKind::Aggregate {
+                        data,
+                        by,
+                        bucket,
+                        sums,
+                        filters,
+                    } => {
+                        let o = format!("集計<{data}>");
+                        outputs.push(o.clone());
+                        let mut detail = json!({"ui": "table", "aggregate": {"data": data, "by": by, "sums": sums}});
+                        if let Some(b) = bucket {
+                            detail["aggregate"]["bucket"] = serde_json::to_value(b).unwrap();
+                        }
+                        if !filters.is_empty() {
+                            detail["aggregate"]["filters"] = serde_json::to_value(filters).unwrap();
+                        }
+                        (
+                            "query",
+                            kotonoha_intent::aggregate_caption(data, by, *bucket, filters),
+                            vec![],
+                            vec![o],
+                            vec!["data.read"],
+                            vec![format!("{data}.read")],
+                            vec![],
+                            detail,
+                        )
+                    }
                     IntentKind::Analysis { analysis } => {
                         let sig = &env.externals[analysis];
                         let o = sig.ret.as_ref().map(tstr).unwrap_or_default();

@@ -371,6 +371,21 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
                     }
                 }
             }
+            EndpointKind::Aggregate { name } => {
+                let a = ir.aggregates.iter().find(|x| &x.name == name).unwrap();
+                let spec = serde_json::json!({
+                    "by": a.by,
+                    "bucket": a.bucket,
+                    "unit": a.columns[0].0,
+                    "sums": a.sums.iter().map(|f| [f.clone(), format!("{f}の合計")]).collect::<Vec<_>>(),
+                    "filters": kotonoha_intent::list_query(&None, &a.filters),
+                });
+                let w = crate::appir::wire_type(&a.row_type()).unwrap_or(serde_json::Value::Null);
+                format!(
+                    "async (ctx) => {{ const w: any = {w}; return {{ status: 200, body: (await db.adAggregate(ctx, {d}, {spec})).map((r) => rt.encode(r, w, schema)) }}; }}",
+                    d = js_str(&a.data)
+                )
+            }
             EndpointKind::Analysis { analysis } => {
                 let a = ir.ext.analyses.iter().find(|x| &x.name == analysis).unwrap();
                 let keys: Vec<String> = a.params.iter().map(|(n, _)| js_str(n)).collect();

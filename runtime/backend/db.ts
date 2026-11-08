@@ -576,6 +576,69 @@ export async function adList(ctx: Ctx, table: string, page: { limit: number; off
   return rows.map((r) => decodeRow(ctx, table, r));
 }
 
+export interface AggregateSpec {
+  by: string;
+  bucket: "day" | "month" | null;
+  /** 単位の列名(「品名」「注文日時(日)」) */
+  unit: string;
+  /** [フィールド, 列名] */
+  sums: [string, string][];
+  /** 一覧と同じ絞り込み(eq.F など) */
+  filters: [string, string][];
+}
+
+/** 日本語の文で書いた集計(ADR-0128): 単位ごとの件数と合計。行レベル認可・絞り込みは一覧と同じ。
+ *  日時の日・月はアプリの時刻帯で区切る(SQL 方言に依存しないよう、行を読んでから数える) */
+export async function adAggregate(ctx: Ctx, table: string, spec: AggregateSpec): Promise<Row[]> {
+  const view = listView(ctx, table, new URLSearchParams(spec.filters));
+  const where = view.sql ? ` WHERE 1 = 1${view.sql}` : "";
+  const fields = ctx.schema.entities[table];
+  const byWire = fields.find((f) => f.name === spec.by)!.type;
+  const cols = [spec.by, ...spec.sums.map((x) => x[0]).filter((x) => x !== spec.by)];
+  const rows = await ctx.conn.all(`SELECT ${cols.map(q).join(", ")} FROM ${q(table)}${where}`, view.params);
+  const tz = appTz();
+  const enumOrder = baseWire(byWire).kind === "enum" ? ctx.schema.enums[(baseWire(byWire) as { name: string }).name] : null;
+  const groups = new Map<string, { key: unknown; sort: unknown; n: bigint; sums: bigint[] }>();
+  for (const r of rows) {
+    let key = fromSql(r[spec.by], byWire);
+    let sort: unknown = key;
+    if (spec.bucket !== null && key !== null) {
+      let date: string;
+      if (baseWire(byWire).kind === "datetime") {
+        const t = Number(key as bigint);
+        const d = new Date(t + tzOffsetMs(t, tz));
+        date = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+      } else date = key as string;
+      sort = spec.bucket === "day" ? date : date.slice(0, 7);
+      key = spec.bucket === "day" ? date : `${Number(date.slice(0, 4))}年${Number(date.slice(5, 7))}月`;
+    } else if (enumOrder !== null && key !== null) sort = enumOrder.indexOf(key as string);
+    const id = typeof key === "bigint" ? `n:${key}` : JSON.stringify(key);
+    let g = groups.get(id);
+    if (!g) {
+      g = { key, sort, n: 0n, sums: spec.sums.map(() => 0n) };
+      groups.set(id, g);
+    }
+    g.n += 1n;
+    spec.sums.forEach(([f], i) => {
+      const v = fromSql(r[f], fields.find((x) => x.name === f)!.type);
+      if (v !== null) g!.sums[i] += v as bigint;
+    });
+  }
+  const cmp = (a: unknown, b: unknown): number => {
+    if (a === b) return 0;
+    if (a === null) return 1;
+    if (b === null) return -1;
+    return (a as number) < (b as number) ? -1 : 1;
+  };
+  return [...groups.values()]
+    .sort((a, b) => cmp(a.sort, b.sort))
+    .map((g) => {
+      const o: Row = { [spec.unit]: g.key, 件数: g.n };
+      spec.sums.forEach(([, col], i) => (o[col] = g.sums[i]));
+      return o;
+    });
+}
+
 export async function adCount(ctx: Ctx, table: string, view: ListView = listView(ctx, table)): Promise<number> {
   const where = view.sql ? ` WHERE 1 = 1${view.sql}` : "";
   return Number((await ctx.conn.all(`SELECT COUNT(*) AS n FROM ${q(table)}${where}`, view.params))[0].n);

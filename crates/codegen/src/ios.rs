@@ -119,6 +119,13 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
         }
         m.push_str("}\n\n");
     }
+    for a in &ir.aggregates {
+        m.push_str(&format!("struct {}: Codable, Hashable {{\n", type_name("Agg_", &a.name)));
+        for (n, t) in &a.columns {
+            m.push_str(&format!("    let {}: {}\n", bt(n), swift_type(t)));
+        }
+        m.push_str("}\n\n");
+    }
     for a in &ir.actions {
         m.push_str(&format!("struct {}: Encodable {{\n", type_name("Req_", &a.name)));
         for (n, t) in &a.params {
@@ -282,6 +289,20 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                     } else {
                         body.push(format!("Section {{ {view} }}"));
                     }
+                }
+                Component::Aggregate { name, columns, caption } => {
+                    let var = format!("aggregate{ci}");
+                    state.push(format!("    @State private var {var}: [{}] = []", type_name("Agg_", name)));
+                    loads.push(format!("{var} = try await api.get(\"api\", \"aggregates\", {})", swift_str(name)));
+                    let cells: Vec<String> = columns
+                        .iter()
+                        .map(|(n, t)| format!("Text({})", display_expr(&format!("row.{}", bt(n)), t)))
+                        .collect();
+                    body.push(format!(
+                        "Section({}) {{ ForEach({var}, id: \\.self) {{ row in HStack {{ {} }} }} }}",
+                        swift_str(caption),
+                        cells.join("; Spacer(); ")
+                    ));
                 }
                 Component::Analysis { analysis, columns } => {
                     let var = format!("analysis{ci}");
