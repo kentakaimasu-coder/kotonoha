@@ -45,7 +45,7 @@ createWebServer(webApp, {
   // 開発用のトークン貼り付けログイン。OIDC を設定したら既定で無効(KOTONOHA_DEV_LOGIN=1 で有効)
   devLogin: process.env.KOTONOHA_DEV_LOGIN ? process.env.KOTONOHA_DEV_LOGIN === "1" : !process.env.KOTONOHA_OIDC_ISSUER,
   // koto dev が設定する、開発用のワンクリックログイン(本番モードでは起動を拒否する)
-  devQuick: process.env.KOTONOHA_DEV_JWT_SECRET ? { secret: process.env.KOTONOHA_DEV_JWT_SECRET, caps: (process.env.KOTONOHA_DEV_CAPS ?? "").split(",").filter((c) => c) } : null,
+  devQuick: process.env.KOTONOHA_DEV_JWT_SECRET ? { secret: process.env.KOTONOHA_DEV_JWT_SECRET, caps: (process.env.KOTONOHA_DEV_CAPS ?? "").split(",").filter((c) => c), roles: JSON.parse(process.env.KOTONOHA_DEV_ROLES ?? "{}") } : null,
 }).listen(port, host, () => {
   process.stdout.write(JSON.stringify({ ts: new Date().toISOString(), level: "info", msg: `web listening on http://${host}:${port}` }) + "\n");
 });

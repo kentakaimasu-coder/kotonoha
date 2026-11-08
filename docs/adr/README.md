@@ -38,3 +38,4 @@
 | [ADR-0123](ADR-0123-extension-components.md) | 拡張部品 | 提案(実装) | |
 | [ADR-0124](ADR-0124-functions-and-externals.md) | 関数・組込み関数・外部関数(TypeScript / Python) | 提案(実装) | 外部コードの隔離方式 |
 | [ADR-0125](ADR-0125-analysis-sql.md) | 分析(読み取り専用 SQL) | 提案(実装) | SQL 方言差の吸収 |
+| [ADR-0126](ADR-0126-roles.md) | 役割(ロール)と全件閲覧の許可 | 提案(実装) | 役割の継承・テナント |

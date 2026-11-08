@@ -60,6 +60,8 @@ pub enum Decl {
     External(ExternalDecl),
     /// `実験 名前:` + `キー = 値` 行(A/B テスト)
     Experiment(ExperimentDecl),
+    /// `役割 名前:` + `権限 = [...]`(役割ごとの権限。ADR-0126)
+    Role(ExperimentDecl),
 }
 
 impl Decl {
@@ -77,6 +79,7 @@ impl Decl {
             Decl::Function(d) => d.span,
             Decl::External(d) => d.span,
             Decl::Experiment(d) => d.span,
+            Decl::Role(d) => d.span,
         }
     }
 }

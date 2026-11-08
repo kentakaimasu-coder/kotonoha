@@ -482,3 +482,30 @@ fn external_functions_declared_effects_flow_into_actions() {
     let e = errors_of(&lab_with(&src, &lab_files()));
     assert!(e.contains("SEC001") && e.contains("network.send"), "{e}");
 }
+
+#[test]
+fn roles_are_checked_and_normalized_to_contract_capabilities() {
+    let base = "アプリ「t」\nデータ 注文:\n    ID: 識別子\n    卓: 識別子\n動作 何か() -> 識別子:\n    必要 = []\n    厳密:\n        \"x\" を返す\n";
+    let ok = with_src(&format!(
+        "{base}役割 厨房:\n    権限 = [注文.読取, 注文.update, 全件閲覧.注文, 動作.何か, 実験.結果]\n"
+    ));
+    let a = analyze(&ok, &none());
+    assert!(a.ok(), "{:#?}", a.diags.items);
+    assert_eq!(a.env.roles["厨房"], vec!["全件閲覧.注文", "動作.何か", "実験.結果", "注文.read", "注文.update"]);
+    assert_eq!(a.vag["roles"]["厨房"][0], "全件閲覧.注文");
+    for (bad, want) in [
+        ("権限 = [注文.見る]", "動詞"),
+        ("権限 = [謎.読取]", "謎"),
+        ("権限 = [動作.謎]", "謎"),
+        ("権限 = [全件閲覧.謎]", "謎"),
+        ("権限 = [注文]", "区切って"),
+        ("色 = 赤", "キー"),
+    ] {
+        let e = errors_of(&with_src(&format!("{base}役割 厨房:\n    {bad}\n")));
+        assert!(e.contains(want), "{bad} → {e}");
+    }
+    let e = errors_of(&with_src(&format!(
+        "{base}役割 厨房:\n    権限 = [注文.読取]\n役割 厨房:\n    権限 = [注文.読取]\n"
+    )));
+    assert!(e.contains("既に定義"), "{e}");
+}

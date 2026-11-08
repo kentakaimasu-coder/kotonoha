@@ -56,6 +56,7 @@ fn parses_shop_example() {
             Decl::Function(_) => "function",
             Decl::External(_) => "external",
             Decl::Experiment(_) => "experiment",
+            Decl::Role(_) => "role",
         })
         .collect();
     // 宣言の種類がすべて現れ、先頭はアプリ宣言

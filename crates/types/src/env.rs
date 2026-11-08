@@ -75,6 +75,8 @@ pub struct Env {
     pub externals: BTreeMap<String, ExternalSig>,
     /// `実験`(意味は ext クレートが解釈する)
     pub experiments: Vec<ExperimentInfo>,
+    /// `役割`: 役割名 → 権限(API 契約の表記: 予約.create / 動作.予約する / 全件閲覧.予約 / 実験.結果)
+    pub roles: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -132,12 +134,16 @@ impl Env {
 }
 
 /// 全ファイルの宣言から環境を作る。
+/// 役割の宣言(名前, `キー = 値` の行, 位置)。検証は全宣言を集めた後
+type RoleRaw = (String, Vec<(String, String, Span)>, Span);
+
 pub fn collect_env(files: &[&SourceFile]) -> (Env, Vec<Diagnostic>) {
     let mut env = Env::default();
     let mut diags = Vec::new();
     let mut type_names: BTreeMap<String, Span> = BTreeMap::new();
     let mut call_names: BTreeMap<String, Span> = BTreeMap::new();
     let mut app_span: Option<Span> = None;
+    let mut roles_raw: Vec<RoleRaw> = Vec::new();
 
     let decls: Vec<&Decl> = files.iter().flat_map(|f| f.items.iter().map(|i| &i.decl)).collect();
 
@@ -280,6 +286,24 @@ pub fn collect_env(files: &[&SourceFile]) -> (Env, Vec<Diagnostic>) {
                 check_adapter(&sig, a, &env, &mut diags);
                 env.adapters.insert(a.name.name.clone(), sig);
             }
+            Decl::Role(x) => {
+                if roles_raw
+                    .iter()
+                    .any(|(n, _, _): &(String, Vec<(String, String, Span)>, Span)| *n == x.name.name)
+                {
+                    diags.push(Diagnostic::error(
+                        Code::REF002,
+                        x.name.span,
+                        format!("役割 `{}` は既に定義されています", x.name.name),
+                    ));
+                } else {
+                    roles_raw.push((
+                        x.name.name.clone(),
+                        x.entries.iter().map(|kv| (kv.key.name.clone(), kv.value.text.clone(), kv.value.span)).collect(),
+                        x.span,
+                    ));
+                }
+            }
             Decl::Experiment(x) => {
                 if env.experiments.iter().any(|e| e.name == x.name.name) {
                     diags.push(Diagnostic::error(
@@ -406,6 +430,37 @@ pub fn collect_env(files: &[&SourceFile]) -> (Env, Vec<Diagnostic>) {
     }
     if app_span.is_none() {
         diags.push(Diagnostic::error(Code::REF001, Span::default(), "`アプリ「名前」` 宣言がありません"));
+    }
+    // 役割(全宣言を集めた後で、参照先のデータ・動作を確かめる)
+    for (name, entries, span) in roles_raw {
+        let mut caps = Vec::new();
+        let mut found = false;
+        for (k, v, sp) in entries {
+            if k != "権限" {
+                diags.push(Diagnostic::error(
+                    Code::REF001,
+                    sp,
+                    format!("役割のキー `{k}` は定義されていません(使えるキー: 権限)"),
+                ));
+                continue;
+            }
+            found = true;
+            for item in list_value(&v) {
+                match role_cap(&env, &item) {
+                    Ok(c) => caps.push(c),
+                    Err(m) => diags.push(
+                        Diagnostic::error(Code::REF001, sp, m)
+                            .hint("書き方: データ.読取 / データ.作成 / データ.更新 / データ.削除 / 動作.動作名 / 全件閲覧.データ / 実験.結果"),
+                    ),
+                }
+            }
+        }
+        if !found {
+            diags.push(Diagnostic::error(Code::AMB001, span, format!("役割 `{name}` に `権限 = [...]` がありません")));
+        }
+        caps.sort();
+        caps.dedup();
+        env.roles.insert(name, caps);
     }
     (env, diags)
 }
@@ -662,6 +717,43 @@ fn check_adapter(sig: &AdapterSig, a: &AdapterDecl, env: &Env, diags: &mut Vec<D
             if !sig.ret.same(&Type::Bool) {
                 bad("操作 削除 の戻り値は 真偽 です".into(), diags);
             }
+        }
+    }
+}
+
+/// 役割の権限 1 つを、API 契約の表記(予約.create など)に直す
+fn role_cap(env: &Env, item: &str) -> Result<String, String> {
+    let Some((head, tail)) = item.split_once('.') else {
+        return Err(format!("権限 `{item}` は `データ.読取` のように `.` で区切って書きます"));
+    };
+    match head {
+        "動作" => {
+            if env.actions.contains_key(tail) {
+                Ok(item.to_string())
+            } else {
+                Err(format!("動作 `{tail}` は定義されていません"))
+            }
+        }
+        "全件閲覧" => {
+            if env.data.contains_key(tail) {
+                Ok(item.to_string())
+            } else {
+                Err(format!("データ `{tail}` は定義されていません"))
+            }
+        }
+        "実験" if tail == "結果" => Ok(item.to_string()),
+        d => {
+            if !env.data.contains_key(d) {
+                return Err(format!("データ `{d}` は定義されていません"));
+            }
+            let verb = match tail {
+                "読取" | "read" => "read",
+                "作成" | "create" => "create",
+                "更新" | "update" => "update",
+                "削除" | "delete" => "delete",
+                other => return Err(format!("`{other}` は権限の動詞ではありません(読取 / 作成 / 更新 / 削除)")),
+            };
+            Ok(format!("{d}.{verb}"))
         }
     }
 }

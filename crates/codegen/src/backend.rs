@@ -454,9 +454,10 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
     }
     g.push_str("];\n\n");
     g.push_str(&format!(
-        "export const app: App = {{ name: {}, schema, routes, owners: {} }};\n",
+        "export const app: App = {{ name: {}, schema, routes, owners: {}, roles: {} }};\n",
         js_str(&ir.name),
-        serde_json::to_string(&ir.policy.owner_read).unwrap()
+        serde_json::to_string(&ir.policy.owner_read).unwrap(),
+        serde_json::to_string(&ir.roles).unwrap()
     ));
 
     if !errs.is_empty() {

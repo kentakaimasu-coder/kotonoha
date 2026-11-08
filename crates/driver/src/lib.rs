@@ -251,6 +251,13 @@ pub fn analyze(p: &Project, approvals: &ApprovalsFile) -> Analysis {
     let (ext, d) = kotonoha_ext::resolve(&env, &intents, &|rel: &str| p.read_ext(rel));
     diags.extend(d);
 
+    // 比較を `=` で書いた間違い(ペルソナ評価で多かった)に、`==` の書き方を添える
+    for d in diags.items.iter_mut() {
+        if d.code == Code::SYN001 && (d.message_ja.contains("`=` があります") || d.message_ja.contains("予約語 `を確認` があります")) {
+            d.hints
+                .push("比べるときは `==` を使います(例: `件.状況 == \"完了\" を確認 または 失敗(…)`、`もし 数 == 0:`)。`=` は値を入れるときだけです".into());
+        }
+    }
     // 存在しないフィールドの指摘には、使えるフィールドを添える(綴り違い・言い換えに気付けるように)
     for d in diags.items.iter_mut() {
         if d.code != Code::REF001 {
@@ -288,6 +295,9 @@ pub fn analyze(p: &Project, approvals: &ApprovalsFile) -> Analysis {
         },
         status,
     );
+    if !env.roles.is_empty() {
+        vag["roles"] = serde_json::to_value(&env.roles).unwrap_or_default();
+    }
     if !(ext.functions.is_empty() && ext.analyses.is_empty() && ext.components.is_empty() && ext.experiments.is_empty()) {
         vag["extensions"] = kotonoha_ext::vag_json(&ext);
     }

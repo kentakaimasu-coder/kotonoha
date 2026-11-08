@@ -19,7 +19,7 @@ FROM "注文" GROUP BY "商品ID" ORDER BY "売上" DESC
 - 関数は許可リストのみ: count, sum, avg, min, max, total, coalesce, ifnull, nullif, abs, round, lower, upper, length, substr, substring, trim, ltrim, rtrim, replace, instr
 - 引数は `:名前` だけ(`?`・`$`・`@` は不可)。宣言した引数をすべて使う。`?N` に置き換えてバインドする(文字列連結はしない: SEC-04)
 - 戻り値は `一覧<記録{…}>` で、列はワイヤ形式のスカラー型
-- 本人限定(C-OWNER)のデータは対象にできない(TGT001。行レベル認可と任意 SQL の関係が未定義)
+- 本人限定(C-OWNER)のデータを対象にする分析は、許可 `全件閲覧.データ名` を持つ人だけが使える(ADR-0126)
 
 ## 実行時(多重防御)
 - SQLite: `PRAGMA query_only = ON` の間だけ実行。PostgreSQL: `BEGIN TRANSACTION READ ONLY` + `statement_timeout`(`KOTONOHA_ANALYSIS_TIMEOUT_MS`、既定 10 秒)

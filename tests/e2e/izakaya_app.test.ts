@@ -83,8 +83,14 @@ test("客 2 卓が同時に注文 → それぞれ自分の注文だけ → 厨�
   await t2.page.goto(`${url}/s/${enc("注文の状況")}`);
   assert.equal(await t2.page.locator("tbody tr").count(), 1);
 
-  // 厨房は全卓の注文を見て、唐揚げを提供済みにする
-  const k = await session("pc", token("厨房", KITCHEN));
+  // 厨房は全卓の注文を見て、唐揚げを提供済みにする(開発用ログインの「厨房として入る」= ソースの役割で入る)
+  const kctx = await browser.newContext({ viewport: { width: 1280, height: 860 }, locale: "ja-JP" });
+  const k = { ctx: kctx, page: await kctx.newPage(), errors: [] as string[] };
+  k.page.on("pageerror", (e: Error) => k.errors.push(String(e)));
+  await k.page.goto(url + "/login");
+  await k.page.fill("#dev-name", "厨房の山田");
+  await k.page.click("text=厨房として入る");
+  await k.page.waitForURL(/\/s\//);
   await k.page.goto(`${url}/s/${enc("注文の状況")}`);
   assert.equal(await k.page.locator("tbody tr").count(), 3);
   // 一覧の行のリンク(先頭の列)から詳細へ
@@ -142,6 +148,28 @@ test("権限の境界: 客は提供済みにできない・品切れにできな
   assert.equal((await big.json()).value, "数量不正");
   // 全件閲覧の許可が無い人は売上(本人限定データの分析)を見られない
   assert.equal((await fetch(`${url}/api/analyses/${enc("品名別の売上")}`, { headers: { Authorization: `Bearer ${token("x", ["注文.読取"])}` } })).status, 403);
+});
+
+test("役割: トークンの roles に役割名だけ入れれば、ソースの役割の権限を持つ", async () => {
+  const { createHmac } = await import("node:crypto");
+  const secret = readFileSync(join(dir, ".koto/dev/secret"), "utf8").trim();
+  const b = (x: unknown) => Buffer.from(JSON.stringify(x)).toString("base64url");
+  const jwt = (sub: string, roles: string[]) => {
+    const h = `${b({ alg: "HS256", typ: "JWT" })}.${b({ sub, roles, exp: Math.floor(Date.now() / 1000) + 600 })}`;
+    return `${h}.${createHmac("sha256", secret).update(h).digest("base64url")}`;
+  };
+  const cust = jwt("6番卓", ["客"]), kitchen = jwt("厨房", ["厨房"]);
+  const post = (path: string, tok: string, body: unknown) =>
+    fetch(`${url}/api/actions/${enc(path)}`, { method: "POST", headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const o = await post("注文する", cust, { メニューID: "m2", 数量: 1 });
+  assert.equal(o.status, 200);
+  const id = (await o.json()).ok;
+  assert.equal((await post("提供済みにする", cust, { 注文ID: id })).status, 403);
+  assert.equal((await post("提供済みにする", kitchen, { 注文ID: id })).status, 200);
+  // 客の役割は自分の注文だけ、厨房は全員分
+  const mine = await (await fetch(`${url}/api/data/${enc("注文")}`, { headers: { Authorization: `Bearer ${cust}` } })).json();
+  const all = await (await fetch(`${url}/api/data/${enc("注文")}`, { headers: { Authorization: `Bearer ${kitchen}` } })).json();
+  assert.ok(mine.every((x: any) => x.卓 === "6番卓") && all.length > mine.length);
 });
 
 test("同じ品を 20 卓が同時に注文しても、注文と売上の数が合う", async () => {

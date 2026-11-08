@@ -106,6 +106,12 @@ fn print_decl(d: &Decl, out: &mut String) {
                 out.push_str(&format!("{}{} = {}\n", ind(1), kv.key.name, kv.value.text));
             }
         }
+        Decl::Role(x) => {
+            out.push_str(&format!("役割 {}:\n", x.name.name));
+            for kv in &x.entries {
+                out.push_str(&format!("{}{} = {}\n", ind(1), kv.key.name, kv.value.text));
+            }
+        }
         Decl::Contract(c) => {
             out.push_str("約束:\n");
             for l in &c.lines {

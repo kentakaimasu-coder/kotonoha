@@ -31,6 +31,8 @@ export interface App {
   routes: Route[];
   /** 行レベル認可: データ → 本人の主体 ID を入れるフィールド */
   owners: Record<string, string>;
+  /** ソースの `役割` 宣言(役割 → 権限)。KOTONOHA_ROLE_MAP が無ければこれを使う(ADR-0126) */
+  roles?: Record<string, string[]>;
 }
 
 /** 書込み系(POST)のレート制限: 主体または IP ごとのトークンバケット */
@@ -174,6 +176,7 @@ function match(routes: Route[], method: string, path: string): { route: Route; i
 
 export function createApp(app: App, db: Database, env: NodeJS.ProcessEnv = process.env) {
   const cfg = authConfigFromEnv(env);
+  if (!env.KOTONOHA_ROLE_MAP && app.roles) cfg.roleMap = app.roles;
   if (env.KOTONOHA_JWKS_URL) startJwksRefresh(cfg, env.KOTONOHA_JWKS_URL);
   if (cfg.secret === null && cfg.keys.size === 0 && !env.KOTONOHA_JWKS_URL)
     log({ level: "warn", msg: "認証鍵(KOTONOHA_JWT_SECRET または JWKS)が未設定のため、認証が必要な API はすべて 401 になります" });

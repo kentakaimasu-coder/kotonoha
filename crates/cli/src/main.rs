@@ -20,7 +20,7 @@ const USAGE: &str = "使い方: koto [-C <dir>] [--json] <command> [args]
   dev [--port 3000] [--no-start]  開発用に生成して起動(seed.json があれば初期データも入れる。画面と API は同じポート)
   patterns                        画面・約束に書ける文の一覧(宣言した名前で具体的に表示)
   safety                          生成されるアプリに自動で入る安全対策と、API ごとの公開範囲を表示
-  token --sub 名前 [--admin | --caps 権限,…]
+  token --sub 名前 [--role 役割 | --admin | --caps 権限,…]
                                   koto dev で動かしているアプリ用の動作確認トークンを作る(curl などで Authorization: Bearer に使う)
   fmt [--check] [--zenkaku]       ソースのテキスト正規化(NFC・LF・行末空白)。--zenkaku で全角英数記号を半角に
   check                           字句/構文/型/知識/意図/効果を検査
@@ -318,6 +318,13 @@ fn safety_text(api: &serde_json::Value) -> String {
     ] {
         s.push_str(&format!("  ・{line}\n"));
     }
+    if let Some(rs) = api["roles"].as_object().filter(|m| !m.is_empty()) {
+        s.push_str("\n役割(ソースの `役割` 宣言。トークンの roles に役割名を入れると、その権限を持つ):\n");
+        for (r, caps) in rs {
+            let cs: Vec<&str> = caps.as_array().into_iter().flatten().filter_map(|c| c.as_str()).collect();
+            s.push_str(&format!("  {r}: {}\n", cs.join(", ")));
+        }
+    }
     s.push_str("\nAPI ごとの公開範囲:\n");
     for e in api["endpoints"].as_array().into_iter().flatten() {
         let a = &e["access"];
@@ -390,6 +397,7 @@ fn cmd_patterns(o: &mut Opts) -> Result<i32, String> {
     for x in &contract {
         s.push_str(&format!("    {x}\n"));
     }
+    s.push_str("\n役割(誰が何をできるか。トップレベルに書く):\n    役割 厨房:\n        権限 = [注文.読取, 注文.更新, 全件閲覧.注文]\n");
     s.push_str("\n補足:\n  ・「…を押すと 動作(引数)」の引数には、画面の入力データ(例: 商品.ID)や数・文字列を書けます\n  ・「…を選ぶと 画面 へ」の遷移先の画面では、選んだデータを「データの項目と項目を表示」で表示できます\n  ・詳しい説明: docs/tutorial.md、docs/spec/intent_patterns.md\n");
     print!("{s}");
     Ok(0)
@@ -410,13 +418,26 @@ fn run_cmd(cmd: &mut std::process::Command, what: &str) -> Result<(), String> {
 fn cmd_token(o: &mut Opts) -> Result<i32, String> {
     let sub = take_value(&mut o.args, "--sub")?.ok_or("--sub 名前 が必要です(例: koto token --sub 花子)")?;
     let admin = take_flag(&mut o.args, "--admin");
+    let role = take_value(&mut o.args, "--role")?;
     let caps_arg = take_value(&mut o.args, "--caps")?;
     no_extra(&o.args)?;
     let dev = o.dir.join(".koto").join("dev");
     let secret = std::fs::read_to_string(dev.join("secret")).map_err(|_| "先に koto dev を一度実行してください(開発用の秘密がまだありません)".to_string())?;
-    let caps = match caps_arg {
-        Some(c) => c,
-        None => {
+    let caps = match (caps_arg, role.as_deref()) {
+        (Some(c), _) => c,
+        (None, Some(r)) => {
+            let api: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(dev.join("backend/api.json")).map_err(|e| e.to_string())?).unwrap_or_default();
+            let v = api["roles"].get(r).and_then(|x| x.as_array()).ok_or_else(|| {
+                let names: Vec<String> = api["roles"].as_object().map(|m| m.keys().cloned().collect()).unwrap_or_default();
+                format!(
+                    "役割 `{r}` はありません(ソースの役割: {})",
+                    if names.is_empty() { "なし".into() } else { names.join(" / ") }
+                )
+            })?;
+            v.iter().filter_map(|c| c.as_str()).collect::<Vec<_>>().join(",")
+        }
+        (None, None) => {
             let api: serde_json::Value =
                 serde_json::from_str(&std::fs::read_to_string(dev.join("backend/api.json")).map_err(|e| e.to_string())?).unwrap_or_default();
             all_caps(&api)
@@ -437,10 +458,12 @@ fn cmd_token(o: &mut Opts) -> Result<i32, String> {
     }
     print!("{}", String::from_utf8_lossy(&out.stdout));
     if !o.json {
-        eprintln!(
-            "({sub} として{}。12 時間有効。使い方: curl -H \"Authorization: Bearer <この文字列>\" …)",
-            if admin { "管理者(全件閲覧あり)" } else { "一般の利用者" }
-        );
+        let who = match (&role, admin) {
+            (Some(r), _) => format!("役割「{r}」"),
+            (None, true) => "管理者(全件閲覧あり)".into(),
+            _ => "一般の利用者".into(),
+        };
+        eprintln!("({sub} として{who}。12 時間有効。使い方: curl -H \"Authorization: Bearer <この文字列>\" …)");
     }
     Ok(0)
 }
@@ -558,6 +581,7 @@ fn cmd_dev(o: &mut Opts) -> Result<i32, String> {
         .env("KOTONOHA_DEV_LOGIN", "1")
         .env("KOTONOHA_DEV_JWT_SECRET", &secret)
         .env("KOTONOHA_DEV_CAPS", caps.join(","))
+        .env("KOTONOHA_DEV_ROLES", serde_json::to_string(&api["roles"]).unwrap_or_else(|_| "{}".into()))
         .env("KOTONOHA_EXIT_WITH_PARENT", std::process::id().to_string())
         .current_dir(&web)
         .spawn()

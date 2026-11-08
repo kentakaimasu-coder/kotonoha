@@ -367,4 +367,4 @@ export const routes: Route[] = [
   },
 ];
 
-export const app: App = { name: "商店", schema, routes, owners: {"注文":"注文者"} };
+export const app: App = { name: "商店", schema, routes, owners: {"注文":"注文者"}, roles: {} };

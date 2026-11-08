@@ -218,6 +218,8 @@ pub struct AppIr {
     pub functions: Vec<FnIr>,
     /// 外部関数・分析・部品・実験(実装ファイルの内容を含む)
     pub ext: ExtModel,
+    /// 役割 → 権限(ADR-0126)
+    pub roles: BTreeMap<String, Vec<String>>,
 }
 
 pub struct IrInput<'a> {
@@ -492,6 +494,7 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
         policy,
         functions,
         ext: inp.ext.clone(),
+        roles: env.roles.clone(),
     }
 }
 
@@ -616,5 +619,6 @@ pub fn api_contract(ir: &AppIr) -> Value {
         }).collect::<Vec<_>>(),
         "screens": ir.screens.iter().map(|s| json!({"name": s.name, "input": s.input})).collect::<Vec<_>>(),
         "entry_screen": ir.entry_screen,
+        "roles": ir.roles,
     })
 }

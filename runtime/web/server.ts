@@ -119,18 +119,19 @@ const b64u = (b: Buffer) => b.toString("base64url");
 
 export function createWebServer(
   app: WebApp,
-  opts: { backendUrl: string; root: string; secureCookie: boolean; tz: string; oidc?: OidcConfig | null; devLogin?: boolean; devQuick?: { secret: string; caps: string[] } | null },
+  opts: { backendUrl: string; root: string; secureCookie: boolean; tz: string; oidc?: OidcConfig | null; devLogin?: boolean; devQuick?: { secret: string; caps: string[]; roles?: Record<string, string[]> } | null },
 ) {
   const backend = new URL(opts.backendUrl);
   const oidc = opts.oidc ?? null;
   const devLogin = opts.devLogin ?? oidc === null;
   // 開発用のワンクリックログイン(koto dev が設定する)。名前を入れるだけで、アプリの全権限を持つ利用者として入れる
   const devQuick = devLogin && opts.devQuick && opts.devQuick.secret.length >= 32 ? opts.devQuick : null;
-  const devToken = (sub: string, admin: boolean) => {
+  const devToken = (sub: string, role: string) => {
     const b = (x: unknown) => Buffer.from(JSON.stringify(x)).toString("base64url");
     const now = Math.floor(Date.now() / 1000);
-    // 一般の利用者は「本人のものだけ」のデータを本人の分だけ見る。管理者は全件閲覧の許可も持つ
-    const caps = admin ? devQuick!.caps : devQuick!.caps.filter((c) => !c.startsWith("全件閲覧."));
+    // ソースの役割で入る / 一般の利用者(本人のものだけ)/ 管理者(全件閲覧も)
+    const roles = devQuick!.roles ?? {};
+    const caps = role.startsWith("r:") && roles[role.slice(2)] ? roles[role.slice(2)] : role === "admin" ? devQuick!.caps : devQuick!.caps.filter((c) => !c.startsWith("全件閲覧."));
     const head = `${b({ alg: "HS256", typ: "JWT" })}.${b({ sub, caps, iat: now, exp: now + 12 * 3600 })}`;
     return `${head}.${createHmac("sha256", devQuick!.secret).update(head).digest("base64url")}`;
   };
@@ -283,7 +284,7 @@ export function createWebServer(
           res.writeHead(400, securityHeaders({ "Content-Type": "text/plain; charset=utf-8" }));
           return res.end("名前は 64 文字以内にしてください");
         }
-        res.writeHead(303, securityHeaders({ Location: "/", "Set-Cookie": `${COOKIE}=${devToken(name, form.get("role") === "admin")}; HttpOnly; SameSite=Strict; Path=/${secure}` }));
+        res.writeHead(303, securityHeaders({ Location: "/", "Set-Cookie": `${COOKIE}=${devToken(name, form.get("role") ?? "user")}; HttpOnly; SameSite=Strict; Path=/${secure}` }));
         return res.end();
       }
       if (url.pathname === "/login") {
@@ -306,7 +307,7 @@ export function createWebServer(
         return res.end(
           page(
             "ログイン",
-            `<section class="page"><h1>ログイン</h1>${oidc ? `<p><a class="button" href="/login/oidc">認証基盤でログイン</a></p>` : ""}${devQuick ? `<form method="post" action="/login/dev" class="form"><h2>開発用: 名前を入れてすぐ入る</h2><p>開発中だけの機能です。別の名前で入ると別の人として扱われます。「本人のものだけ閲覧可」のデータは、一般の利用者なら自分の分だけ、管理者なら全員の分が見えます。</p><div class="field"><label for="dev-name">名前</label><input id="dev-name" name="name" value="開発者" maxlength="64" autocomplete="off"></div><button type="submit" name="role" value="user">一般の利用者として入る</button> <button type="submit" name="role" value="admin">管理者として入る</button></form>` : ""}${devLogin ? `<p>開発用: 発行済みのトークンを入力してログインします。</p><form method="post" action="/login"><div class="field"><label for="token">トークン</label><input id="token" name="token" type="password" required autocomplete="off"></div><button type="submit">ログイン</button></form>` : ""}<form method="post" action="/logout"><button type="submit">ログアウト</button></form></section>`,
+            `<section class="page"><h1>ログイン</h1>${oidc ? `<p><a class="button" href="/login/oidc">認証基盤でログイン</a></p>` : ""}${devQuick ? `<form method="post" action="/login/dev" class="form"><h2>開発用: 名前を入れてすぐ入る</h2><p>開発中だけの機能です。別の名前で入ると別の人として扱われます。「本人のものだけ閲覧可」のデータは、一般の利用者なら自分の分だけ、管理者なら全員の分が見えます。</p><div class="field"><label for="dev-name">名前</label><input id="dev-name" name="name" value="開発者" maxlength="64" autocomplete="off"></div>${Object.keys(devQuick.roles ?? {}).map((r) => `<button type="submit" name="role" value="r:${escHtml(r)}">${escHtml(r)}として入る</button> `).join("")}<button type="submit" name="role" value="user">一般の利用者として入る</button> <button type="submit" name="role" value="admin">管理者として入る</button></form>` : ""}${devLogin ? `<p>開発用: 発行済みのトークンを入力してログインします。</p><form method="post" action="/login"><div class="field"><label for="token">トークン</label><input id="token" name="token" type="password" required autocomplete="off"></div><button type="submit">ログイン</button></form>` : ""}<form method="post" action="/logout"><button type="submit">ログアウト</button></form></section>`,
             null,
           ),
         );

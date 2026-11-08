@@ -430,6 +430,10 @@ impl<'e> Checker<'e> {
                     Some(Type::Option(t)) => Some(t.as_ref()),
                     other => other,
                 };
+                // 識別子が期待される所の文字列リテラル(例: `予約する(枠.ID, "m1")`)は識別子として扱う
+                if let Some(Type::Id) = base {
+                    return expected.unwrap().clone();
+                }
                 if let Some(Type::Enum(en)) = base {
                     if self.env.enum_has(en, s) {
                         return expected.unwrap().clone();

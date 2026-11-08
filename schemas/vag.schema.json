@@ -52,6 +52,10 @@
         "from": {"type": "string"}, "to": {"type": "string"},
         "kind": {"enum": ["contains", "navigates", "invokes"]}}}},
     "status": {"enum": ["validated", "draft"]},
+    "roles": {
+      "description": "役割 → 権限(ADR-0126)。トークンの roles クレームから権限を導く",
+      "type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}
+    },
     "extensions": {
       "description": "外部関数・分析・拡張部品・実験(ADR-0122〜0125)。実装ファイルは内容の SHA-256 で固定する",
       "type": "object", "additionalProperties": false, "required": ["functions", "analyses", "components", "experiments"],

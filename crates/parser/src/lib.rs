@@ -265,6 +265,18 @@ impl<'a> Parser<'a> {
                 }
                 Ok(Decl::Experiment(ExperimentDecl { name, entries, span: line.span }))
             }
+            Some(TokenKind::Keyword(Keyword::Role)) => {
+                let name = ts.ident()?;
+                ts.expect_block_colon()?;
+                let mut entries = Vec::new();
+                for c in self.flat_children(line)? {
+                    match kv_line(c) {
+                        Ok(e) => entries.push(e),
+                        Err(d) => self.diags.push(d),
+                    }
+                }
+                Ok(Decl::Role(ExperimentDecl { name, entries, span: line.span }))
+            }
             Some(TokenKind::Keyword(Keyword::Action)) => {
                 let name = ts.ident()?;
                 let params = ts.params()?;
@@ -280,7 +292,7 @@ impl<'a> Parser<'a> {
                 }))
             }
             _ => Err(Diagnostic::error(Code::SYN001, line.span, "宣言として解釈できない行です")
-                .hint("トップレベルには アプリ / 型 / 列挙 / データ / アダプタ / 知識 / 画面 / 動作 / 約束 / 関数 / 外部関数 / 分析 / 部品 / 実験 のいずれかを書きます")),
+                .hint("トップレベルには アプリ / 型 / 列挙 / データ / アダプタ / 知識 / 画面 / 動作 / 約束 / 関数 / 外部関数 / 分析 / 部品 / 実験 / 役割 のいずれかを書きます")),
         }
     }
 
