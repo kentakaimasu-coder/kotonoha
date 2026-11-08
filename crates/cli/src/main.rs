@@ -710,9 +710,35 @@ fn cmd_check(o: &mut Opts) -> Result<i32, String> {
         Err(c) => return Ok(c),
     };
     let a = drv::analyze(&p, &ap);
+    let mut diags = a.diags.clone();
+    // kotonoha.json の targets に書いたターゲットで生成できるかも確かめる
+    // (check は合格したのに koto dev / build で TGT001 になる、を防ぐ。第 3 回ペルソナ評価)
+    if a.ok() {
+        let mut seen = std::collections::BTreeSet::new();
+        for t in &p.config.targets {
+            if let Err(ds) = drv::build_target(&p, &a, t) {
+                for d in ds {
+                    if seen.insert(d.message_ja.clone()) {
+                        diags.push(d.hint(format!(
+                            "kotonoha.json の targets に {t} があるため検査しました(そのターゲットが要らなければ targets から外せます)"
+                        )));
+                    }
+                }
+            }
+        }
+    }
+    for d in diags.items.iter_mut() {
+        if d.file.is_empty() {
+            if let Some((path, _)) = p.files.get(&d.span.file) {
+                if d.span.line > 0 {
+                    d.file = path.clone();
+                }
+            }
+        }
+    }
     let code = report(
         o,
-        &a.diags,
+        &diags,
         json!({"status": a.vag["status"], "graph_hash": a.hashes.graph, "unresolved": a.intents.unresolved}),
     );
     if !o.json && code == 0 {

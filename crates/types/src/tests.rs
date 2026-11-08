@@ -177,3 +177,11 @@ fn date_builtins() {
     let src = format!("{PRELUDE}関数 期限() -> 日付:\n    日後(今日(), 1) を返す\n");
     assert!(errors(&check_src(&src).1).contains(&Code::SEC001));
 }
+
+#[test]
+fn katsu_is_and() {
+    assert_eq!(
+        action("        x > 0 かつ x < 10 を確認 または 失敗(\"数量不正\")\n        id を返す\n"),
+        vec![]
+    );
+}

@@ -510,6 +510,8 @@ pub fn tokenize_str(text: &str, base: Span) -> Result<Vec<Token>, Diagnostic> {
             let w = &text[b..byte_at(j)];
             let kind = match Keyword::from_word(w) {
                 Some(k) => TokenKind::Keyword(k),
+                // 画面の絞り込みと同じ言い方で、厳密層でも「かつ」を && として書ける(第 3 回ペルソナ評価)
+                None if w == "かつ" => TokenKind::Sym(Sym::AndAnd),
                 None => TokenKind::Ident(w.to_string()),
             };
             toks.push(Token { kind, span: mk(b, byte_at(j)) });
