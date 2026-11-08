@@ -180,7 +180,7 @@ pub fn validate(env: &Env, facts: &BTreeMap<String, Facts>, intents: &IntentMode
                                 sig.span,
                                 format!("動作 `{name}` の Capability {} は処理では使われていませんが、宣言どおり要求します", c.source()),
                             )
-                            .hint("意図した制限でなければ削除してください(最小権限)"),
+                            .hint("「この役割の人だけができる操作」にするための意図した指定なら、このままで構いません。意図していなければ削除してください(最小権限)"),
                         );
                     }
                 }

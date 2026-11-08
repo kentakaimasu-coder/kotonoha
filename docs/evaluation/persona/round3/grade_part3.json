@@ -1,0 +1,121 @@
+[
+{"persona":"E28","variant":"A","lines":81,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},{"persona":"E28","variant":"C","lines":85,"check":1,"contract_test":1}]
