@@ -110,6 +110,9 @@ for (const kind of ["pc", "phone"] as const) {
     // 自分の予約には自分の 2 件だけ
     await s.page.goto(`${webUrl}/s/${enc("自分の予約")}`);
     assert.equal(await s.page.locator("tbody tr").count(), 2);
+    // 関連データの名前表示: イベントID ではなくイベントの名前が出る
+    assert.ok((await s.page.textContent("tbody"))!.includes(`少人数ワークショップ(${kind})`));
+    assert.match((await s.page.textContent("thead"))!, /イベント/);
     assert.deepEqual(s.errors, []);
     assert.deepEqual(errors, []);
     await s.ctx.close();

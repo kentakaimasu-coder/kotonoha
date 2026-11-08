@@ -120,6 +120,41 @@ pub fn screen_arg_js(e: &Expr, input: Option<&str>, errs: &mut Vec<Diagnostic>) 
     }
 }
 
+/// 関連データの名前表示: フィールド「XID」(識別子)で、データ X に一覧 API があり文字列の項目を持つなら、
+/// X の一覧を読み込んで最初の文字列項目(名前など)で表示する。権限が無ければ ID のまま(API が判断する)
+fn refs_js(ir: &AppIr, fields: &[(String, Type)], loaders: &mut Vec<Value>) -> String {
+    let mut parts = Vec::new();
+    for (n, t) in fields {
+        let Some(x) = n.strip_suffix("ID") else { continue };
+        if !matches!(t, Type::Id) || x.is_empty() {
+            continue;
+        }
+        let Some(ent) = ir.entities.iter().find(|e| e.name == x) else { continue };
+        let Some((label, _)) = ent.fields.iter().find(|(f, ft)| f != "ID" && matches!(ft, Type::Str)) else {
+            continue;
+        };
+        if !ir.endpoints.iter().any(|e| e.id == format!("data.list.{x}")) {
+            continue;
+        }
+        let key = format!("list:{x}");
+        if !loaders.iter().any(|l| l["key"] == key) {
+            loaders.push(json!({"key": key, "segments": ["api", "data", x], "withId": false}));
+        }
+        parts.push(format!(
+            "{}: {{ r: p.data[{}], label: {}, title: {} }}",
+            js_str(n),
+            js_str(&key),
+            js_str(label),
+            js_str(x)
+        ));
+    }
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!(", refs: {{ {} }}", parts.join(", "))
+    }
+}
+
 pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
     let mut errs = check_ir(ir);
     if !errs.is_empty() {
@@ -181,8 +216,9 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         Some(t) => format!(", link: (row: any) => screenHref({}, row[\"ID\"])", js_str(t)),
                         None => String::new(),
                     };
+                    let refs = refs_js(ir, fields, &mut loaders);
                     body.push(format!(
-                        "h(DataList, {{ key: {ci}, r: p.data[{}], fields: {}, tz: p.tz, caption: {}{link} }})",
+                        "h(DataList, {{ key: {ci}, r: p.data[{}], fields: {}, tz: p.tz, caption: {}{link}{refs} }})",
                         js_str(&key),
                         serde_json::to_string(&fs).unwrap(),
                         js_str(&format!("{data}の一覧"))
@@ -190,8 +226,9 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                 }
                 Component::Detail { data, fields } => {
                     let fs: Vec<Value> = fields.iter().map(|(n, t)| field_desc(ir, n, t)).collect();
+                    let refs = refs_js(ir, fields, &mut loaders);
                     body.push(format!(
-                        "h(Detail, {{ key: {ci}, r: p.data[{}], fields: {}, tz: p.tz }})",
+                        "h(Detail, {{ key: {ci}, r: p.data[{}], fields: {}, tz: p.tz{refs} }})",
                         js_str(&format!("get:{data}")),
                         serde_json::to_string(&fs).unwrap()
                     ));

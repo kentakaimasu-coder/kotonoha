@@ -164,7 +164,21 @@ export function Page(p: { title: string; children?: React.ReactNode }) {
   return h("section", { className: "page", "aria-labelledby": "page-title" }, h("h1", { id: "page-title" }, p.title), p.children);
 }
 
-export function DataList(p: { r: LoadResult | undefined; fields: Field[]; tz: string; link?: (row: any) => string; caption: string }) {
+/** 関連データの名前で表示する(フィールド「イベントID」→ イベントの名前)。読めなければ ID のまま */
+export type Refs = Record<string, { r: LoadResult | undefined; label: string; title: string }>;
+function refText(refs: Refs | undefined, f: Field, v: unknown, tz: string): string {
+  const ref = refs?.[f.name];
+  if (ref && ref.r?.ok && Array.isArray(ref.r.body) && v !== null && v !== undefined) {
+    const hit = ref.r.body.find((x: any) => x.ID === v);
+    if (hit && hit[ref.label] !== undefined && hit[ref.label] !== null) return String(hit[ref.label]);
+  }
+  return formatValue(v, f.type, tz);
+}
+function refTitle(refs: Refs | undefined, f: Field): string {
+  return refs?.[f.name]?.title ?? f.name;
+}
+
+export function DataList(p: { r: LoadResult | undefined; fields: Field[]; tz: string; link?: (row: any) => string; caption: string; refs?: Refs }) {
   if (!p.r) return null;
   if (!p.r.ok) return h(Notice, { r: p.r });
   const rows: any[] = p.r.body ?? [];
@@ -173,7 +187,7 @@ export function DataList(p: { r: LoadResult | undefined; fields: Field[]; tz: st
     "table",
     { className: "list" },
     h("caption", null, p.caption),
-    h("thead", null, h("tr", null, p.fields.map((f) => h("th", { key: f.name, scope: "col" }, f.name)))),
+    h("thead", null, h("tr", null, p.fields.map((f) => h("th", { key: f.name, scope: "col" }, refTitle(p.refs, f))))),
     h(
       "tbody",
       null,
@@ -182,7 +196,7 @@ export function DataList(p: { r: LoadResult | undefined; fields: Field[]; tz: st
           "tr",
           { key: row.ID ?? i },
           p.fields.map((f, j) => {
-            const text = formatValue(row[f.name], f.type, p.tz);
+            const text = refText(p.refs, f, row[f.name], p.tz);
             return h("td", { key: f.name }, j === 0 && p.link ? h("a", { href: p.link(row) }, text) : text);
           }),
         ),
@@ -191,11 +205,11 @@ export function DataList(p: { r: LoadResult | undefined; fields: Field[]; tz: st
   );
 }
 
-export function Detail(p: { r: LoadResult | undefined; fields: Field[]; tz: string }) {
+export function Detail(p: { r: LoadResult | undefined; fields: Field[]; tz: string; refs?: Refs }) {
   if (!p.r) return null;
   if (!p.r.ok) return h(Notice, { r: p.r });
   const e = p.r.body ?? {};
-  return h("dl", { className: "detail" }, p.fields.map((f) => h(React.Fragment, { key: f.name }, h("dt", null, f.name), h("dd", null, formatValue(e[f.name], f.type, p.tz)))));
+  return h("dl", { className: "detail" }, p.fields.map((f) => h(React.Fragment, { key: f.name }, h("dt", null, refTitle(p.refs, f)), h("dd", null, refText(p.refs, f, e[f.name], p.tz)))));
 }
 
 function useMessage(): [{ kind: "ok" | "error"; text: string; login?: boolean } | null, (m: { kind: "ok" | "error"; text: string; login?: boolean } | null) => void] {

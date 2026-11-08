@@ -24,7 +24,7 @@ function Screen_商品管理(p: ScreenProps) {
 
 function Screen_注文履歴(p: ScreenProps) {
   return h(Page, { title: "注文履歴" },
-    h(DataList, { key: 0, r: p.data["list:注文"], fields: [{"name":"商品ID","type":{"kind":"id"}},{"name":"数量","type":{"kind":"int"}},{"name":"注文者","type":{"kind":"id"}}], tz: p.tz, caption: "注文の一覧" })
+    h(DataList, { key: 0, r: p.data["list:注文"], fields: [{"name":"商品ID","type":{"kind":"id"}},{"name":"数量","type":{"kind":"int"}},{"name":"注文者","type":{"kind":"id"}}], tz: p.tz, caption: "注文の一覧", refs: { "商品ID": { r: p.data["list:商品"], label: "名前", title: "商品" } } })
   );
 }
 
@@ -38,7 +38,7 @@ export const screens: Record<string, ScreenDef> = {
   "商品一覧": { name: "商品一覧", input: null, loaders: [{"key":"list:商品","segments":["api","data","商品"],"withId":false}], View: Screen_商品一覧 },
   "商品詳細": { name: "商品詳細", input: "商品", loaders: [{"key":"get:商品","segments":["api","data","商品"],"withId":true}], View: Screen_商品詳細 },
   "商品管理": { name: "商品管理", input: null, loaders: [{"key":"list:商品","segments":["api","data","商品"],"withId":false}], View: Screen_商品管理 },
-  "注文履歴": { name: "注文履歴", input: null, loaders: [{"key":"list:注文","segments":["api","data","注文"],"withId":false}], View: Screen_注文履歴 },
+  "注文履歴": { name: "注文履歴", input: null, loaders: [{"key":"list:注文","segments":["api","data","注文"],"withId":false},{"key":"list:商品","segments":["api","data","商品"],"withId":false}], View: Screen_注文履歴 },
   "売れ筋": { name: "売れ筋", input: null, loaders: [{"key":"query:売れ筋商品:20","query":{"limit":"20"},"segments":["api","queries","売れ筋商品"],"withId":false}], View: Screen_売れ筋 },
 };
 
