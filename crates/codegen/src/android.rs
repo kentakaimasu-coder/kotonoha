@@ -319,7 +319,56 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         texts.join("; ")
                     ));
                 }
-                Component::Analysis { analysis, columns } => {
+                Component::Analysis { analysis, params, columns } if !params.is_empty() => {
+                    // 引数のある分析: 条件の入力欄と「表示」ボタン(ADR-0129)
+                    let var = format!("analysis{ci}");
+                    let rt = tn("Ana_", analysis);
+                    state.push(format!("    var {var} by remember {{ mutableStateOf<List<{rt}>>(emptyList()) }}"));
+                    let mut inputs = Vec::new();
+                    let mut pairs = Vec::new();
+                    for (n, t) in params {
+                        let sv = tn(&format!("a{ci}_"), n);
+                        let base = if let Type::Option(i) = t { i.as_ref() } else { t };
+                        let (conv, ph) = match base {
+                            Type::Date => (format!("Kotonoha.parseDate({sv}, {})", kstr(n)), "例: 2026-12-05"),
+                            Type::DateTime => (format!("Kotonoha.parseDateTime({sv}, {})", kstr(n)), "例: 2026-12-05 19:00"),
+                            Type::Int | Type::Money(_) => (format!("Kotonoha.parseLong({sv}, {}).toString()", kstr(n)), "例: 3"),
+                            Type::Bool => (format!("({sv}.trim() == \"はい\").toString()"), "はい / いいえ"),
+                            Type::Str | Type::Id | Type::Url | Type::Email => (sv.clone(), ""),
+                            other => {
+                                errs.push(Diagnostic::error(
+                                    Code::TGT001,
+                                    Default::default(),
+                                    format!("Android の分析の条件は型 {other} に未対応です"),
+                                ));
+                                continue;
+                            }
+                        };
+                        state.push(format!("    var {sv} by remember {{ mutableStateOf(\"\") }}"));
+                        inputs.push(format!(
+                            "OutlinedTextField(value = {sv}, onValueChange = {{ {sv} = it }}, label = {{ Text({}) }}, placeholder = {{ Text({}) }})",
+                            kstr(n),
+                            kstr(ph)
+                        ));
+                        pairs.push(format!("{} to {conv}", kstr(n)));
+                    }
+                    let texts: Vec<String> = columns
+                        .iter()
+                        .map(|(n, t)| format!("Text({})", display(&format!("row.{}", bt(n)), t)))
+                        .collect();
+                    items.push(format!(
+                        "item {{ Column {{ Text({}, style = MaterialTheme.typography.titleMedium); {}; Button(onClick = {{ scope.launch {{ try {{ {var} = api.getArray(listOf(\"api\", \"analyses\", {}), mapOf({})).map {{ parse{rt}(it) }}; message = null }} catch (e: Exception) {{ message = Kotonoha.describe(e) }} }} }}) {{ Text(\"表示\") }} }} }}",
+                        kstr(analysis),
+                        inputs.join("; "),
+                        kstr(analysis),
+                        pairs.join(", ")
+                    ));
+                    items.push(format!(
+                        "items({var}) {{ row -> Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {{ {} }} }}",
+                        texts.join("; ")
+                    ));
+                }
+                Component::Analysis { analysis, columns, .. } => {
                     let var = format!("analysis{ci}");
                     let rt = tn("Ana_", analysis);
                     state.push(format!("    var {var} by remember {{ mutableStateOf<List<{rt}>>(emptyList()) }}"));

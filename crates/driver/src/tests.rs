@@ -426,9 +426,9 @@ fn analyses_must_be_read_only_select_over_declared_tables() {
         &lab_files(),
     ));
     assert!(e.contains("謎"), "{e}");
-    // 引数を取る分析は画面に直接出せない
+    // 引数を取る分析も画面に出せる(条件の入力欄付き。ADR-0129)
     let e = errors_of(&lab_with(&LAB.replace("    商品別売上を表示", "    期間売上を表示"), &lab_files()));
-    assert!(e.contains("引数"), "{e}");
+    assert!(e.is_empty(), "{e}");
 }
 
 #[test]

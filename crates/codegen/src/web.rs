@@ -176,7 +176,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
     }
     let mut g = String::new();
     g.push_str("// このファイルは koto build --target web が生成しました。手で編集しないでください(正本は KOTONOHA ソース)。\n");
-    g.push_str("import { h, Page, DataList, Detail, ActionButton, ActionForm, ExtBoundary, variantOf, screenHref, type ScreenDef, type ScreenProps } from \"./runtime/ui.ts\";\n");
+    g.push_str("import { h, Page, DataList, Detail, ActionButton, ActionForm, AnalysisQuery, ExtBoundary, variantOf, screenHref, type ScreenDef, type ScreenProps } from \"./runtime/ui.ts\";\n");
     g.push_str("import type { WebApp } from \"./runtime/server.ts\";\n");
     // 拡張部品(画面で使うものだけ。web 実装が無ければ TGT001)
     let mut used: Vec<String> = Vec::new();
@@ -367,7 +367,19 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         js_str(caption)
                     ));
                 }
-                Component::Analysis { analysis, columns } => {
+                Component::Analysis { analysis, columns, params } if !params.is_empty() => {
+                    // 引数のある分析: 条件を入れて「表示」を押すと結果の表を出す
+                    let fs: Vec<Value> = columns.iter().map(|(n, t)| field_desc(ir, n, t)).collect();
+                    let ps: Vec<Value> = params.iter().map(|(n, t)| field_desc(ir, n, t)).collect();
+                    let refs = refs_js(ir, columns, &mut loaders);
+                    body.push(format!(
+                        "h(AnalysisQuery, {{ key: {ci}, analysis: {}, params: {}, fields: {}, tz: p.tz{refs} }})",
+                        js_str(analysis),
+                        serde_json::to_string(&ps).unwrap(),
+                        serde_json::to_string(&fs).unwrap()
+                    ));
+                }
+                Component::Analysis { analysis, columns, .. } => {
                     let key = format!("analysis:{analysis}");
                     if !loaders.iter().any(|l| l["key"] == key) {
                         loaders.push(json!({"key": key, "segments": ["api", "analyses", analysis], "withId": false}));

@@ -1,5 +1,5 @@
 // このファイルは koto build --target web が生成しました。手で編集しないでください(正本は KOTONOHA ソース)。
-import { h, Page, DataList, Detail, ActionButton, ActionForm, ExtBoundary, variantOf, screenHref, type ScreenDef, type ScreenProps } from "./runtime/ui.ts";
+import { h, Page, DataList, Detail, ActionButton, ActionForm, AnalysisQuery, ExtBoundary, variantOf, screenHref, type ScreenDef, type ScreenProps } from "./runtime/ui.ts";
 import type { WebApp } from "./runtime/server.ts";
 
 function Screen_商品一覧(p: ScreenProps) {

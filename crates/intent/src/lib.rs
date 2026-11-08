@@ -802,12 +802,8 @@ impl Ctx<'_> {
             // P-ANALYSIS
             if let Some(sig) = self.env.externals.get(x) {
                 return match sig.kind {
-                    kotonoha_ast::ExternalKind::Analysis if sig.params.is_empty() => Match::Ok(IntentKind::Analysis { analysis: x.into() }),
-                    kotonoha_ast::ExternalKind::Analysis => Match::Invalid(Diagnostic::error(
-                        Code::TYP001,
-                        span,
-                        format!("分析 `{x}` は引数を取るため画面に直接は表示できません(引数なしの分析だけ表示できます)"),
-                    )),
+                    // 引数のある分析は、画面に条件の入力欄を付けて表示する(Web。ADR-0129)
+                    kotonoha_ast::ExternalKind::Analysis => Match::Ok(IntentKind::Analysis { analysis: x.into() }),
                     kotonoha_ast::ExternalKind::Component => {
                         Match::Invalid(Diagnostic::error(Code::SYN001, span, format!("部品は `{x}(引数)を表示` の形で書きます")))
                     }

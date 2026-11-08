@@ -19,7 +19,7 @@
 | P-FORM | `{動作}のフォームを表示` | display(ui=form, event=submit) | 動作の引数を入力項目にしたフォーム(ADR-0115) |
 | P-BUTTON | `「ラベル」を押すと {動作}(引数, …)` | display(ui=button, event=tap) | 引数は厳密層の式。スコープは画面の入力 D(変数名 = データ名)。呼出は不可 |
 | P-COMPONENT | `{部品}(引数, …)を表示` | display(ui=component) | 拡張部品(ADR-0123)。引数の規則は P-BUTTON と同じ |
-| P-ANALYSIS | `{分析}を表示` | query(ui=table, analysis) | 引数なしの分析の結果表(ADR-0125)。対象データの read |
+| P-ANALYSIS | `{分析}を表示` | query(ui=table, analysis) | 分析の結果表(ADR-0125)。引数のある分析は条件の入力欄と「表示」ボタン付き(ADR-0129)。対象データの read |
 
 補足:
 - P-FIELDS のデータ名は `の` の前の最長一致。フィールドは `と` で分割し、全て存在しなければ全体を 1 フィールド名として試す。

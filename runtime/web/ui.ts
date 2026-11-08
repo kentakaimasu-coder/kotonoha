@@ -284,7 +284,7 @@ function inputFor(f: Field, id: string, refs?: Refs) {
     case "int":
     case "money":
       // type="number" は全角数字を受け付けないブラウザがあるため、text + inputMode で受けて正規化する
-      return h("input", { ...common, type: "text", inputMode: "numeric", autoComplete: "off", pattern: "[-－−ー]?[0-9０-９,、 ]+" });
+      return h("input", { ...common, type: "text", inputMode: "numeric", autoComplete: "off", pattern: "[-－−ー]?[0-9０-９,、 ]+", placeholder: base.kind === "money" ? "例: 1,000(円)" : "例: 3" });
     case "bool":
       return h("input", { id, name: f.name, type: "checkbox" });
     case "enum":
@@ -294,9 +294,9 @@ function inputFor(f: Field, id: string, refs?: Refs) {
     case "date":
       return h("input", { ...common, type: "date" });
     case "email":
-      return h("input", { ...common, type: "email" });
+      return h("input", { ...common, type: "email", placeholder: "例: taro@example.com" });
     case "url":
-      return h("input", { ...common, type: "url" });
+      return h("input", { ...common, type: "url", placeholder: "例: https://example.com" });
     default:
       return h("input", { ...common, type: "text", maxLength: base.kind === "id" ? 256 : 10000 });
   }
@@ -398,6 +398,43 @@ export function ActionForm(p: { action: string; fields: Field[]; reload: () => P
     p.fields.filter((f) => !(p.fixed && f.name in p.fixed)).map((f) => h("div", { className: "field", key: f.name }, h("label", { htmlFor: `${formId}-${f.name}` }, f.name, isDatetime(f.type) ? `(${tzLabel(p.tz ?? "Asia/Tokyo")})` : null), inputFor(f, `${formId}-${f.name}`, p.refs))),
     h("button", { type: "submit", disabled: busy }, p.submit ?? "送信"),
     h(MessageView, { m }),
+  );
+}
+
+/** 引数のある分析: 条件を入れて「表示」を押すと結果の表を出す(ADR-0129) */
+export function AnalysisQuery(p: { analysis: string; params: Field[]; fields: Field[]; tz: string; refs?: Refs }) {
+  const [m, setM] = useMessage();
+  const [r, setR] = React.useState<LoadResult | undefined>(undefined);
+  const [busy, setBusy] = React.useState(false);
+  const formId = "analysis-" + p.analysis;
+  const onSubmit = async (ev: any) => {
+    ev.preventDefault();
+    const v = readForm(ev.currentTarget as HTMLFormElement, p.params, p.tz);
+    if (typeof v === "string") return setM({ kind: "error", text: v });
+    setM(null);
+    const qs = new URLSearchParams();
+    for (const [k, x] of Object.entries(v)) if (x !== null && x !== undefined) qs.set(k, String(x));
+    setBusy(true);
+    try {
+      const res = await callApi("GET", `/api/analyses/${enc(p.analysis)}?${qs.toString()}`);
+      if (res.ok) setR(res);
+      else setM({ kind: "error", text: errorText(res), login: res.status === 401 });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return h(
+    "section",
+    { className: "analysis" },
+    h(
+      "form",
+      { className: "form", onSubmit, "aria-labelledby": formId + "-title" },
+      h("h2", { id: formId + "-title" }, p.analysis),
+      p.params.map((f) => h("div", { className: "field", key: f.name }, h("label", { htmlFor: `${formId}-${f.name}` }, f.name, isDatetime(f.type) ? `(${tzLabel(p.tz)})` : null), inputFor(f, `${formId}-${f.name}`))),
+      h("button", { type: "submit", disabled: busy }, "表示"),
+      h(MessageView, { m }),
+    ),
+    r ? h(DataList, { r, fields: p.fields, tz: p.tz, caption: p.analysis, refs: p.refs }) : null,
   );
 }
 

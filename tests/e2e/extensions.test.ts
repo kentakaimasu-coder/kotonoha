@@ -114,6 +114,22 @@ test("NR-04 Web: 変種の出し分け(ラベルと部品)・匿名 ID の Cooki
   assert.ok(!/kotonoha/i.test(cookie));
 });
 
+test("引数のある分析を画面で: 条件を入れて「表示」を押すと結果の表が出る", async () => {
+  const ctx = await browser.newContext({ locale: "ja-JP" });
+  const page = await ctx.newPage();
+  const errors: string[] = [];
+  page.on("pageerror", (e: Error) => errors.push(String(e)));
+  await page.goto(`${webUrl}/s/${enc("期間の売上")}`);
+  assert.match((await page.textContent(`label[for="analysis-期間売上-開始"]`))!, /日本時間/);
+  await page.fill(`[id="analysis-期間売上-開始"]`, "2020-01-01T00:00");
+  await page.click(`button:has-text("表示")`);
+  await page.waitForSelector("table tbody tr");
+  assert.match((await page.textContent("table"))!, /¥[\d,]+/);
+  // 不正な条件は日本語の案内(入力欄を空にして送ると、ブラウザの必須チェックか API の 400)
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
 test("NR-04 Web: ブラウザで変種のまま購入でき、ハイドレーション後も表示が変わらない", async () => {
   const ctx = await browser.newContext();
   const page = await ctx.newPage();

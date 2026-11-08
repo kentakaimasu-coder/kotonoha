@@ -304,7 +304,71 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         cells.join("; Spacer(); ")
                     ));
                 }
-                Component::Analysis { analysis, columns } => {
+                Component::Analysis { analysis, params, columns } if !params.is_empty() => {
+                    // 引数のある分析: 条件の入力欄と「表示」ボタン(ADR-0129)
+                    let var = format!("analysis{ci}");
+                    state.push(format!("    @State private var {var}: [{}] = []", type_name("Ana_", analysis)));
+                    let mut inputs = Vec::new();
+                    let mut query = Vec::new();
+                    for (n, t) in params {
+                        let sv = format!("a{ci}_{}", crate::ts::mangle("", n));
+                        let base = if let Type::Option(i) = t { i.as_ref() } else { t };
+                        match base {
+                            Type::Date => {
+                                state.push(format!("    @State private var {sv} = Date()"));
+                                inputs.push(format!(
+                                    "DatePicker({}, selection: ${sv}, displayedComponents: .date).environment(\\.locale, Locale(identifier: \"ja_JP\"))",
+                                    swift_str(n)
+                                ));
+                                query.push(format!("{}: Kotonoha.dateString({sv})", swift_str(n)));
+                            }
+                            Type::DateTime => {
+                                state.push(format!("    @State private var {sv} = Date()"));
+                                inputs.push(format!(
+                                    "DatePicker({}, selection: ${sv}).environment(\\.locale, Locale(identifier: \"ja_JP\"))",
+                                    swift_str(n)
+                                ));
+                                query.push(format!("{}: ISO8601DateFormatter().string(from: {sv})", swift_str(n)));
+                            }
+                            Type::Bool => {
+                                state.push(format!("    @State private var {sv} = false"));
+                                inputs.push(format!("Toggle({}, isOn: ${sv})", swift_str(n)));
+                                query.push(format!("{}: {sv} ? \"true\" : \"false\"", swift_str(n)));
+                            }
+                            Type::Int | Type::Money(_) => {
+                                state.push(format!("    @State private var {sv} = \"\""));
+                                inputs.push(format!("TextField({}, text: ${sv}).keyboardType(.numberPad)", swift_str(n)));
+                                query.push(format!("{}: String(try Kotonoha.parseInt({sv}, field: {}))", swift_str(n), swift_str(n)));
+                            }
+                            Type::Str | Type::Id | Type::Url | Type::Email => {
+                                state.push(format!("    @State private var {sv} = \"\""));
+                                inputs.push(format!("TextField({}, text: ${sv})", swift_str(n)));
+                                query.push(format!("{}: {sv}", swift_str(n)));
+                            }
+                            other => errs.push(Diagnostic::error(
+                                Code::TGT001,
+                                kotonoha_diag::Span::default(),
+                                format!("iOS の分析の条件は型 {other} に未対応です"),
+                            )),
+                        }
+                    }
+                    let cells: Vec<String> = columns
+                        .iter()
+                        .map(|(n, t)| format!("Text({})", display_expr(&format!("row.{}", bt(n)), t)))
+                        .collect();
+                    body.push(format!(
+                        "Section({}) {{ {}; Button(\"表示\") {{ Task {{ do {{ {var} = try await api.get(\"api\", \"analyses\", {}, query: [{}]); message = nil }} catch {{ message = Kotonoha.describe(error) }} }} }} }}",
+                        swift_str(analysis),
+                        inputs.join("; "),
+                        swift_str(analysis),
+                        query.join(", ")
+                    ));
+                    body.push(format!(
+                        "Section {{ ForEach({var}, id: \\.self) {{ row in HStack {{ {} }} }} }}",
+                        cells.join("; Spacer(); ")
+                    ));
+                }
+                Component::Analysis { analysis, columns, .. } => {
                     let var = format!("analysis{ci}");
                     state.push(format!("    @State private var {var}: [{}] = []", type_name("Ana_", analysis)));
                     loads.push(format!("{var} = try await api.get(\"api\", \"analyses\", {})", swift_str(analysis)));

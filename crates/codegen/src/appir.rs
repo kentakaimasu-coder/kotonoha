@@ -177,6 +177,8 @@ pub enum Component {
     Analysis {
         analysis: String,
         columns: Vec<(String, Type)>,
+        /// 分析の引数(画面では条件の入力欄になる)
+        params: Vec<(String, Type)>,
     },
     /// 集計の結果表(ADR-0128)
     Aggregate {
@@ -427,6 +429,13 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
                     comps.push(Component::Analysis {
                         analysis: analysis.clone(),
                         columns,
+                        params: inp
+                            .ext
+                            .analyses
+                            .iter()
+                            .find(|a| &a.name == analysis)
+                            .map(|a| a.params.clone())
+                            .unwrap_or_default(),
                     });
                 }
                 IntentKind::Form { action, submit } => comps.push(Component::Form {
