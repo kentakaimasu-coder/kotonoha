@@ -25,6 +25,12 @@ pub struct AccessPolicy {
     pub auth_required: BTreeSet<String>,
     /// 行レベル認可: データ → 本人の主体 ID を入れるフィールド(約束 C-OWNER)
     pub owner_read: BTreeMap<String, String>,
+    /// 重複不可: データ → フィールドの組の一覧(約束 C-UNIQUE。ADR-0129)
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub unique: BTreeMap<String, Vec<Vec<String>>>,
+    /// 状態の順番: データ → フィールド → 値の順(約束 C-SEQUENCE。ADR-0129)
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub sequences: BTreeMap<String, BTreeMap<String, Vec<String>>>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -212,6 +218,35 @@ pub fn validate(env: &Env, facts: &BTreeMap<String, Facts>, intents: &IntentMode
             }
             IntentKind::AuthRequired { data } => {
                 v.policy.auth_required.insert(data.clone());
+            }
+            IntentKind::Sequence { data, field, values } => {
+                if v.policy
+                    .sequences
+                    .entry(data.clone())
+                    .or_default()
+                    .insert(field.clone(), values.clone())
+                    .is_some()
+                {
+                    diags.push(Diagnostic::error(Code::AMB002, c.span, format!("{data}.{field} の順番が 2 回書かれています")));
+                }
+            }
+            IntentKind::Unique { data, fields } => {
+                let mut key = fields.clone();
+                key.sort();
+                let sets = v.policy.unique.entry(data.clone()).or_default();
+                if sets.iter().any(|x| {
+                    let mut y = x.clone();
+                    y.sort();
+                    y == key
+                }) {
+                    diags.push(Diagnostic::warning(
+                        Code::AMB002,
+                        c.span,
+                        format!("{data} の同じ重複不可の約束が 2 回書かれています"),
+                    ));
+                } else {
+                    sets.push(fields.clone());
+                }
             }
             IntentKind::OwnerRead { data, field } => {
                 if let Some(prev) = v.policy.owner_read.insert(data.clone(), field.clone()) {

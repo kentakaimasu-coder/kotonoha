@@ -33,6 +33,13 @@ pub const BUILTINS: &[(&str, &str)] = &[
     ("文字列化", "文字列化(整数 | 金額) -> 文字列: 明示的な変換"),
     ("含む", "含む(文字列, 文字列) -> 真偽: 部分文字列を含むか"),
     ("現在日時", "現在日時() -> 日時: 動作の中だけで使える(関数では使えない)"),
+    ("今日", "今日() -> 日付: アプリの時刻帯(既定 日本時間)の今日。動作の中だけで使える"),
+    ("日後", "日後(日時 | 日付, 整数) -> 同じ型: N 日後(例: 日後(貸出日, 14) で返却期限)"),
+    ("日前", "日前(日時 | 日付, 整数) -> 同じ型: N 日前"),
+    (
+        "日数差",
+        "日数差(日時 | 日付, 日時 | 日付) -> 整数: 2 つ目 − 1 つ目 の日数(アプリの時刻帯の暦日で数える。例: 日数差(返却期限, 今日()) で延滞日数)",
+    ),
 ];
 
 #[derive(Debug, Clone)]
@@ -762,6 +769,42 @@ impl<'e> Checker<'e> {
                     self.diags.push(d);
                 }
                 Type::DateTime
+            }
+            "今日" => {
+                arity(0, self);
+                if self.in_pure_fn {
+                    let d = self.err(Code::SEC001, span, "関数の中で `今日()` は使えません(結果が日によって変わるため)");
+                    self.diags.push(d);
+                }
+                Type::Date
+            }
+            "日後" | "日前" => {
+                if !arity(2, self) {
+                    return Some(Type::Error);
+                }
+                let t = self.expr(&args[0], None);
+                self.expect(&args[1], &Type::Int);
+                match t {
+                    Type::DateTime | Type::Date | Type::Error => t,
+                    other => {
+                        let d = self.err(Code::TYP001, args[0].span, format!("`{name}` の 1 つ目は 日時 か 日付 です({other})"));
+                        self.diags.push(d);
+                        Type::Error
+                    }
+                }
+            }
+            "日数差" => {
+                if arity(2, self) {
+                    let t1 = self.expr(&args[0], None);
+                    let t2 = self.expr(&args[1], Some(&t1));
+                    if !matches!(t1, Type::DateTime | Type::Date | Type::Error) {
+                        let d = self.err(Code::TYP001, args[0].span, format!("`日数差` の引数は 日時 か 日付 です({t1})"));
+                        self.diags.push(d);
+                    } else if !t1.same(&t2) {
+                        self.mismatch(args[1].span, &t1, &t2);
+                    }
+                }
+                Type::Int
             }
             _ => return None,
         })

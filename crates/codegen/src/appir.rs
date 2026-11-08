@@ -163,6 +163,8 @@ pub enum Component {
     Form {
         action: String,
         params: Vec<(String, Type)>,
+        /// 送信ボタンの文言
+        submit: String,
     },
     /// 拡張部品(ADR-0123)
     Ext {
@@ -427,11 +429,17 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
                         columns,
                     });
                 }
-                IntentKind::Form { action } => comps.push(Component::Form {
+                IntentKind::Form { action, submit } => comps.push(Component::Form {
+                    submit: submit.clone().unwrap_or_else(|| "送信".into()),
                     action: action.clone(),
                     params: env.actions.get(action).map(|a| a.params.clone()).unwrap_or_default(),
                 }),
-                IntentKind::NavigateOnSelect { .. } | IntentKind::PublicRead { .. } | IntentKind::AuthRequired { .. } | IntentKind::OwnerRead { .. } => {}
+                IntentKind::NavigateOnSelect { .. }
+                | IntentKind::PublicRead { .. }
+                | IntentKind::AuthRequired { .. }
+                | IntentKind::OwnerRead { .. }
+                | IntentKind::Unique { .. }
+                | IntentKind::Sequence { .. } => {}
             }
         }
         screens.push(ScreenIr {

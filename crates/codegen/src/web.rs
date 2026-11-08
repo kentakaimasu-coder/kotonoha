@@ -380,7 +380,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         js_str(analysis)
                     ));
                 }
-                Component::Form { action, params } => {
+                Component::Form { action, params, submit } => {
                     let fs: Vec<Value> = params.iter().map(|(n, t)| field_desc(ir, n, t)).collect();
                     // 詳細画面(入力データ D がある画面)のフォームで、引数「DID」(識別子)は表示中の D の ID を自動で入れる
                     let fixed = match &s.input {
@@ -399,8 +399,17 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         None => "null".into(),
                     };
                     let need = need_js(ir, action);
+                    // 引数「データ名ID」は、そのデータの一覧から選ぶ(名前で表示)。自動で入れる ID は除く
+                    let auto = s.input.as_ref().map(|d| format!("{d}ID"));
+                    let pickable: Vec<(String, Type)> = params.iter().filter(|(n, _)| Some(n) != auto.as_ref()).cloned().collect();
+                    let refs = refs_js(ir, &pickable, &mut loaders);
+                    let label = if submit == "送信" {
+                        String::new()
+                    } else {
+                        format!(", submit: {}", js_str(submit))
+                    };
                     body.push(format!(
-                        "h(ActionForm, {{ key: {ci}, action: {}, fields: {}, reload: p.reload, tz: p.tz, fixed: {fixed}{need} }})",
+                        "h(ActionForm, {{ key: {ci}, action: {}, fields: {}, reload: p.reload, tz: p.tz, fixed: {fixed}{need}{refs}{label} }})",
                         js_str(action),
                         serde_json::to_string(&fs).unwrap()
                     ));

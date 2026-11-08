@@ -263,9 +263,23 @@ export function ActionButton(p: { label: string; action: string; args: () => Rec
   return h("div", { className: "action" }, h("button", { type: "button", onClick, disabled: busy }, p.label), h(MessageView, { m }));
 }
 
-function inputFor(f: Field, id: string) {
+/** 長い文章を書く欄(名前で判断する。複数行の入力) */
+const LONG_TEXT = /(内容|備考|メモ|詳細|本文|説明|感想|コメント|相談|要望|理由)$/;
+
+function inputFor(f: Field, id: string, refs?: Refs) {
   const base = f.type.kind === "optional" ? f.type.of : f.type;
   const common = { id, name: f.name, required: f.type.kind !== "optional" };
+  // 引数「データ名ID」は、そのデータの一覧から名前で選ぶ(一覧を読めないときは ID を入力)
+  const ref = refs?.[f.name];
+  if (ref && ref.r?.ok && Array.isArray(ref.r.body)) {
+    return h(
+      "select",
+      { ...common, defaultValue: "" },
+      h("option", { value: "", disabled: f.type.kind !== "optional" }, "選んでください"),
+      (ref.r.body as any[]).map((row) => h("option", { key: row.ID, value: row.ID }, String(row[ref.label] ?? row.ID))),
+    );
+  }
+  if (base.kind === "string" && LONG_TEXT.test(f.name)) return h("textarea", { ...common, rows: 4, maxLength: 10000 });
   switch (base.kind) {
     case "int":
     case "money":
@@ -350,7 +364,7 @@ export function zonedToIso(local: string, tz: string): string | null {
   return Number.isNaN(t) ? null : new Date(t).toISOString();
 }
 
-export function ActionForm(p: { action: string; fields: Field[]; reload: () => Promise<void>; tz?: string; fixed?: Record<string, unknown> | null; need?: Need; caps?: string[] | null }) {
+export function ActionForm(p: { action: string; fields: Field[]; reload: () => Promise<void>; tz?: string; fixed?: Record<string, unknown> | null; need?: Need; caps?: string[] | null; refs?: Refs; submit?: string }) {
   const [m, setM] = useMessage();
   const [busy, setBusy] = React.useState(false);
   const formId = "form-" + p.action;
@@ -381,8 +395,8 @@ export function ActionForm(p: { action: string; fields: Field[]; reload: () => P
     "form",
     { className: "form", onSubmit, onKeyDown, "aria-labelledby": formId + "-title" },
     h("h2", { id: formId + "-title" }, p.action),
-    p.fields.filter((f) => !(p.fixed && f.name in p.fixed)).map((f) => h("div", { className: "field", key: f.name }, h("label", { htmlFor: `${formId}-${f.name}` }, f.name, isDatetime(f.type) ? `(${tzLabel(p.tz ?? "Asia/Tokyo")})` : null), inputFor(f, `${formId}-${f.name}`))),
-    h("button", { type: "submit", disabled: busy }, "送信"),
+    p.fields.filter((f) => !(p.fixed && f.name in p.fixed)).map((f) => h("div", { className: "field", key: f.name }, h("label", { htmlFor: `${formId}-${f.name}` }, f.name, isDatetime(f.type) ? `(${tzLabel(p.tz ?? "Asia/Tokyo")})` : null), inputFor(f, `${formId}-${f.name}`, p.refs))),
+    h("button", { type: "submit", disabled: busy }, p.submit ?? "送信"),
     h(MessageView, { m }),
   );
 }

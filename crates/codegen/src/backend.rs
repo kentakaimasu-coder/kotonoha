@@ -219,7 +219,11 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
     let mut tables = Vec::new();
     for (e, d) in ir.entities.iter().zip(&ddl) {
         if let (Ok(cols), Ok(pg)) = (sqlite_columns(&e.fields, &ir.enums), pg_ddl_for(&e.name, &e.fields, &ir.enums)) {
-            tables.push(json!({"name": e.name, "ddl": d, "pg_ddl": pg, "columns": cols}));
+            let mut t = json!({"name": e.name, "ddl": d, "pg_ddl": pg, "columns": cols});
+            if let Some(u) = ir.policy.unique.get(&e.name) {
+                t["unique"] = json!(u);
+            }
+            tables.push(t);
         }
     }
     g.push_str(&format!(
@@ -468,8 +472,18 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
         ));
     }
     g.push_str("];\n\n");
+    let uniques = if ir.policy.unique.is_empty() {
+        String::new()
+    } else {
+        format!(", uniques: {}", serde_json::to_string(&ir.policy.unique).unwrap())
+    };
+    let uniques = if ir.policy.sequences.is_empty() {
+        uniques
+    } else {
+        format!("{uniques}, sequences: {}", serde_json::to_string(&ir.policy.sequences).unwrap())
+    };
     g.push_str(&format!(
-        "export const app: App = {{ name: {}, schema, routes, owners: {}, roles: {} }};\n",
+        "export const app: App = {{ name: {}, schema, routes, owners: {}, roles: {}{uniques} }};\n",
         js_str(&ir.name),
         serde_json::to_string(&ir.policy.owner_read).unwrap(),
         serde_json::to_string(&ir.roles).unwrap()

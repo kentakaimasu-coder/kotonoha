@@ -21,7 +21,6 @@ import java.net.URL
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.text.NumberFormat
-import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -140,7 +139,7 @@ object Kotonoha {
     fun yen(v: Long): String = "¥" + NumberFormat.getIntegerInstance(Locale.JAPAN).format(v)
     fun bool(v: Boolean): String = if (v) "はい" else "いいえ"
     fun datetime(v: String): String =
-        DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm").withZone(ZoneId.systemDefault()).format(Instant.parse(v))
+        DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm").withZone(ZoneId.systemDefault()).format(java.time.OffsetDateTime.parse(v).toInstant())
     /** 全角数字・全角マイナス・カンマ・空白を受け付ける(NR-01) */
     fun parseLong(s: String, field: String): Long =
         java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFKC)

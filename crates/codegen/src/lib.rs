@@ -71,6 +71,7 @@ pub fn node_feature(node: &Value) -> (String, String) {
         "screen" => "screen.page".to_string(),
         "display" => format!("ui.{}", node["detail"]["ui"].as_str().unwrap_or("unknown")),
         "query" if node["detail"]["analysis"].is_string() => "query.analysis".to_string(),
+        "query" if node["detail"]["aggregate"].is_object() => "query.aggregate".to_string(),
         "query" => "query.ranking".to_string(),
         "navigation" => "nav.select".to_string(),
         "action" => "action.strict".to_string(),
@@ -110,11 +111,14 @@ pub const ALL_FEATURES: &[(&str, &str)] = &[
     ("display", "ui.component"),
     ("query", "query.ranking"),
     ("query", "query.analysis"),
+    ("query", "query.aggregate"),
     ("navigation", "nav.select"),
     ("action", "action.strict"),
     ("validation", "policy.public_read"),
     ("validation", "policy.auth_required"),
     ("validation", "policy.owner_read"),
+    ("validation", "policy.unique"),
+    ("validation", "policy.sequence"),
 ];
 
 /// 検証状況(doctor と docs/status.md 用)。生成コードを実際にビルド・実行して確認したか。

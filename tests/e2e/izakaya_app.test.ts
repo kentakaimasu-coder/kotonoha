@@ -158,6 +158,25 @@ test("客 2 卓が同時に注文 → それぞれ自分の注文だけ → 厨�
   }
 });
 
+test("フォーム: 注文する品をメニューの一覧から品名で選ぶ・送信ボタンの文言(スマホ)", async () => {
+  const s = await session("phone", token("7番卓", CUSTOMER));
+  await s.page.goto(`${url}/s/${enc("まとめて注文")}`);
+  const sel = s.page.locator(`[id="form-注文する-メニューID"]`);
+  assert.equal(await sel.evaluate((e: Element) => e.tagName), "SELECT");
+  const options = await sel.locator("option").allTextContents();
+  assert.ok(options.includes("唐揚げ") && options.includes("生ビール"), options.join(","));
+  await sel.selectOption({ label: "唐揚げ" });
+  await s.page.fill(`[id="form-注文する-数量"]`, "３");
+  const done = s.page.waitForResponse((r: any) => r.url().includes(enc("注文する")));
+  await s.page.click(`button:has-text("注文を送る")`);
+  assert.equal((await done).status(), 200);
+  await s.page.goto(`${url}/s/${enc("注文の状況")}`);
+  const rows = await s.page.locator("tbody tr").allTextContents();
+  assert.ok(rows.some((r: string) => r.includes("唐揚げ") && r.includes("3")), rows.join(" | "));
+  assert.deepEqual(s.errors, []);
+  await s.ctx.close();
+});
+
 test("一覧の絞り込み API: 本人の行の制限は外れない・不正なフィールドや値は 400", async () => {
   const cust = token("9番卓", CUSTOMER);
   const get = (q: string) => fetch(`${url}/api/data/${enc("注文")}?${q}`, { headers: { Authorization: `Bearer ${cust}` } });

@@ -177,19 +177,14 @@ pub fn build_vag(inp: &GraphInput, status: Status) -> Value {
                             json!({"ui": "table", "analysis": analysis}),
                         )
                     }
-                    IntentKind::Form { action } => {
+                    IntentKind::Form { action, submit } => {
                         edges.insert((i.id.clone(), format!("action.{action}"), "invokes".into()));
                         edges.insert((sid.clone(), format!("action.{action}"), "invokes".into()));
-                        (
-                            "display",
-                            format!("{action}のフォーム"),
-                            vec![],
-                            vec![],
-                            vec![],
-                            vec![],
-                            vec![],
-                            json!({"ui": "form", "event": "submit", "action": format!("action.{action}")}),
-                        )
+                        let mut detail = json!({"ui": "form", "event": "submit", "action": format!("action.{action}")});
+                        if let Some(l) = submit {
+                            detail["submit"] = json!(l);
+                        }
+                        ("display", format!("{action}のフォーム"), vec![], vec![], vec![], vec![], vec![], detail)
                     }
                     IntentKind::ButtonInvoke { label, action, args } => {
                         edges.insert((i.id.clone(), format!("action.{action}"), "invokes".into()));
@@ -206,7 +201,11 @@ pub fn build_vag(inp: &GraphInput, status: Status) -> Value {
                             json!({"ui": "button", "event": "tap", "label": label, "action": format!("action.{action}"), "args": args}),
                         )
                     }
-                    IntentKind::PublicRead { .. } | IntentKind::AuthRequired { .. } | IntentKind::OwnerRead { .. } => unreachable!("約束は画面に現れない"),
+                    IntentKind::PublicRead { .. }
+                    | IntentKind::AuthRequired { .. }
+                    | IntentKind::OwnerRead { .. }
+                    | IntentKind::Unique { .. }
+                    | IntentKind::Sequence { .. } => unreachable!("約束は画面に現れない"),
                 };
             nodes.push(json!({
                 "id": i.id, "kind": kind, "title": title, "sentence": i.sentence,
@@ -245,6 +244,22 @@ pub fn build_vag(inp: &GraphInput, status: Status) -> Value {
             IntentKind::PublicRead { data } => ("public_read", data, None),
             IntentKind::AuthRequired { data } => ("auth_required", data, None),
             IntentKind::OwnerRead { data, field } => ("owner_read", data, Some(field.clone())),
+            IntentKind::Sequence { data, field, values } => {
+                nodes.push(json!({
+                    "id": c.id, "kind": "validation", "title": c.sentence, "sentence": c.sentence,
+                    "inputs": [], "outputs": [], "effects": [], "capabilities": [], "knowledge_refs": [],
+                    "source_span": span_json(inp.files, c.span), "detail": json!({"policy": "sequence", "data": data, "field": field, "values": values}),
+                }));
+                continue;
+            }
+            IntentKind::Unique { data, fields } => {
+                nodes.push(json!({
+                    "id": c.id, "kind": "validation", "title": c.sentence, "sentence": c.sentence,
+                    "inputs": [], "outputs": [], "effects": [], "capabilities": [], "knowledge_refs": [],
+                    "source_span": span_json(inp.files, c.span), "detail": json!({"policy": "unique", "data": data, "fields": fields}),
+                }));
+                continue;
+            }
             _ => continue,
         };
         nodes.push(json!({

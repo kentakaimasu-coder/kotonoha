@@ -229,6 +229,10 @@ impl<'a> TsGen<'a> {
                     "文字列化" => format!("String({})", a[0]),
                     "含む" => format!("({}).includes({})", a[0], a[1]),
                     "現在日時" => "BigInt(Date.now())".into(),
+                    "今日" => "rt.today()".into(),
+                    "日後" => format!("rt.addDays({}, {})", a[0], a[1]),
+                    "日前" => format!("rt.addDays({}, -({}))", a[0], a[1]),
+                    "日数差" => format!("rt.daysBetween({}, {})", a[0], a[1]),
                     n if self.ir.adapters.iter().any(|x| x.name == n) => {
                         format!("(await {}(ctx{}{}))", mangle("ad_", n), if a.is_empty() { "" } else { ", " }, a.join(", "))
                     }

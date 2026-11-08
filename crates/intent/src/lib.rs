@@ -83,13 +83,24 @@ pub enum IntentKind {
     },
     /// P-FORM `{動作}のフォームを表示`(ADR-0115 提案)
     #[serde(rename = "form")]
-    Form { action: String },
+    Form {
+        action: String,
+        /// 送信ボタンの文言(`{動作}のフォームを「申し込む」ボタンで表示`。無ければ「送信」。ADR-0129)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        submit: Option<String>,
+    },
     /// C-PUBLIC `{データ}は誰でも閲覧可`
     #[serde(rename = "public_read")]
     PublicRead { data: String },
     /// C-OWNER `{データ}は{フィールド}が本人のものだけ閲覧可`(行レベル認可。ADR-0118)
     #[serde(rename = "owner_read")]
     OwnerRead { data: String, field: String },
+    /// C-UNIQUE `{データ}は{フィールド}(と{フィールド})*の組で重複不可` / `{データ}は{フィールド}が重複不可`(ADR-0129)
+    #[serde(rename = "unique")]
+    Unique { data: String, fields: Vec<String> },
+    /// C-SEQUENCE `{データ}の{フィールド}は {値} → {値} → … の順`(列挙の値を決めた順にしか進めない。ADR-0129)
+    #[serde(rename = "sequence")]
+    Sequence { data: String, field: String, values: Vec<String> },
     /// C-AUTH `未認証なら{データ}不可`
     #[serde(rename = "auth_required")]
     AuthRequired { data: String },
@@ -518,6 +529,121 @@ impl Ctx<'_> {
                 };
             }
         }
+        // C-SEQUENCE
+        if let Some(rest) = s
+            .strip_suffix("の順に進む")
+            .or_else(|| s.strip_suffix("の順に変わる"))
+            .or_else(|| s.strip_suffix("の順"))
+        {
+            if let Some((left, vals)) = rest.split_once('は') {
+                if vals.contains('→') || vals.contains("->") {
+                    let Some((d, f)) = self.split_data_prefix(left.trim()) else {
+                        return Match::NoMatch(vec![format!(
+                            "「{left}」は「データのフィールド」の形ではありません。どのデータのどの項目の順番ですか"
+                        )]);
+                    };
+                    let info = &self.env.data[d];
+                    let Some(t) = info.field(f) else {
+                        return Match::Invalid(Diagnostic::error(Code::REF001, span, format!("データ `{d}` にフィールド `{f}` はありません")));
+                    };
+                    let Type::Enum(e) = t else {
+                        return Match::Invalid(Diagnostic::error(
+                            Code::TYP001,
+                            span,
+                            format!("順番を決められるのは列挙のフィールドです(`{f}` は {t})"),
+                        ));
+                    };
+                    let values: Vec<String> = vals.replace("->", "→").split('→').map(|x| x.trim().to_string()).collect();
+                    let all = &self.env.enums[e];
+                    for v in &values {
+                        if !all.contains(v) {
+                            return Match::Invalid(
+                                Diagnostic::error(Code::TYP001, span, format!("「{v}」は列挙 `{e}` の値ではありません"))
+                                    .hint(format!("値: {}", all.join(" / "))),
+                            );
+                        }
+                    }
+                    let uniq: BTreeSet<&String> = values.iter().collect();
+                    if uniq.len() != values.len() || values.len() < 2 {
+                        return Match::Invalid(Diagnostic::error(Code::AMB002, span, "順番には 2 つ以上の異なる値を書きます"));
+                    }
+                    let missing: Vec<&String> = all.iter().filter(|v| !values.contains(v)).collect();
+                    if !missing.is_empty() {
+                        return Match::Invalid(
+                            Diagnostic::error(
+                                Code::AMB002,
+                                span,
+                                format!(
+                                    "列挙 `{e}` の値 {} が順番に入っていません",
+                                    missing.iter().map(|x| format!("「{x}」")).collect::<Vec<_>>().join("")
+                                ),
+                            )
+                            .hint("どの値にも進める・戻れる値は、今は書けません(すべての値を順番に並べてください)"),
+                        );
+                    }
+                    return Match::Ok(IntentKind::Sequence {
+                        data: d.into(),
+                        field: f.into(),
+                        values,
+                    });
+                }
+            }
+        }
+        // C-UNIQUE
+        if let Some(rest) = s.strip_suffix("重複不可") {
+            if let Some((d, fs)) = rest.split_once('は') {
+                let fs = fs
+                    .strip_suffix("の組で")
+                    .or_else(|| fs.strip_suffix("が"))
+                    .or_else(|| fs.strip_suffix("で"))
+                    .or_else(|| fs.strip_suffix("は"));
+                if let Some(fs) = fs {
+                    let Some(info) = self.env.data.get(d) else {
+                        return Match::NoMatch(vec![format!("「{d}」はデータとして定義されていません。どのデータの重複を防ぎますか")]);
+                    };
+                    let mut fields: Vec<String> = Vec::new();
+                    for f in fs.split('と') {
+                        match info.field(f) {
+                            None => return Match::Invalid(Diagnostic::error(Code::REF001, span, format!("データ `{d}` にフィールド `{f}` はありません"))),
+                            Some(
+                                Type::Bool
+                                | Type::Int
+                                | Type::Money(_)
+                                | Type::Date
+                                | Type::DateTime
+                                | Type::Str
+                                | Type::Id
+                                | Type::Enum(_)
+                                | Type::Email
+                                | Type::Url,
+                            ) => {}
+                            Some(Type::Option(_)) => {
+                                return Match::Invalid(Diagnostic::error(
+                                    Code::TYP001,
+                                    span,
+                                    format!("選択<…> のフィールド `{f}` は重複の判定に使えません(空の値どうしは重複とみなされないため)"),
+                                ))
+                            }
+                            Some(t) => {
+                                return Match::Invalid(Diagnostic::error(
+                                    Code::TYP001,
+                                    span,
+                                    format!("{t} のフィールド `{f}` は重複の判定に使えません"),
+                                ))
+                            }
+                        }
+                        if f == "ID" {
+                            return Match::Invalid(Diagnostic::error(Code::TYP001, span, "ID は自動で重複しないため、書く必要はありません"));
+                        }
+                        if fields.iter().any(|x| x == f) {
+                            return Match::Invalid(Diagnostic::error(Code::AMB002, span, format!("フィールド `{f}` が 2 回書かれています")));
+                        }
+                        fields.push(f.into());
+                    }
+                    return Match::Ok(IntentKind::Unique { data: d.into(), fields });
+                }
+            }
+        }
         if let Some(d) = s.strip_suffix("は誰でも閲覧可") {
             // 分析(集計)も、作者の判断で誰にでも公開できる(例: 待合室の呼び出し番号。本人限定データの集計でも可)
             let is_analysis = self.env.externals.get(d).is_some_and(|x| x.kind == kotonoha_ast::ExternalKind::Analysis);
@@ -544,7 +670,7 @@ impl Ctx<'_> {
         }
         let _ = span;
         Match::NoMatch(vec![
-            "約束の文型は「{データ}は誰でも閲覧可」「{データ}はログインした人だけ閲覧可」(=「未認証なら{データ}不可」)「{データ}は{フィールド}が本人のものだけ閲覧可」です".into(),
+            "約束の文型は「{データ}は誰でも閲覧可」「{データ}はログインした人だけ閲覧可」(=「未認証なら{データ}不可」)「{データ}は{フィールド}が本人のものだけ閲覧可」「{データ}は{フィールド}と{フィールド}の組で重複不可」です".into(),
             "この約束が守るべきデータ・操作・主体(本人/組織/役割)を具体的に指定してください".into(),
         ])
     }
@@ -603,6 +729,21 @@ impl Ctx<'_> {
                 return Match::Ok(IntentKind::NavigateOnSelect {
                     data: d.into(),
                     screen: scr.into(),
+                });
+            }
+        }
+        // P-FORM(送信ボタンの文言付き)
+        if let Some(x) = s.strip_suffix("ボタンで表示") {
+            if let Some((a, label)) = x.strip_suffix('」').and_then(|y| y.split_once("のフォームを「")) {
+                if !self.env.actions.contains_key(a) {
+                    return Match::Invalid(Diagnostic::error(Code::REF001, span, format!("動作 `{a}` は定義されていません")));
+                }
+                if label.trim().is_empty() || label.chars().count() > 30 {
+                    return Match::Invalid(Diagnostic::error(Code::SYN001, span, "ボタンの文言は 1〜30 文字で書きます"));
+                }
+                return Match::Ok(IntentKind::Form {
+                    action: a.into(),
+                    submit: Some(label.into()),
                 });
             }
         }
@@ -680,7 +821,10 @@ impl Ctx<'_> {
             // P-FORM
             if let Some(a) = x.strip_suffix("のフォーム") {
                 if self.env.actions.contains_key(a) {
-                    return Match::Ok(IntentKind::Form { action: a.into() });
+                    return Match::Ok(IntentKind::Form {
+                        action: a.into(),
+                        submit: None,
+                    });
                 }
                 return Match::Invalid(Diagnostic::error(Code::REF001, span, format!("動作 `{a}` は定義されていません")));
             }
@@ -1183,6 +1327,16 @@ pub fn example_sentences(env: &Env, reg: &Registry, contract: bool) -> Vec<Strin
         for (d, info) in &env.data {
             out.push(format!("{d}は誰でも閲覧可"));
             out.push(format!("{d}はログインした人だけ閲覧可"));
+            let keys: Vec<&str> = info
+                .fields
+                .iter()
+                .filter(|(f, t)| f != "ID" && matches!(t, kotonoha_types::Type::Id | kotonoha_types::Type::Str))
+                .map(|(f, _)| f.as_str())
+                .take(2)
+                .collect();
+            if !keys.is_empty() {
+                out.push(format!("{d}は{}の組で重複不可", keys.join("と")));
+            }
             for (f, t) in &info.fields {
                 if matches!(t, kotonoha_types::Type::Id) && f != "ID" {
                     out.push(format!("{d}は{f}が本人のものだけ閲覧可"));

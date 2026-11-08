@@ -16,6 +16,9 @@ fn check_file(f: &SourceFile) -> (Env, Vec<Diagnostic>) {
         if let Decl::Action(a) = &it.decl {
             d.extend(check_action(&env, a).1);
         }
+        if let Decl::Function(x) = &it.decl {
+            d.extend(check_function(&env, x).1);
+        }
     }
     (env, d)
 }
@@ -162,4 +165,15 @@ fn principal_builtin_is_an_id_and_cannot_be_assigned() {
     );
     assert_eq!(action("        本人 = id\n        id を返す\n"), [Code::TYP002]);
     assert_eq!(action("        y = 本人 + 1\n        id を返す\n"), [Code::TYP001]);
+}
+
+#[test]
+fn date_builtins() {
+    assert_eq!(action("        d = 日後(今日(), 14)\n        n = 日数差(今日(), d)\n        t = 日前(現在日時(), x)\n        n > 0 を確認 または 失敗(\"数量不正\")\n        id を返す\n"), vec![]);
+    assert_eq!(action("        d = 日後(s, 1)\n        id を返す\n"), vec![Code::TYP001]);
+    assert_eq!(action("        n = 日数差(今日(), 現在日時())\n        id を返す\n"), vec![Code::TYP001]);
+    assert_eq!(action("        n = 日数差(今日())\n        id を返す\n"), vec![Code::TYP001]);
+    // 関数(副作用なし)では今日() を使えない
+    let src = format!("{PRELUDE}関数 期限() -> 日付:\n    日後(今日(), 1) を返す\n");
+    assert!(errors(&check_src(&src).1).contains(&Code::SEC001));
 }

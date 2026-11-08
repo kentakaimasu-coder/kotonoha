@@ -76,6 +76,64 @@ export function min(a: unknown, b: unknown): bigint {
   if (typeof a === "bigint" && typeof b === "bigint") return a < b ? a : b;
   throw new TypeError("min: 型検査済みの値ではありません");
 }
+// ---- 日付・時刻帯(ADR-0129) ----
+/** アプリの時刻帯(「今日」・応答の日時の表記・日ごとの集計。既定 Asia/Tokyo) */
+export function appTz(): string {
+  return process.env.KOTONOHA_APP_TZ || "Asia/Tokyo";
+}
+
+/** 時刻 t(ミリ秒)における時刻帯 tz の UTC からのずれ(ミリ秒) */
+export function tzOffsetMs(t: number, tz: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(new Date(t));
+  const n = (k: string) => Number(parts.find((p) => p.type === k)!.value);
+  return Date.UTC(n("year"), n("month") - 1, n("day"), n("hour"), n("minute"), n("second")) - Math.floor(t / 1000) * 1000;
+}
+
+const ymd = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+
+/** 時刻 t をアプリの時刻帯での暦日に("2026-12-05") */
+export function localDate(t: number, tz: string = appTz()): string {
+  return ymd(new Date(t + tzOffsetMs(t, tz)));
+}
+
+/** 時刻帯 tz での今日の暦日と、その始まり・終わり(ミリ秒) */
+export function todayIn(tz: string, now: number = Date.now()): { date: string; start: number; end: number } {
+  const date = localDate(now, tz);
+  const midnightLocal = Date.parse(date + "T00:00:00Z");
+  const start = midnightLocal - tzOffsetMs(midnightLocal, tz);
+  const nextLocal = midnightLocal + 86_400_000;
+  return { date, start, end: nextLocal - tzOffsetMs(nextLocal, tz) };
+}
+
+/** 組込み `今日()` */
+export function today(): string {
+  return todayIn(appTz()).date;
+}
+
+/** 組込み `日後` / `日前`: 日時は 24 時間 × N、日付は暦日で N 日 */
+export function addDays(v: unknown, n: unknown): unknown {
+  const days = BigInt(n as bigint);
+  if (typeof v === "bigint") return v + days * 86_400_000n;
+  const t = Date.parse((v as string) + "T00:00:00Z") + Number(days) * 86_400_000;
+  if (Number.isNaN(t)) throw new RuntimeFault("invalid_date", "日付を計算できません");
+  return ymd(new Date(t));
+}
+
+/** 組込み `日数差(a, b)`: b − a の日数(アプリの時刻帯の暦日で数える) */
+export function daysBetween(a: unknown, b: unknown): bigint {
+  const d = (v: unknown) => (typeof v === "bigint" ? localDate(Number(v)) : (v as string));
+  return BigInt(Math.round((Date.parse(d(b) + "T00:00:00Z") - Date.parse(d(a) + "T00:00:00Z")) / 86_400_000));
+}
+
+/** 応答の日時: アプリの時刻帯のずれ付き ISO 8601("2026-12-05T19:00:00.000+09:00") */
+export function isoInTz(t: number, tz: string = appTz()): string {
+  const off = tzOffsetMs(t, tz);
+  const local = new Date(t + off).toISOString().slice(0, -1);
+  if (off === 0) return local + "Z";
+  const m = Math.abs(off) / 60000;
+  return `${local}${off < 0 ? "-" : "+"}${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
 export function eq(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
@@ -115,7 +173,8 @@ export function encode(v: unknown, w: Wire, s: Schema): unknown {
       return Number(b);
     }
     case "datetime":
-      return new Date(Number(v as bigint)).toISOString();
+      // アプリの時刻帯で表す(画面と同じ日本時間で読める。ずれ付きなので時刻そのものは同じ)
+      return isoInTz(Number(v as bigint));
     case "date":
       return v;
     case "bool":

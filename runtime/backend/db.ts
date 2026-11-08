@@ -2,10 +2,10 @@
 // - 方言: SQLite(node:sqlite、既定)/ PostgreSQL(KOTONOHA_DB=postgres://…、npm の pg を任意依存として使う)
 // - SQL は常にプレースホルダとバインド変数(SEC-04)。識別子は宣言名を二重引用符で囲む
 // - 整数・金額・日時(エポックミリ秒)・真偽(0/1)はどちらの方言でも 64 ビット整数列に格納する
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { HttpError, type Schema, type Wire } from "./rt.ts";
+import { HttpError, appTz, todayIn, tzOffsetMs, type Schema, type Wire } from "./rt.ts";
 
 const META = Symbol("kotonoha.entity");
 
@@ -43,6 +43,10 @@ export interface Ctx {
   schema: Schema;
   /** 行レベル認可: データ → 本人の主体 ID を入れるフィールド */
   owners: Record<string, string>;
+  /** 重複不可: データ → フィールドの組(ADR-0129) */
+  uniques?: Record<string, string[][]>;
+  /** 状態の順番: データ → フィールド → 値の順(ADR-0129) */
+  sequences?: Record<string, Record<string, string[]>>;
   /** 取引中に更新されたエンティティ */
   dirty: Set<Row> | null;
   principal: Principal | null;
@@ -264,6 +268,51 @@ export interface TableDef {
   ddl: string;
   pg_ddl: string;
   columns: ColumnDef[];
+  /** 重複不可のフィールドの組(約束 C-UNIQUE。ADR-0129) */
+  unique?: string[][];
+}
+
+/** 重複不可の索引名(PostgreSQL の 63 バイト制限に収まるよう、表とフィールドのハッシュから作る) */
+export function uniqueIndexName(table: string, fields: string[]): string {
+  return "uq_" + createHash("sha256").update([table, ...fields].join("\u0000")).digest("hex").slice(0, 24);
+}
+
+/** 状態の順番(約束 C-SEQUENCE)の検査: 作るときは最初の値、変えるときは同じ値か次の値だけ */
+function checkSequence(ctx: Ctx, table: string, before: Row | null, after: Row): void {
+  const seqs = (ctx.sequences ?? {})[table];
+  if (!seqs) return;
+  for (const [field, order] of Object.entries(seqs)) {
+    if (!(field in after)) continue;
+    const to = after[field] as string;
+    const chain = order.map((x) => `「${x}」`).join("→");
+    if (before === null) {
+      if (to !== order[0]) throw new HttpError(409, "invalid_transition", `${field}は「${order[0]}」から始まります(${chain} の順)`);
+      continue;
+    }
+    const from = before[field] as string;
+    if (from === to) continue;
+    if (order.indexOf(to) !== order.indexOf(from) + 1) {
+      const next = order[order.indexOf(from) + 1];
+      throw new HttpError(409, "invalid_transition", next === undefined ? `${field}は「${from}」で終わりです(${chain} の順)` : `${field}は「${from}」の次は「${next}」です(${chain} の順)`);
+    }
+  }
+}
+
+function isUniqueViolation(e: unknown): boolean {
+  const x = e as { code?: string; message?: string } | null;
+  return x?.code === "23505" || /UNIQUE constraint failed/i.test(String(x?.message ?? ""));
+}
+
+/** 書込み(重複不可の違反は 409 と日本語の説明にする) */
+async function write(ctx: Ctx, table: string, sql: string, params: unknown[]): Promise<number> {
+  try {
+    return await ctx.conn.run(sql, params);
+  } catch (e) {
+    if (!isUniqueViolation(e)) throw e;
+    const sets = (ctx.uniques ?? {})[table] ?? [];
+    const what = sets.map((s) => s.join("と")).join("、または");
+    throw new HttpError(409, "duplicate", what ? `既に登録されています(${table}: ${what}が同じものがあります)` : `既に登録されています(${table})`);
+  }
 }
 
 export class MigrationError extends Error {}
@@ -344,6 +393,29 @@ export async function migrate(db: Database, tables: TableDef[]): Promise<string[
       for (const col of additive) {
         await c.exec(`ALTER TABLE ${q(t.name)} ADD COLUMN ${pg ? col.pg_def : col.def}`);
         applied.push(`add ${t.name}.${col.name}`);
+      }
+    }
+    // 重複不可(約束 C-UNIQUE): 宣言どおりの一意索引にそろえる
+    for (const t of tables) {
+      const want = new Map((t.unique ?? []).map((fs) => [uniqueIndexName(t.name, fs), fs]));
+      const have = pg
+        ? await c.all("SELECT indexname AS name FROM pg_indexes WHERE schemaname = current_schema() AND tablename = ? AND indexname LIKE 'uq\\_%'", [t.name])
+        : await c.all("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND name LIKE 'uq\\_%' ESCAPE '\\'", [t.name]);
+      const haveNames = new Set(have.map((r) => String(r.name)));
+      for (const n of haveNames) {
+        if (!want.has(n)) {
+          await c.exec(`DROP INDEX ${q(n)}`);
+          applied.push(`drop unique ${t.name}`);
+        }
+      }
+      for (const [n, fs] of want) {
+        if (haveNames.has(n)) continue;
+        try {
+          await c.exec(`CREATE UNIQUE INDEX ${q(n)} ON ${q(t.name)} (${fs.map(q).join(", ")})`);
+        } catch (e) {
+          throw new MigrationError(`表 ${t.name} に ${fs.join("と")} が同じデータが既に複数あるため「重複不可」を設定できません。重複を解消してから起動してください(${String((e as Error).message ?? e)})`);
+        }
+        applied.push(`unique ${t.name} (${fs.join(", ")})`);
       }
     }
     for (const a of applied) await c.run('INSERT INTO "_kotonoha_migrations" ("at", "action") VALUES (?, ?)', [new Date().toISOString(), a]);
@@ -427,8 +499,9 @@ async function flush(ctx: Ctx): Promise<void> {
     if (changed.length === 0) continue;
     const of = ctx.owners[meta.table];
     if (of !== undefined && changed.some((f) => f.name === of)) throw new HttpError(403, "forbidden", "所有者は変更できません");
+    checkSequence(ctx, meta.table, meta.original, Object.fromEntries(changed.map((f) => [f.name, e[f.name]])));
     const sets = changed.map((f) => `${q(f.name)} = ?`).join(", ");
-    await ctx.conn.run(`UPDATE ${q(meta.table)} SET ${sets} WHERE "ID" = ?`, [...changed.map((f) => toSql(e[f.name], f.type)), e["ID"]]);
+    await write(ctx, meta.table, `UPDATE ${q(meta.table)} SET ${sets} WHERE "ID" = ?`, [...changed.map((f) => toSql(e[f.name], f.type)), e["ID"]]);
     meta.original = { ...e };
   }
 }
@@ -457,7 +530,8 @@ export async function adGet(ctx: Ctx, table: string, id: unknown, optional: bool
   const rows = await ctx.conn.all(`SELECT * FROM ${q(table)} WHERE "ID" = ?${oc.sql}`, [id, ...oc.params]);
   if (rows.length === 0) {
     if (optional) return null;
-    throw new HttpError(404, "not_found", `${table} が見つかりません`);
+    // 本人限定のデータは、他の人の分があることも知らせない(同じ 404)。ただし理由の候補は書く(ペルソナ評価の要望)
+    throw new HttpError(404, "not_found", ctx.owners[table] !== undefined ? `${table} が見つかりません(無いか、ほかの人のものです)` : `${table} が見つかりません`);
   }
   return decodeRow(ctx, table, rows[0]);
 }
@@ -468,29 +542,6 @@ export interface ListView {
   sql: string;
   params: unknown[];
   order: string;
-}
-
-/** アプリの時刻帯(「今日」の判定・応答の日時の表記。既定 Asia/Tokyo) */
-export function appTz(): string {
-  return process.env.KOTONOHA_APP_TZ || "Asia/Tokyo";
-}
-
-/** 時刻 t(ミリ秒)における時刻帯 tz の UTC からのずれ(ミリ秒) */
-export function tzOffsetMs(t: number, tz: string): number {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(new Date(t));
-  const n = (k: string) => Number(parts.find((p) => p.type === k)!.value);
-  return Date.UTC(n("year"), n("month") - 1, n("day"), n("hour"), n("minute"), n("second")) - Math.floor(t / 1000) * 1000;
-}
-
-/** 時刻帯 tz での今日の暦日("2026-12-05")と、その始まり・終わり(ミリ秒) */
-export function todayIn(tz: string, now: number = Date.now()): { date: string; start: number; end: number } {
-  const local = now + tzOffsetMs(now, tz);
-  const d = new Date(local);
-  const date = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-  const midnightLocal = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-  const start = midnightLocal - tzOffsetMs(midnightLocal, tz);
-  const nextLocal = midnightLocal + 86_400_000;
-  return { date, start, end: nextLocal - tzOffsetMs(nextLocal, tz) };
 }
 
 /** 一覧 API の並べ替え・絞り込み(?order=&desc=1&eq.F=&ne.F=&today.F=1&me.F=1。ADR-0128)。
@@ -671,8 +722,11 @@ export async function adCreate(ctx: Ctx, table: string, values: Row, returns: "i
       throw new HttpError(403, "forbidden", `他の人の分は登録できません(許可 全件閲覧.${table} が必要です)`);
     if (row[of] === undefined || !staff) row[of] = ctx.principal.sub;
   }
+  checkSequence(ctx, table, null, row);
   const cols = fields.filter((f) => f.name in row);
-  await ctx.conn.run(
+  await write(
+    ctx,
+    table,
     `INSERT INTO ${q(table)} (${cols.map((f) => q(f.name)).join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`,
     cols.map((f) => toSql(row[f.name], f.type)),
   );
@@ -684,9 +738,12 @@ export async function adUpdate(ctx: Ctx, table: string, values: Row): Promise<Ro
   const of = ctx.owners[table];
   if (of !== undefined && of in values) throw new HttpError(403, "forbidden", "所有者は変更できません");
   const fields = ctx.schema.entities[table].filter((f) => f.name !== "ID" && f.name in values);
+  if (fields.length > 0 && (ctx.sequences ?? {})[table]) {
+    checkSequence(ctx, table, await adGet(ctx, table, values["ID"], false), values);
+  }
   if (fields.length > 0) {
     const oc = ownerCond(ctx, table);
-    const n = await ctx.conn.run(`UPDATE ${q(table)} SET ${fields.map((f) => `${q(f.name)} = ?`).join(", ")} WHERE "ID" = ?${oc.sql}`, [
+    const n = await write(ctx, table, `UPDATE ${q(table)} SET ${fields.map((f) => `${q(f.name)} = ?`).join(", ")} WHERE "ID" = ?${oc.sql}`, [
       ...fields.map((f) => toSql(values[f.name], f.type)),
       values["ID"],
       ...oc.params,

@@ -251,3 +251,49 @@ fn aggregate_patterns() {
         assert_eq!(c, vec![code], "{line}");
     }
 }
+
+fn contracts_of(lines: &str) -> (Vec<IntentKind>, Vec<Code>) {
+    let src = format!("{IZAKAYA}約束:\n{lines}");
+    let (m, d) = run(&src, &[]);
+    (m.contracts.iter().map(|i| i.kind.clone()).collect(), codes(&d))
+}
+
+#[test]
+fn unique_and_sequence_contracts() {
+    let (k, c) = contracts_of("    注文は卓と品名の組で重複不可\n    注文は品名が重複不可\n    注文の状態は 調理中 → 提供済み の順\n");
+    assert!(c.is_empty(), "{c:?}");
+    assert_eq!(
+        k[0],
+        IntentKind::Unique {
+            data: "注文".into(),
+            fields: vec!["卓".into(), "品名".into()]
+        }
+    );
+    assert_eq!(
+        k[1],
+        IntentKind::Unique {
+            data: "注文".into(),
+            fields: vec!["品名".into()]
+        }
+    );
+    assert_eq!(
+        k[2],
+        IntentKind::Sequence {
+            data: "注文".into(),
+            field: "状態".into(),
+            values: vec!["調理中".into(), "提供済み".into()]
+        }
+    );
+    for (line, code) in [
+        ("注文は色の組で重複不可", Code::REF001),
+        ("注文はIDが重複不可", Code::TYP001),
+        ("注文は卓と卓の組で重複不可", Code::AMB002),
+        ("注文の状態は 調理中 → 片付け済み の順", Code::TYP001),
+        ("注文の状態は 調理中 の順", Code::AMB001),
+        ("注文の数量は 1 → 2 の順", Code::TYP001),
+        ("注文の状態は 提供済み → 提供済み の順", Code::AMB002),
+    ] {
+        let (_, c) = contracts_of(&format!("    {line}\n"));
+        assert_eq!(c, vec![code], "{line}");
+    }
+}

@@ -33,6 +33,10 @@ export interface App {
   owners: Record<string, string>;
   /** ソースの `役割` 宣言(役割 → 権限)。KOTONOHA_ROLE_MAP が無ければこれを使う(ADR-0126) */
   roles?: Record<string, string[]>;
+  /** 重複不可: データ → フィールドの組(ADR-0129) */
+  uniques?: Record<string, string[][]>;
+  /** 状態の順番: データ → フィールド → 値の順(ADR-0129) */
+  sequences?: Record<string, Record<string, string[]>>;
 }
 
 /** 書込み系(POST)のレート制限: 主体または IP ごとのトークンバケット */
@@ -231,7 +235,7 @@ export function createApp(app: App, db: Database, env: NodeJS.ProcessEnv = proce
       }
       const body = m.route.method === "POST" ? await readBody(req) : {};
       const subj = req.headers["x-koto-subject"];
-      const ctx: Ctx = { db, conn: db.conn, schema: app.schema, owners: app.owners, dirty: null, principal, traceId, subject: typeof subj === "string" ? subj : null };
+      const ctx: Ctx = { db, conn: db.conn, schema: app.schema, owners: app.owners, uniques: app.uniques ?? {}, sequences: app.sequences ?? {}, dirty: null, principal, traceId, subject: typeof subj === "string" ? subj : null };
       const r = await m.route.handle(ctx, { id: m.id, query: url.searchParams, body });
       status = r.status;
       if (m.route.method === "POST") audit({ event: "action", trace_id: traceId, sub, route: m.route.id, status });

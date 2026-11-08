@@ -337,7 +337,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         texts.join("; ")
                     ));
                 }
-                Component::Form { action, params } => {
+                Component::Form { action, params, submit } => {
                     let mut inputs = Vec::new();
                     let mut pairs = Vec::new();
                     for (n, t) in params {
@@ -394,11 +394,12 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         }
                     }
                     items.push(format!(
-                        "item {{ Column {{ Text({}, style = MaterialTheme.typography.titleMedium); {}; Button(onClick = {{ scope.launch {{ act {{ api.post({}, mapOf({})) }} }} }}) {{ Text(\"送信\") }} }} }}",
+                        "item {{ Column {{ Text({}, style = MaterialTheme.typography.titleMedium); {}; Button(onClick = {{ scope.launch {{ act {{ api.post({}, mapOf({})) }} }} }}) {{ Text({}) }} }} }}",
                         kstr(action),
                         inputs.join("; "),
                         kstr(action),
-                        pairs.join(", ")
+                        pairs.join(", "),
+                        kstr(submit)
                     ));
                 }
             }

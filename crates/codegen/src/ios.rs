@@ -318,7 +318,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         cells.join("; Spacer(); ")
                     ));
                 }
-                Component::Form { action, params } => {
+                Component::Form { action, params, submit } => {
                     let mut submit_fields = Vec::new();
                     let mut inputs = Vec::new();
                     for (n, t) in params {
@@ -373,9 +373,10 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         }
                     }
                     body.push(format!(
-                        "Section({}) {{ {}; Button(\"送信\") {{ Task {{ await run {{ _ = try await api.post({}, body: {}({})) }} }} }} }}",
+                        "Section({}) {{ {}; Button({}) {{ Task {{ await run {{ _ = try await api.post({}, body: {}({})) }} }} }} }}",
                         swift_str(action),
                         inputs.join("; "),
+                        swift_str(submit),
                         swift_str(action),
                         type_name("Req_", action),
                         submit_fields.join(", ")
