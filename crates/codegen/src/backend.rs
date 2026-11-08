@@ -32,12 +32,14 @@ const host = process.env.KOTONOHA_HOST ?? "127.0.0.1";
 const parent = Number(process.env.KOTONOHA_EXIT_WITH_PARENT ?? 0);
 if (parent > 0) {
   setInterval(() => {
+    // 親が止まると、親は別のプロセスに付け替わる(ゾンビのままでも kill(0) は成功するため、親の番号も見る)
+    if (process.ppid !== parent) process.exit(0);
     try {
       process.kill(parent, 0);
     } catch {
       process.exit(0);
     }
-  }, 1000).unref();
+  }, 500).unref();
 }
 createApp(app, db).listen(port, host, () => {
   process.stdout.write(JSON.stringify({ ts: new Date().toISOString(), level: "info", msg: `listening on http://${host}:${port}` }) + "\n");
