@@ -1029,8 +1029,8 @@ impl Ctx<'_> {
             })
         };
         let mut filters = Vec::new();
-        for c in conds.map(|c| c.split("かつ").collect::<Vec<_>>()).unwrap_or_default() {
-            let Some((f, v)) = c.split_once('が') else {
+        for c in conds.map(|c| c.split("かつ").map(str::trim).collect::<Vec<_>>()).unwrap_or_default() {
+            let Some((f, v)) = c.split_once('が').map(|(f, v)| (f.trim(), v.trim())) else {
                 return Err(Match::Invalid(
                     Diagnostic::error(Code::SYN001, span, format!("条件「{c}」は「フィールドが値」の形で書きます"))
                         .hint(format!("例: 「{d}のうち状態が受付のものを一覧表示」「{d}のうち日時が今日のものを一覧表示」")),
@@ -1456,6 +1456,12 @@ pub fn example_sentences(env: &Env, reg: &Registry, contract: bool) -> Vec<Strin
                     out.push(format!("{d}のうち{f}が今日のものを一覧表示"));
                     out.push(format!("{d}を{f}の日ごとに集計"));
                     out.push(format!("{d}のうち{f}が今日より前のものを一覧表示"));
+                    if let Some((ef, ev)) = info.fields.iter().find_map(|(n, t)| match t {
+                        kotonoha_types::Type::Enum(e) => env.enums.get(e).and_then(|vs| vs.first()).map(|v| (n, v)),
+                        _ => None,
+                    }) {
+                        out.push(format!("{d}のうち{ef}が{ev}でないかつ{f}が今日以降のものを{f}順に一覧表示"));
+                    }
                 }
                 kotonoha_types::Type::Enum(e) => {
                     if let Some(v) = env.enums.get(e).and_then(|vs| vs.first()) {

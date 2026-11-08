@@ -338,7 +338,7 @@ fn safety_text(api: &serde_json::Value) -> String {
         let who = if a["public"].as_bool() == Some(true) {
             "誰でも".to_string()
         } else if let Some(o) = a["owner"].as_str() {
-            format!("ログインした本人の{o}だけ")
+            format!("ログインした本人の{o}だけ(許可 全件閲覧.{o} を持つ人は全員分)")
         } else {
             let caps: Vec<&str> = a["capabilities"].as_array().into_iter().flatten().filter_map(|c| c.as_str()).collect();
             let mut v = Vec::new();

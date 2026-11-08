@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ペルソナ評価の採点: 各ペルソナの A(KOTONOHA)と B(普段の技術)を起動し、tools/eval/probe.mjs で同じ基準で採点する。
-# 使い方: tools/eval/grade.sh <評価フォルダ> <出力 JSON> [ペルソナ ID ...](省略時は P1..P5)
+# 使い方: tools/eval/grade.sh <評価フォルダ> <出力 JSON> [ペルソナ ID ...](省略時は P1..P5)。GRADE_VARIANTS="A" で A だけ採点
 # C(自分のアプリ)があれば、検査・契約テスト(koto test)の合否も記録する
 set -uo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -23,7 +23,7 @@ IDS=("${@:3}")
 for P in "${IDS[@]}"; do
   D="$EVAL/$P"
   [ -d "$D" ] || continue
-  for V in A B; do
+  for V in ${GRADE_VARIANTS:-A B}; do
     port=$((port + 3))
     api="" web="" pids=() note=""
     work=$(mktemp -d)

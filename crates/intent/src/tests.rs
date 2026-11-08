@@ -166,6 +166,9 @@ fn list_order_and_filters() {
     assert!(c2.is_empty(), "{c2:?}");
     assert!(matches!(&k2[0], IntentKind::ListData { filters, .. } if filters[0].op == FilterOp::Ne));
     assert!(matches!(&k2[1], IntentKind::Aggregate { filters, .. } if filters[0].op == FilterOp::Ne));
+    // 「かつ」の前後に空白があっても同じ(評価で見つかった不具合)
+    let (_, c4) = list_of("    注文のうち状態が調理中 かつ 注文日時が今日より前のものを一覧表示\n");
+    assert!(c4.is_empty(), "{c4:?}");
     let (k3, c3) = list_of("    注文のうち注文日時が今日より前のものを一覧表示\n    注文のうち注文日時が今日以降のものを一覧表示\n");
     assert!(c3.is_empty(), "{c3:?}");
     assert!(matches!(&k3[0], IntentKind::ListData { filters, .. } if filters[0].op == FilterOp::BeforeToday));
