@@ -9,8 +9,17 @@ use std::process::ExitCode;
 
 const USAGE: &str = "使い方: koto [-C <dir>] [--json] <command> [args]
 
+はじめての方へ:
+  koto init 予約アプリ --template 予約受付   ひな形からプロジェクトを作る(ひな形: 予約受付 / 在庫管理 / 問い合わせ / 日報)
+  cd 予約アプリ && koto dev                   検査・生成・初期データ投入・起動を 1 回で行い、ブラウザで開ける状態にする
+  koto patterns                               このアプリで使える画面・約束の書き方を、自分のデータ名で一覧表示
+
 コマンド:
-  init [dir] [--name 名前]        新しいプロジェクトを作成
+  init [dir] [--name 名前] [--template ひな形]
+                                  新しいプロジェクトを作成(--template だけ指定するとひな形の一覧を表示)
+  dev [--port 3000] [--no-start]  開発用に生成して起動(seed.json があれば初期データも入れる。画面と API は同じポート)
+  patterns                        画面・約束に書ける文の一覧(宣言した名前で具体的に表示)
+  safety                          生成されるアプリに自動で入る安全対策と、API ごとの公開範囲を表示
   fmt [--check] [--zenkaku]       ソースのテキスト正規化(NFC・LF・行末空白)。--zenkaku で全角英数記号を半角に
   check                           字句/構文/型/知識/意図/効果を検査
   resolve [--adapter offline|fixture] [--fixture file]
@@ -128,6 +137,9 @@ fn run(mut o: Opts) -> i32 {
     let cmd = o.args.remove(0);
     let r = match cmd.as_str() {
         "init" => cmd_init(&mut o),
+        "dev" => cmd_dev(&mut o),
+        "patterns" => cmd_patterns(&mut o),
+        "safety" => cmd_safety(&mut o),
         "fmt" => cmd_fmt(&mut o),
         "check" => cmd_check(&mut o),
         "resolve" => cmd_resolve(&mut o),
@@ -177,8 +189,47 @@ fn load(o: &Opts) -> Result<(drv::Project, kotonoha_lock::ApprovalsFile), i32> {
     Ok((p, ap))
 }
 
+/// ひな形(名前, 説明, ソース, 初期データ)
+const TEMPLATES: &[(&str, &str, &str, &str)] = &[
+    (
+        "予約受付",
+        "枠(日時・定員)の一覧と予約、満席の判定、自分の予約、管理者の枠登録",
+        include_str!("../templates/reservation.koto"),
+        r#"{"枠": [{"ID": "s1", "名前": "午前の回", "開始日時": "2026-12-05T10:00:00+09:00", "定員": 5, "予約数": 0}, {"ID": "s2", "名前": "午後の回", "開始日時": "2026-12-05T14:00:00+09:00", "定員": 2, "予約数": 0}]}"#,
+    ),
+    (
+        "在庫管理",
+        "品目の一覧と入庫・出庫(在庫不足の判定)、入出庫の記録",
+        include_str!("../templates/inventory.koto"),
+        r#"{"品目": [{"ID": "i1", "名前": "コピー用紙", "保管場所": "倉庫A", "在庫数": 10}, {"ID": "i2", "名前": "トナー", "保管場所": "倉庫B", "在庫数": 2}]}"#,
+    ),
+    (
+        "問い合わせ",
+        "問い合わせフォーム、本人だけが見られる一覧、対応状況",
+        include_str!("../templates/inquiry.koto"),
+        "{}",
+    ),
+    (
+        "日報",
+        "日報の記入フォームと、本人だけが見られる一覧",
+        include_str!("../templates/report.koto"),
+        "{}",
+    ),
+];
+
 fn cmd_init(o: &mut Opts) -> Result<i32, String> {
     let name = take_value(&mut o.args, "--name")?;
+    let template = if o.args.iter().any(|a| a == "--template") && o.args.last().map(|a| a == "--template").unwrap_or(false) {
+        o.args.pop();
+        let mut s = String::from("ひな形の一覧(koto init <フォルダ> --template <名前>):\n");
+        for (n, d, _, _) in TEMPLATES {
+            s.push_str(&format!("  {n}  {d}\n"));
+        }
+        print!("{s}");
+        return Ok(0);
+    } else {
+        take_value(&mut o.args, "--template")?
+    };
     let dir = match o.args.first() {
         Some(d) => o.dir.join(d),
         None => o.dir.clone(),
@@ -186,23 +237,281 @@ fn cmd_init(o: &mut Opts) -> Result<i32, String> {
     if dir.join(drv::PROJECT_FILE).exists() {
         return Err(format!("{} は既に存在します", dir.join(drv::PROJECT_FILE).display()));
     }
+    let tpl = match &template {
+        None => None,
+        Some(t) => Some(TEMPLATES.iter().find(|x| x.0 == t).ok_or_else(|| {
+            format!(
+                "ひな形 `{t}` はありません(使えるひな形: {})",
+                TEMPLATES.iter().map(|x| x.0).collect::<Vec<_>>().join(" / ")
+            )
+        })?),
+    };
     let name = name.unwrap_or_else(|| {
         dir.canonicalize()
             .ok()
+            .or_else(|| Some(dir.clone()))
             .and_then(|p| p.file_name().map(|s| s.to_string_lossy().into_owned()))
             .unwrap_or_else(|| "アプリ".into())
     });
     std::fs::create_dir_all(dir.join("src")).map_err(|e| e.to_string())?;
     let cfg = json!({"name": name, "sources": ["src/app.koto"], "targets": ["web", "backend"]});
     std::fs::write(dir.join(drv::PROJECT_FILE), serde_json::to_string_pretty(&cfg).unwrap() + "\n").map_err(|e| e.to_string())?;
-    let app =
-        format!("アプリ「{name}」\n\nデータ 商品:\n    ID: 識別子\n    名前: 文字列\n\n画面 商品一覧:\n    商品を一覧表示\n\n約束:\n    商品は誰でも閲覧可\n");
+    let (app, seed) = match tpl {
+        Some((_, _, src, seed)) => (src.replace("{name}", &name), seed.to_string()),
+        None => (
+            format!(
+                "アプリ「{name}」\n\nデータ 商品:\n    ID: 識別子\n    名前: 文字列\n\n画面 商品一覧:\n    商品を一覧表示\n\n約束:\n    商品は誰でも閲覧可\n"
+            ),
+            r#"{"商品": [{"ID": "p1", "名前": "見本の商品"}]}"#.to_string(),
+        ),
+    };
     let app_path = dir.join("src/app.koto");
     if !app_path.exists() {
         std::fs::write(&app_path, app).map_err(|e| e.to_string())?;
     }
+    let seed_path = dir.join("seed.json");
+    if !seed_path.exists() && seed != "{}" {
+        let v: serde_json::Value = serde_json::from_str(&seed).expect("ひな形の初期データ");
+        std::fs::write(&seed_path, serde_json::to_string_pretty(&v).unwrap() + "\n").map_err(|e| e.to_string())?;
+    }
+    std::fs::write(dir.join(".gitignore"), ".koto/\nbuild/\n").map_err(|e| e.to_string())?;
     eprintln!("{} にプロジェクトを作成しました", dir.display());
+    eprintln!("次にやること:\n  1. src/app.koto を開いて、データ名や項目を自分の用途に書き換える\n  2. koto -C {} dev   (検査・生成・起動。表示された URL をブラウザで開く)\n  3. 書き方に迷ったら koto -C {} patterns", dir.display(), dir.display());
     Ok(0)
+}
+
+/// 生成された API 契約から、開発用ログインに渡す全権限を集める
+fn all_caps(api: &serde_json::Value) -> Vec<String> {
+    let mut caps = std::collections::BTreeSet::new();
+    for e in api["endpoints"].as_array().into_iter().flatten() {
+        for c in e["access"]["capabilities"].as_array().into_iter().flatten() {
+            if let Some(c) = c.as_str() {
+                caps.insert(c.to_string());
+            }
+        }
+        if let Some(g) = e["access"]["grant"].as_str() {
+            caps.insert(g.to_string());
+        }
+    }
+    caps.into_iter().collect()
+}
+
+/// 自動で入る安全対策(K-26: 利用者から見えるようにする)
+fn safety_text(api: &serde_json::Value) -> String {
+    let mut s = String::from("自動で入っている安全対策:\n");
+    for line in [
+        "ログイン(JWT)の検証と、権限の無い操作の拒否(何も書かなければ拒否)",
+        "「本人のものだけ閲覧可」と書いたデータは、本人の行だけを返す",
+        "取引: の中の更新はまとめて行い、失敗したら元に戻す(同時の更新でも数が合う)",
+        "入力の型・長さの検査(合わない入力は 400)",
+        "画面の文字は自動でエスケープ(スクリプトの埋め込みを防ぐ)、CSP などのセキュリティヘッダ",
+        "他サイトからの操作(CSRF)・ログインの拒否",
+        "書き込みの回数制限、認証の失敗が続く接続元の一時遮断、操作の記録(監査ログ)",
+        "応答に製品名やバージョンを出さない",
+    ] {
+        s.push_str(&format!("  ・{line}\n"));
+    }
+    s.push_str("\nAPI ごとの公開範囲:\n");
+    for e in api["endpoints"].as_array().into_iter().flatten() {
+        let a = &e["access"];
+        let who = if a["public"].as_bool() == Some(true) {
+            "誰でも".to_string()
+        } else if let Some(o) = a["owner"].as_str() {
+            format!("ログインした本人の{o}だけ")
+        } else {
+            let caps: Vec<&str> = a["capabilities"].as_array().into_iter().flatten().filter_map(|c| c.as_str()).collect();
+            let mut v = Vec::new();
+            if !caps.is_empty() {
+                v.push(format!("権限 {}", caps.join(" + ")));
+            }
+            if let Some(g) = a["grant"].as_str() {
+                v.push(format!("許可 {g}"));
+            }
+            format!("ログイン + {}", v.join(" または "))
+        };
+        s.push_str(&format!(
+            "  {} {}  … {who}\n",
+            e["method"].as_str().unwrap_or(""),
+            e["path"].as_str().unwrap_or("")
+        ));
+    }
+    s
+}
+
+fn analyzed(o: &Opts) -> Result<(drv::Project, drv::Analysis), i32> {
+    let (p, ap) = load(o)?;
+    let a = drv::analyze(&p, &ap);
+    if !a.ok() {
+        return Err(report(o, &a.diags, json!({})));
+    }
+    Ok((p, a))
+}
+
+fn cmd_safety(o: &mut Opts) -> Result<i32, String> {
+    no_extra(&o.args)?;
+    let (p, a) = match analyzed(o) {
+        Ok(x) => x,
+        Err(c) => return Ok(c),
+    };
+    let b = drv::build_target(&p, &a, "backend").map_err(|d| d.iter().map(|x| x.message_ja.clone()).collect::<Vec<_>>().join("\n"))?;
+    let api: serde_json::Value = serde_json::from_str(&b.files.iter().find(|f| f.0 == "api.json").unwrap().1).unwrap();
+    print!("{}", safety_text(&api));
+    Ok(0)
+}
+
+fn cmd_patterns(o: &mut Opts) -> Result<i32, String> {
+    no_extra(&o.args)?;
+    let (p, ap) = match load(o) {
+        Ok(x) => x,
+        Err(c) => return Ok(c),
+    };
+    let a = drv::analyze(&p, &ap);
+    let screen = kotonoha_intent::example_sentences(&a.env, &a.registry, false);
+    let contract = kotonoha_intent::example_sentences(&a.env, &a.registry, true);
+    let mut s = String::from("画面(画面 名前: の下)に書ける文:\n");
+    for x in &screen {
+        s.push_str(&format!("    {x}\n"));
+    }
+    s.push_str("\n約束(約束: の下)に書ける文:\n");
+    for x in &contract {
+        s.push_str(&format!("    {x}\n"));
+    }
+    s.push_str("\n補足:\n  ・「…を押すと 動作(引数)」の引数には、画面の入力データ(例: 商品.ID)や数・文字列を書けます\n  ・「…を選ぶと 画面 へ」の遷移先の画面では、選んだデータを「データの項目と項目を表示」で表示できます\n  ・詳しい説明: docs/tutorial.md、docs/spec/intent_patterns.md\n");
+    print!("{s}");
+    Ok(0)
+}
+
+fn run_cmd(cmd: &mut std::process::Command, what: &str) -> Result<(), String> {
+    let st = cmd
+        .status()
+        .map_err(|e| format!("{what} を実行できません: {e}(Node.js 22.18 以上と npm が必要です)"))?;
+    if st.success() {
+        Ok(())
+    } else {
+        Err(format!("{what} に失敗しました(終了コード {:?})", st.code()))
+    }
+}
+
+/// `koto dev`: 検査 → backend と web を生成 → 初期データ → 起動(画面と API は同じポート)
+fn cmd_dev(o: &mut Opts) -> Result<i32, String> {
+    let port: u16 = take_value(&mut o.args, "--port")?
+        .map(|p| p.parse().map_err(|_| "--port は数字です".to_string()))
+        .transpose()?
+        .unwrap_or(3000);
+    let no_start = take_flag(&mut o.args, "--no-start");
+    no_extra(&o.args)?;
+    let (p, a) = match analyzed(o) {
+        Ok(x) => x,
+        Err(c) => return Ok(c),
+    };
+    let dev = o.dir.join(".koto").join("dev");
+    let mut api = serde_json::Value::Null;
+    for t in ["backend", "web"] {
+        let b = match drv::build_target(&p, &a, t) {
+            Ok(b) => b,
+            Err(d) => {
+                let mut ds = a.diags.clone();
+                ds.extend(d);
+                return Ok(report(o, &ds, json!({})));
+            }
+        };
+        let out = dev.join(t);
+        let _ = std::fs::remove_dir_all(out.join("src"));
+        for (rel, content) in &b.files {
+            let path = out.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
+            std::fs::write(&path, content).map_err(|e| e.to_string())?;
+            if rel == "api.json" {
+                api = serde_json::from_str(content).unwrap_or_default();
+            }
+        }
+    }
+    let web = dev.join("web");
+    let be = dev.join("backend");
+    if !web.join("node_modules").exists() {
+        eprintln!("初回だけ、画面の部品(React など)をダウンロードします。1 分ほどかかります…");
+        run_cmd(
+            std::process::Command::new("npm")
+                .args(["install", "--no-audit", "--no-fund", "--silent"])
+                .current_dir(&web),
+            "npm install",
+        )?;
+    }
+    run_cmd(
+        std::process::Command::new("npm").args(["run", "build", "--silent"]).current_dir(&web),
+        "画面のビルド",
+    )?;
+    // 開発用の秘密(この PC の .koto/dev だけに置く。ソースや生成物には入れない)
+    let secret_path = dev.join("secret");
+    let secret = match std::fs::read_to_string(&secret_path) {
+        Ok(s) if s.trim().len() >= 64 => s.trim().to_string(),
+        _ => {
+            let out = std::process::Command::new("node")
+                .args(["-e", "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))"])
+                .output()
+                .map_err(|e| format!("node を実行できません: {e}"))?;
+            let s = String::from_utf8_lossy(&out.stdout).to_string();
+            std::fs::write(&secret_path, &s).map_err(|e| e.to_string())?;
+            s
+        }
+    };
+    let db = dev.join("data.sqlite");
+    let seed = o.dir.join("seed.json");
+    if seed.exists() {
+        run_cmd(
+            std::process::Command::new("node")
+                .args(["--no-warnings", "tools/seed.ts"])
+                .arg(seed.canonicalize().map_err(|e| e.to_string())?)
+                .env("KOTONOHA_DB", &db)
+                .env("KOTONOHA_JWT_SECRET", &secret)
+                .current_dir(&be),
+            "初期データの投入(seed.json)",
+        )?;
+    }
+    let caps = all_caps(&api);
+    let entry = api["entry_screen"].as_str().unwrap_or("");
+    eprintln!("\n準備ができました。");
+    eprintln!("  画面:   http://127.0.0.1:{port}/   (最初の画面: {entry})");
+    eprintln!("  ログイン: 画面右上の「ログイン」→「開発用: 名前を入れてすぐ入る」");
+    eprintln!("  API:    http://127.0.0.1:{port}/api/…  (Authorization: Bearer で呼べます)");
+    eprintln!("  データ: {}(消すと空からやり直せます)", db.display());
+    eprintln!("  止めるとき: Ctrl+C\n");
+    eprint!("{}", safety_text(&api));
+    if no_start {
+        return Ok(0);
+    }
+    let bport = port.checked_add(1).ok_or("--port が大きすぎます")?;
+    let mut backend = std::process::Command::new("node")
+        .args(["--no-warnings", "src/main.ts"])
+        .env("PORT", bport.to_string())
+        .env("KOTONOHA_DB", &db)
+        .env("KOTONOHA_JWT_SECRET", &secret)
+        .env("KOTONOHA_EXIT_WITH_PARENT", std::process::id().to_string())
+        .current_dir(&be)
+        .spawn()
+        .map_err(|e| format!("backend を起動できません: {e}"))?;
+    let mut webp = std::process::Command::new("node")
+        .args(["--no-warnings", "src/server-main.ts"])
+        .env("PORT", port.to_string())
+        .env("KOTONOHA_BACKEND_URL", format!("http://127.0.0.1:{bport}"))
+        .env("KOTONOHA_DEV_LOGIN", "1")
+        .env("KOTONOHA_DEV_JWT_SECRET", &secret)
+        .env("KOTONOHA_DEV_CAPS", caps.join(","))
+        .env("KOTONOHA_EXIT_WITH_PARENT", std::process::id().to_string())
+        .current_dir(&web)
+        .spawn()
+        .map_err(|e| format!("画面のサーバーを起動できません: {e}"))?;
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let b = backend.try_wait().map_err(|e| e.to_string())?;
+        let w = webp.try_wait().map_err(|e| e.to_string())?;
+        if b.is_some() || w.is_some() {
+            let _ = backend.kill();
+            let _ = webp.kill();
+            eprintln!("サーバーが止まりました(ポート {port} / {bport} が使用中でないか確認してください。--port で変えられます)");
+            return Ok(1);
+        }
+    }
 }
 
 fn cmd_fmt(o: &mut Opts) -> Result<i32, String> {

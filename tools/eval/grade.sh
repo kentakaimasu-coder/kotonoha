@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ペルソナ評価の採点: 各ペルソナの A(KOTONOHA)と B(普段の技術)を起動し、tools/eval/probe.mjs で同じ基準で採点する。
-# 使い方: tools/eval/grade.sh <評価フォルダ(P1..P5 を含む)> <出力 JSON>
+# 使い方: tools/eval/grade.sh <評価フォルダ> <出力 JSON> [ペルソナ ID ...](省略時は P1..P5)
+# C(自分のアプリ)があれば、検査・契約テスト(koto test)の合否も記録する
 set -uo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 EVAL=$1
@@ -14,10 +15,12 @@ first=1
 # 手で書いた行数(空行・コメント行を除く)。生成物・依存・データは数えない
 count_lines() {
   find "$1" -type f \( -name '*.koto' -o -name '*.sql' -o -name '*.py' -o -name '*.ts' -o -name '*.js' -o -name '*.mjs' -o -name '*.html' -o -name '*.jinja*' -o -name '*.css' -o -name '*.sh' -o -name 'kotonoha.json' \) \
-    -not -path '*/node_modules/*' -not -path '*/.venv/*' -not -path '*/venv/*' -not -path '*/out/*' -not -path '*/dist/*' -not -path '*/__pycache__/*' -not -path '*/gen/*' -not -path '*/build/*' -not -name 'seed*.json' -print0 \
+    -not -path '*/node_modules/*' -not -path '*/.venv/*' -not -path '*/venv/*' -not -path '*/out/*' -not -path '*/dist/*' -not -path '*/__pycache__/*' -not -path '*/gen/*' -not -path '*/build/*' -not -path '*/.koto/*' -not -name 'seed*.json' -print0 \
     | xargs -0 -r cat | grep -v '^\s*$' | grep -Ev '^\s*(#|//|--)' | wc -l
 }
-for P in P1 P2 P3 P4 P5; do
+IDS=("${@:3}")
+[ ${#IDS[@]} -eq 0 ] && IDS=(P1 P2 P3 P4 P5)
+for P in "${IDS[@]}"; do
   D="$EVAL/$P"
   [ -d "$D" ] || continue
   for V in A B; do
@@ -61,6 +64,12 @@ for P in P1 P2 P3 P4 P5; do
     printf '{"persona":"%s","variant":"%s","lines":%s,"note":"%s","probe":%s}' "$P" "$V" "$lines" "$note" "$result" >> "$OUT"
     rm -rf "$work"
   done
+  if [ -f "$D/C/kotonoha.json" ]; then
+    c_check=0; c_test=0
+    "$KOTO" -C "$D/C" check >/dev/null 2>&1 && c_check=1
+    [ $c_check = 1 ] && "$KOTO" -C "$D/C" test >/dev/null 2>&1 && c_test=1
+    printf ',{"persona":"%s","variant":"C","lines":%s,"check":%s,"contract_test":%s}' "$P" "$(count_lines "$D/C")" "$c_check" "$c_test" >> "$OUT"
+  fi
 done
 echo "]" >> "$OUT"
 echo "採点結果: $OUT"

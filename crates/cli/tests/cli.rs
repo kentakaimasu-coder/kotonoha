@@ -206,3 +206,45 @@ fn adr007_signed_approvals_allow_locked_build_only_with_trusted_key() {
     assert_eq!(c, 3, "別の鍵では拒否: {err}");
     assert!(err.contains("信頼されていません"));
 }
+
+#[test]
+fn beginner_flow_templates_patterns_safety_and_suggestions() {
+    let base = std::env::temp_dir().join(format!("koto-beginner-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+    // ひな形の一覧
+    let (c, out, _) = koto(&base, &["init", "--template"]);
+    assert_eq!(c, 0);
+    for t in ["予約受付", "在庫管理", "問い合わせ", "日報"] {
+        assert!(out.contains(t), "{out}");
+    }
+    // 未知のひな形は日本語のエラー
+    let (c, _, err) = koto(&base, &["init", "x", "--template", "謎"]);
+    assert_ne!(c, 0);
+    assert!(err.contains("使えるひな形"), "{err}");
+    // すべてのひな形がそのまま検査に合格する
+    for t in ["予約受付", "在庫管理", "問い合わせ", "日報"] {
+        let (c, _, err) = koto(&base, &["init", t, "--template", t]);
+        assert_eq!(c, 0, "{err}");
+        let (c, _, err) = koto(&base.join(t), &["check"]);
+        assert_eq!(c, 0, "{t}: {err}");
+    }
+    assert!(base.join("予約受付/seed.json").exists());
+    // 書ける文の一覧は、宣言した名前で具体的に出る
+    let (c, out, _) = koto(&base.join("予約受付"), &["patterns"]);
+    assert_eq!(c, 0);
+    assert!(out.contains("枠を一覧表示") && out.contains("予約は予約者が本人のものだけ閲覧可"), "{out}");
+    // 安全対策と公開範囲
+    let (c, out, _) = koto(&base.join("予約受付"), &["safety"]);
+    assert_eq!(c, 0);
+    assert!(out.contains("ログインした本人の予約だけ") && out.contains("CSRF"), "{out}");
+    // 解釈できない文には近い書き方を示す
+    let src = std::fs::read_to_string(base.join("予約受付/src/app.koto"))
+        .unwrap()
+        .replace("    枠を一覧表示\n", "    枠の一覧を表示する\n");
+    std::fs::write(base.join("予約受付/src/app.koto"), src).unwrap();
+    let (c, _, err) = koto(&base.join("予約受付"), &["check"]);
+    assert_ne!(c, 0);
+    assert!(err.contains("近い書き方") && err.contains("「枠を一覧表示」"), "{err}");
+    let _ = std::fs::remove_dir_all(&base);
+}

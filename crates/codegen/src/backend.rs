@@ -28,6 +28,17 @@ const dbPath = process.env.KOTONOHA_DB ?? "data/app.sqlite";
 const db = await openDb(dbPath, tables);
 const port = Number(process.env.PORT ?? 8787);
 const host = process.env.KOTONOHA_HOST ?? "127.0.0.1";
+// koto dev から起動されたときは、koto が終わったら一緒に終わる(サーバーが残り続けないように)
+const parent = Number(process.env.KOTONOHA_EXIT_WITH_PARENT ?? 0);
+if (parent > 0) {
+  setInterval(() => {
+    try {
+      process.kill(parent, 0);
+    } catch {
+      process.exit(0);
+    }
+  }, 1000).unref();
+}
 createApp(app, db).listen(port, host, () => {
   process.stdout.write(JSON.stringify({ ts: new Date().toISOString(), level: "info", msg: `listening on http://${host}:${port}` }) + "\n");
 });

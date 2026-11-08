@@ -3,7 +3,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import ReactDOMServer from "react-dom/server";
 import { App, h, loaderUrl, type Init, type LoadResult, type ScreenDef } from "./ui.ts";
 
@@ -39,6 +39,7 @@ export function checkWebProductionConfig(env: NodeJS.ProcessEnv, opts: { secureC
   if (!opts.secureCookie) p.push("本番では KOTONOHA_COOKIE_SECURE=1(HTTPS)が必要です");
   if (opts.devLogin) p.push("本番では開発用のトークン貼り付けログインを有効にできません");
   if (!opts.oidc) p.push("本番では OIDC(KOTONOHA_OIDC_ISSUER など)の設定が必要です");
+  if (env.KOTONOHA_DEV_JWT_SECRET) p.push("本番では開発用のワンクリックログイン(KOTONOHA_DEV_JWT_SECRET)を使えません");
   return p;
 }
 
@@ -118,11 +119,19 @@ const b64u = (b: Buffer) => b.toString("base64url");
 
 export function createWebServer(
   app: WebApp,
-  opts: { backendUrl: string; root: string; secureCookie: boolean; tz: string; oidc?: OidcConfig | null; devLogin?: boolean },
+  opts: { backendUrl: string; root: string; secureCookie: boolean; tz: string; oidc?: OidcConfig | null; devLogin?: boolean; devQuick?: { secret: string; caps: string[] } | null },
 ) {
   const backend = new URL(opts.backendUrl);
   const oidc = opts.oidc ?? null;
   const devLogin = opts.devLogin ?? oidc === null;
+  // 開発用のワンクリックログイン(koto dev が設定する)。名前を入れるだけで、アプリの全権限を持つ利用者として入れる
+  const devQuick = devLogin && opts.devQuick && opts.devQuick.secret.length >= 32 ? opts.devQuick : null;
+  const devToken = (sub: string) => {
+    const b = (x: unknown) => Buffer.from(JSON.stringify(x)).toString("base64url");
+    const now = Math.floor(Date.now() / 1000);
+    const head = `${b({ alg: "HS256", typ: "JWT" })}.${b({ sub, caps: devQuick!.caps, iat: now, exp: now + 12 * 3600 })}`;
+    return `${head}.${createHmac("sha256", devQuick!.secret).update(head).digest("base64url")}`;
+  };
   let discovery: { authorization_endpoint: string; token_endpoint: string } | null = null;
   async function discover() {
     if (discovery) return discovery;
@@ -257,13 +266,23 @@ export function createWebServer(
         return res.end();
       }
       // ログイン・ログアウトの POST を他サイトから送らせない(ログイン CSRF 対策。ペルソナ評価で指摘)
-      if ((url.pathname === "/login" || url.pathname === "/logout") && req.method === "POST") {
+      if ((url.pathname === "/login" || url.pathname === "/logout" || url.pathname === "/login/dev") && req.method === "POST") {
         const origin = req.headers.origin;
         const site = req.headers["sec-fetch-site"];
         if ((origin && origin !== "null" && new URL(origin).host !== req.headers.host) || origin === "null" || site === "cross-site") {
           res.writeHead(403, securityHeaders({ "Content-Type": "text/plain; charset=utf-8" }));
           return res.end("別のサイトからの要求は受け付けません");
         }
+      }
+      if (url.pathname === "/login/dev" && req.method === "POST" && devQuick) {
+        const form = new URLSearchParams((await readBody(req)).toString("utf8"));
+        const name = (form.get("name") ?? "").trim() || "開発者";
+        if (name.length > 64 || /[\u0000-\u001f]/.test(name)) {
+          res.writeHead(400, securityHeaders({ "Content-Type": "text/plain; charset=utf-8" }));
+          return res.end("名前は 64 文字以内にしてください");
+        }
+        res.writeHead(303, securityHeaders({ Location: "/", "Set-Cookie": `${COOKIE}=${devToken(name)}; HttpOnly; SameSite=Strict; Path=/${secure}` }));
+        return res.end();
       }
       if (url.pathname === "/login") {
         if (req.method === "POST") {
@@ -285,7 +304,7 @@ export function createWebServer(
         return res.end(
           page(
             "ログイン",
-            `<section class="page"><h1>ログイン</h1>${oidc ? `<p><a class="button" href="/login/oidc">認証基盤でログイン</a></p>` : ""}${devLogin ? `<p>開発用: 発行済みのトークンを入力してログインします。</p><form method="post" action="/login"><div class="field"><label for="token">トークン</label><input id="token" name="token" type="password" required autocomplete="off"></div><button type="submit">ログイン</button></form>` : ""}<form method="post" action="/logout"><button type="submit">ログアウト</button></form></section>`,
+            `<section class="page"><h1>ログイン</h1>${oidc ? `<p><a class="button" href="/login/oidc">認証基盤でログイン</a></p>` : ""}${devQuick ? `<form method="post" action="/login/dev" class="form"><h2>開発用: 名前を入れてすぐ入る</h2><p>アプリのすべての権限を持つ利用者として入ります(開発中だけの機能です)。別の名前で入ると別の人として扱われます。</p><div class="field"><label for="dev-name">名前</label><input id="dev-name" name="name" value="開発者" maxlength="64" autocomplete="off"></div><button type="submit">この名前で入る</button></form>` : ""}${devLogin ? `<p>開発用: 発行済みのトークンを入力してログインします。</p><form method="post" action="/login"><div class="field"><label for="token">トークン</label><input id="token" name="token" type="password" required autocomplete="off"></div><button type="submit">ログイン</button></form>` : ""}<form method="post" action="/logout"><button type="submit">ログアウト</button></form></section>`,
             null,
           ),
         );

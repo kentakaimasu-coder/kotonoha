@@ -251,6 +251,21 @@ pub fn analyze(p: &Project, approvals: &ApprovalsFile) -> Analysis {
     let (ext, d) = kotonoha_ext::resolve(&env, &intents, &|rel: &str| p.read_ext(rel));
     diags.extend(d);
 
+    // 存在しないフィールドの指摘には、使えるフィールドを添える(綴り違い・言い換えに気付けるように)
+    for d in diags.items.iter_mut() {
+        if d.code != Code::REF001 {
+            continue;
+        }
+        let Some(rest) = d.message_ja.strip_prefix("データ `") else { continue };
+        let Some((dname, tail)) = rest.split_once('`') else { continue };
+        if !tail.starts_with(" にフィールド") || d.hints.iter().any(|h| h.contains("フィールド")) {
+            continue;
+        }
+        if let Some(info) = env.data.get(dname) {
+            let fs: Vec<&str> = info.fields.iter().map(|(f, _)| f.as_str()).collect();
+            d.hints.push(format!("{dname} のフィールド: {}", fs.join("、")));
+        }
+    }
     // ファイル名を診断に付与
     for d in diags.items.iter_mut() {
         if d.file.is_empty() {

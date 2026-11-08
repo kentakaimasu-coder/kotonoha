@@ -25,6 +25,17 @@ import { webApp } from "./screens.generated.ts";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const port = Number(process.env.PORT ?? 3000);
 const host = process.env.KOTONOHA_HOST ?? "127.0.0.1";
+// koto dev から起動されたときは、koto が終わったら一緒に終わる(サーバーが残り続けないように)
+const parent = Number(process.env.KOTONOHA_EXIT_WITH_PARENT ?? 0);
+if (parent > 0) {
+  setInterval(() => {
+    try {
+      process.kill(parent, 0);
+    } catch {
+      process.exit(0);
+    }
+  }, 1000).unref();
+}
 createWebServer(webApp, {
   backendUrl: process.env.KOTONOHA_BACKEND_URL ?? "http://127.0.0.1:8787",
   root,
@@ -33,6 +44,8 @@ createWebServer(webApp, {
   oidc: oidcFromEnv(process.env),
   // 開発用のトークン貼り付けログイン。OIDC を設定したら既定で無効(KOTONOHA_DEV_LOGIN=1 で有効)
   devLogin: process.env.KOTONOHA_DEV_LOGIN ? process.env.KOTONOHA_DEV_LOGIN === "1" : !process.env.KOTONOHA_OIDC_ISSUER,
+  // koto dev が設定する、開発用のワンクリックログイン(本番モードでは起動を拒否する)
+  devQuick: process.env.KOTONOHA_DEV_JWT_SECRET ? { secret: process.env.KOTONOHA_DEV_JWT_SECRET, caps: (process.env.KOTONOHA_DEV_CAPS ?? "").split(",").filter((c) => c) } : null,
 }).listen(port, host, () => {
   process.stdout.write(JSON.stringify({ ts: new Date().toISOString(), level: "info", msg: `web listening on http://${host}:${port}` }) + "\n");
 });

@@ -4,7 +4,15 @@
 コンパイラ `koto` は Rust で実装している。
 
 > **現状**: KOTONOHA ソースから **Backend(Node.js/TypeScript、SQLite / PostgreSQL)と Web(React SSR、OIDC ログイン)を生成し、起動して E2E テストで動作を確認済み**。
-> iOS(SwiftUI)・Android(Compose)はコードを生成し、構文検査と Android 非 UI 層のコンパイルまで確認済み(iOS のコンパイルと Compose 画面のビルドは未確認)。詳細は [docs/status.md](docs/status.md)、構成は [docs/architecture.md](docs/architecture.md)。
+> iOS(SwiftUI)・Android(Compose)はコードを生成し、CI でビルドまで確認済み(シミュレータ上の操作は未確認)。詳細は [docs/status.md](docs/status.md)、構成は [docs/architecture.md](docs/architecture.md)。
+
+## はじめての方(3 ステップ)
+```bash
+cargo build && export PATH="$PWD/target/debug:$PATH"
+koto init 教室予約 --template 予約受付     # ひな形: 予約受付 / 在庫管理 / 問い合わせ / 日報
+koto -C 教室予約 dev                       # → http://127.0.0.1:3000/ を開き「ログイン」→「名前を入れてすぐ入る」
+```
+書き方に迷ったら `koto patterns`、守られている内容は `koto safety`。詳しくは [docs/tutorial.md](docs/tutorial.md)。
 
 ## 使い方
 ```bash

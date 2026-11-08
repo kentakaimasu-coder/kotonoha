@@ -330,6 +330,14 @@ impl Ctx<'_> {
                     }
                 }
                 let mut d = Diagnostic::error(Code::AMB001, line.span, format!("「{}」を解釈できません(UNRESOLVED_INTENT)", line.text));
+                // 宣言された名前から作った正しい文のうち、書いた文に近いものを示す(書き方を例から探さなくて済むように)
+                let close = closest(&line.text, &example_sentences(self.env, self.reg, matches!(kind, LineKind::Contract)), 3);
+                if !close.is_empty() {
+                    d = d.hint(format!(
+                        "近い書き方: {}",
+                        close.iter().map(|c| format!("「{c}」")).collect::<Vec<_>>().join(" / ")
+                    ));
+                }
                 for q in &questions {
                     d = d.hint(format!("質問: {q}"));
                 }
@@ -717,3 +725,82 @@ impl Ctx<'_> {
 
 #[cfg(test)]
 mod tests;
+
+/// 宣言された名前で書ける正しい文の例(`koto patterns` と「近い書き方」の提案に使う)。
+/// contract=true なら約束の文、false なら画面の文。
+pub fn example_sentences(env: &Env, reg: &Registry, contract: bool) -> Vec<String> {
+    let mut out = Vec::new();
+    if contract {
+        for (d, info) in &env.data {
+            out.push(format!("{d}は誰でも閲覧可"));
+            out.push(format!("未認証なら{d}不可"));
+            for (f, t) in &info.fields {
+                if matches!(t, kotonoha_types::Type::Id) && f != "ID" {
+                    out.push(format!("{d}は{f}が本人のものだけ閲覧可"));
+                }
+            }
+        }
+        return out;
+    }
+    for (d, info) in &env.data {
+        out.push(format!("{d}を一覧表示"));
+        let fs: Vec<&str> = info.fields.iter().map(|(f, _)| f.as_str()).filter(|f| *f != "ID").collect();
+        if !fs.is_empty() {
+            out.push(format!("{d}の{}を表示", fs.join("と")));
+        }
+        for s in &env.screens {
+            out.push(format!("{d}を選ぶと {s} へ"));
+        }
+    }
+    for k in reg.entries.keys() {
+        out.push(format!("{k}を表示"));
+        out.push(format!("{k}を5件表示"));
+    }
+    for (a, sig) in &env.actions {
+        out.push(format!("{a}のフォームを表示"));
+        let args: Vec<String> = sig.params.iter().map(|(n, _)| n.clone()).collect();
+        out.push(format!("「{a}」を押すと {a}({})", args.join(", ")));
+    }
+    for (n, x) in &env.externals {
+        match x.kind {
+            kotonoha_ast::ExternalKind::Analysis if x.params.is_empty() => out.push(format!("{n}を表示")),
+            kotonoha_ast::ExternalKind::Component => out.push(format!(
+                "{n}({})を表示",
+                x.params.iter().map(|(p, _)| p.as_str()).collect::<Vec<_>>().join(", ")
+            )),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// 文字の 2-gram の重なり(Dice 係数)で近い順に n 件。似ていないもの(0.25 未満)は出さない。
+pub fn closest(text: &str, candidates: &[String], n: usize) -> Vec<String> {
+    fn grams(s: &str) -> Vec<(char, char)> {
+        let cs: Vec<char> = s.chars().filter(|c| !c.is_whitespace()).collect();
+        cs.windows(2).map(|w| (w[0], w[1])).collect()
+    }
+    let a = grams(text);
+    if a.is_empty() {
+        return vec![];
+    }
+    let mut scored: Vec<(u32, &String)> = candidates
+        .iter()
+        .map(|c| {
+            let b = grams(c);
+            let mut used = vec![false; b.len()];
+            let mut hit = 0;
+            for g in &a {
+                if let Some(i) = b.iter().enumerate().position(|(i, x)| !used[i] && x == g) {
+                    used[i] = true;
+                    hit += 1;
+                }
+            }
+            let score = (2 * hit * 1000 / (a.len() + b.len()).max(1)) as u32;
+            (score, c)
+        })
+        .filter(|(s, _)| *s >= 250)
+        .collect();
+    scored.sort_by(|x, y| y.0.cmp(&x.0).then(x.1.cmp(y.1)));
+    scored.into_iter().take(n).map(|(_, c)| c.clone()).collect()
+}
