@@ -31,6 +31,8 @@ pub enum Access {
     Caps(Vec<Capability>),
     /// 認証済みの本人の行だけ(約束 C-OWNER)
     Owner,
+    /// 認証済みで、名前で指定した権限・許可をすべて保持していること(本人限定データの分析: 全件閲覧.データ名)
+    Named(Vec<String>),
 }
 
 impl Access {
@@ -40,6 +42,7 @@ impl Access {
             Access::Public => json!({"public": true, "capabilities": []}),
             Access::Caps(c) => json!({"public": false, "capabilities": c.iter().map(|x| x.vag()).collect::<Vec<_>>()}),
             Access::Owner => json!({"public": false, "capabilities": []}),
+            Access::Named(c) => json!({"public": false, "capabilities": c}),
         };
         if let Some(g) = grant {
             v["grant"] = json!(g);
@@ -380,6 +383,13 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
     for a in &inp.ext.analyses {
         let access = if a.tables.iter().all(|t| policy.public_read.contains(t)) {
             Access::Public
+        } else if a.tables.iter().any(|t| policy.owner_read.contains_key(t)) {
+            // 本人限定のデータを含む分析は、全員の行を見てよい人(許可 全件閲覧.データ名)だけ
+            let mut v: Vec<String> = a.tables.iter().map(|t| Capability::new(t, Verb::Read).vag()).collect();
+            for t in a.tables.iter().filter(|t| policy.owner_read.contains_key(*t)) {
+                v.push(format!("全件閲覧.{t}"));
+            }
+            Access::Named(v)
         } else {
             Access::Caps(a.tables.iter().map(|t| Capability::new(t, Verb::Read)).collect())
         };
@@ -539,20 +549,6 @@ pub fn check_ir(ir: &AppIr) -> Vec<Diagnostic> {
                     spec.name, spec.source
                 ),
             ));
-        }
-    }
-    for a in &ir.ext.analyses {
-        for t in &a.tables {
-            if ir.policy.owner_read.contains_key(t) {
-                d.push(Diagnostic::error(
-                    Code::TGT001,
-                    Span::default(),
-                    format!(
-                        "分析 {} は本人限定のデータ {t} を読みます。行レベル認可と任意 SQL の関係が未定義のため生成できません(ADR-0118)",
-                        a.name
-                    ),
-                ));
-            }
         }
     }
     for a in &ir.actions {

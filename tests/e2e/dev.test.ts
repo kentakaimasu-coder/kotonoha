@@ -37,7 +37,7 @@ test("ひな形 → koto dev → 名前を入れてすぐ入る → 予約 → �
   assert.equal(await page.textContent("h1"), "枠一覧");
   await page.click("text=ログイン");
   await page.fill("#dev-name", "花子");
-  await page.click("text=この名前で入る");
+  await page.click("text=一般の利用者として入る");
   await page.waitForURL(/\/s\//);
   assert.match((await page.textContent("header"))!, /ログイン中/);
   await page.click("text=午後の回");

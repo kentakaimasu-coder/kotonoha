@@ -311,18 +311,19 @@ export function zonedToIso(local: string, tz: string): string | null {
   return Number.isNaN(t) ? null : new Date(t).toISOString();
 }
 
-export function ActionForm(p: { action: string; fields: Field[]; reload: () => Promise<void>; tz?: string }) {
+export function ActionForm(p: { action: string; fields: Field[]; reload: () => Promise<void>; tz?: string; fixed?: Record<string, unknown> | null }) {
   const [m, setM] = useMessage();
   const [busy, setBusy] = React.useState(false);
   const formId = "form-" + p.action;
   const onSubmit = async (ev: any) => {
     ev.preventDefault();
     const form = ev.currentTarget as HTMLFormElement;
-    const v = readForm(form, p.fields, p.tz ?? "Asia/Tokyo");
+    const v = readForm(form, p.fields.filter((f) => !(p.fixed && f.name in p.fixed)), p.tz ?? "Asia/Tokyo");
     if (typeof v === "string") return setM({ kind: "error", text: v });
     setBusy(true);
     try {
-      const r = await callApi("POST", "/api/actions/" + enc(p.action), v);
+      // 詳細画面のフォームでは、表示中のデータの ID を自動で入れる(利用者に ID を打たせない)
+      const r = await callApi("POST", "/api/actions/" + enc(p.action), { ...v, ...(p.fixed ?? {}) });
       if (r.ok) {
         setM({ kind: "ok", text: okText(p.action, r) });
         form.reset();
@@ -340,7 +341,7 @@ export function ActionForm(p: { action: string; fields: Field[]; reload: () => P
     "form",
     { className: "form", onSubmit, onKeyDown, "aria-labelledby": formId + "-title" },
     h("h2", { id: formId + "-title" }, p.action),
-    p.fields.map((f) => h("div", { className: "field", key: f.name }, h("label", { htmlFor: `${formId}-${f.name}` }, f.name, isDatetime(f.type) ? `(${tzLabel(p.tz ?? "Asia/Tokyo")})` : null), inputFor(f, `${formId}-${f.name}`))),
+    p.fields.filter((f) => !(p.fixed && f.name in p.fixed)).map((f) => h("div", { className: "field", key: f.name }, h("label", { htmlFor: `${formId}-${f.name}` }, f.name, isDatetime(f.type) ? `(${tzLabel(p.tz ?? "Asia/Tokyo")})` : null), inputFor(f, `${formId}-${f.name}`))),
     h("button", { type: "submit", disabled: busy }, "送信"),
     h(MessageView, { m }),
   );

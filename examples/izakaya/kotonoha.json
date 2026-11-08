@@ -1,0 +1,5 @@
+{
+  "name": "居酒屋 はなまる",
+  "sources": ["src/app.koto"],
+  "targets": ["web", "backend", "ios", "android"]
+}

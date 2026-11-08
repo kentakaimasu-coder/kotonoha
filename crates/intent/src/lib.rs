@@ -395,6 +395,14 @@ impl Ctx<'_> {
                 Match::NoMatch(vec![format!("「{d}」はデータとして定義されていません。どのデータを指しますか")])
             };
         }
+        // 「未認証なら{D}不可」と同じ意味の、普段の言い回し(ペルソナ評価で求められた)
+        if let Some(d) = s.strip_suffix("はログインした人だけ閲覧可").or_else(|| s.strip_suffix("はログインした人だけ")) {
+            return if self.env.data.contains_key(d) {
+                Match::Ok(IntentKind::AuthRequired { data: d.into() })
+            } else {
+                Match::NoMatch(vec![format!("「{d}」はデータとして定義されていません。どのデータを指しますか")])
+            };
+        }
         if let Some(d) = s.strip_prefix("未認証なら").and_then(|x| x.strip_suffix("不可")) {
             return if self.env.data.contains_key(d) {
                 Match::Ok(IntentKind::AuthRequired { data: d.into() })
@@ -404,7 +412,7 @@ impl Ctx<'_> {
         }
         let _ = span;
         Match::NoMatch(vec![
-            "約束の文型は「{データ}は誰でも閲覧可」「未認証なら{データ}不可」「{データ}は{フィールド}が本人のものだけ閲覧可」です".into(),
+            "約束の文型は「{データ}は誰でも閲覧可」「{データ}はログインした人だけ閲覧可」(=「未認証なら{データ}不可」)「{データ}は{フィールド}が本人のものだけ閲覧可」です".into(),
             "この約束が守るべきデータ・操作・主体(本人/組織/役割)を具体的に指定してください".into(),
         ])
     }
@@ -733,7 +741,7 @@ pub fn example_sentences(env: &Env, reg: &Registry, contract: bool) -> Vec<Strin
     if contract {
         for (d, info) in &env.data {
             out.push(format!("{d}は誰でも閲覧可"));
-            out.push(format!("未認証なら{d}不可"));
+            out.push(format!("{d}はログインした人だけ閲覧可"));
             for (f, t) in &info.fields {
                 if matches!(t, kotonoha_types::Type::Id) && f != "ID" {
                     out.push(format!("{d}は{f}が本人のものだけ閲覧可"));

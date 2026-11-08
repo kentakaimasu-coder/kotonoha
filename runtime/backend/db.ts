@@ -440,11 +440,14 @@ export function principalId(ctx: Ctx): string {
   return ctx.principal.sub;
 }
 
-/** 本人の行だけに絞る条件(対象外のデータなら空)。主体がいなければ何も見せない。 */
+/** 本人の行だけに絞る条件(対象外のデータなら空)。主体がいなければ何も見せない。
+ *  ただし許可 `全件閲覧.データ名` を持つ主体には絞らない。 */
 function ownerCond(ctx: Ctx, table: string): { sql: string; params: unknown[] } {
   const f = ctx.owners[table];
   if (f === undefined) return { sql: "", params: [] };
   if (ctx.principal === null) return { sql: " AND 1 = 0", params: [] };
+  // 許可 `全件閲覧.データ名` を持つ人(厨房・管理者など)は全員の行を扱える(ADR-0118 追補)
+  if (ctx.principal.caps.has(`全件閲覧.${table}`)) return { sql: "", params: [] };
   return { sql: ` AND ${q(f)} = ?`, params: [ctx.principal.sub] };
 }
 

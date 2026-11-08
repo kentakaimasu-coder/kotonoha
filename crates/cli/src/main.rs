@@ -20,6 +20,8 @@ const USAGE: &str = "使い方: koto [-C <dir>] [--json] <command> [args]
   dev [--port 3000] [--no-start]  開発用に生成して起動(seed.json があれば初期データも入れる。画面と API は同じポート)
   patterns                        画面・約束に書ける文の一覧(宣言した名前で具体的に表示)
   safety                          生成されるアプリに自動で入る安全対策と、API ごとの公開範囲を表示
+  token --sub 名前 [--admin | --caps 権限,…]
+                                  koto dev で動かしているアプリ用の動作確認トークンを作る(curl などで Authorization: Bearer に使う)
   fmt [--check] [--zenkaku]       ソースのテキスト正規化(NFC・LF・行末空白)。--zenkaku で全角英数記号を半角に
   check                           字句/構文/型/知識/意図/効果を検査
   resolve [--adapter offline|fixture] [--fixture file]
@@ -140,6 +142,7 @@ fn run(mut o: Opts) -> i32 {
         "dev" => cmd_dev(&mut o),
         "patterns" => cmd_patterns(&mut o),
         "safety" => cmd_safety(&mut o),
+        "token" => cmd_token(&mut o),
         "fmt" => cmd_fmt(&mut o),
         "check" => cmd_check(&mut o),
         "resolve" => cmd_resolve(&mut o),
@@ -292,6 +295,10 @@ fn all_caps(api: &serde_json::Value) -> Vec<String> {
         if let Some(g) = e["access"]["grant"].as_str() {
             caps.insert(g.to_string());
         }
+        // 本人限定のデータは、開発用の管理者として入れば全員の行を見られるように
+        if let Some(o) = e["access"]["owner"].as_str() {
+            caps.insert(format!("全件閲覧.{o}"));
+        }
     }
     caps.into_iter().collect()
 }
@@ -301,7 +308,7 @@ fn safety_text(api: &serde_json::Value) -> String {
     let mut s = String::from("自動で入っている安全対策:\n");
     for line in [
         "ログイン(JWT)の検証と、権限の無い操作の拒否(何も書かなければ拒否)",
-        "「本人のものだけ閲覧可」と書いたデータは、本人の行だけを返す",
+        "「本人のものだけ閲覧可」と書いたデータは、本人の行だけを返す(許可 全件閲覧.データ名 を持つ人だけは全員分)",
         "取引: の中の更新はまとめて行い、失敗したら元に戻す(同時の更新でも数が合う)",
         "入力の型・長さの検査(合わない入力は 400)",
         "画面の文字は自動でエスケープ(スクリプトの埋め込みを防ぐ)、CSP などのセキュリティヘッダ",
@@ -353,7 +360,14 @@ fn cmd_safety(o: &mut Opts) -> Result<i32, String> {
         Ok(x) => x,
         Err(c) => return Ok(c),
     };
-    let b = drv::build_target(&p, &a, "backend").map_err(|d| d.iter().map(|x| x.message_ja.clone()).collect::<Vec<_>>().join("\n"))?;
+    let b = match drv::build_target(&p, &a, "backend") {
+        Ok(b) => b,
+        Err(d) => {
+            let mut ds = a.diags.clone();
+            ds.extend(d);
+            return Ok(report(o, &ds, json!({})));
+        }
+    };
     let api: serde_json::Value = serde_json::from_str(&b.files.iter().find(|f| f.0 == "api.json").unwrap().1).unwrap();
     print!("{}", safety_text(&api));
     Ok(0)
@@ -390,6 +404,45 @@ fn run_cmd(cmd: &mut std::process::Command, what: &str) -> Result<(), String> {
     } else {
         Err(format!("{what} に失敗しました(終了コード {:?})", st.code()))
     }
+}
+
+/// `koto token`: koto dev の秘密で、動作確認用のトークンを作る
+fn cmd_token(o: &mut Opts) -> Result<i32, String> {
+    let sub = take_value(&mut o.args, "--sub")?.ok_or("--sub 名前 が必要です(例: koto token --sub 花子)")?;
+    let admin = take_flag(&mut o.args, "--admin");
+    let caps_arg = take_value(&mut o.args, "--caps")?;
+    no_extra(&o.args)?;
+    let dev = o.dir.join(".koto").join("dev");
+    let secret = std::fs::read_to_string(dev.join("secret")).map_err(|_| "先に koto dev を一度実行してください(開発用の秘密がまだありません)".to_string())?;
+    let caps = match caps_arg {
+        Some(c) => c,
+        None => {
+            let api: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(dev.join("backend/api.json")).map_err(|e| e.to_string())?).unwrap_or_default();
+            all_caps(&api)
+                .into_iter()
+                .filter(|c| admin || !c.starts_with("全件閲覧."))
+                .collect::<Vec<_>>()
+                .join(",")
+        }
+    };
+    let out = std::process::Command::new("node")
+        .args(["--no-warnings", "tools/dev-token.ts", "--sub", &sub, "--caps", &caps, "--ttl", "43200"])
+        .env("KOTONOHA_JWT_SECRET", secret.trim())
+        .current_dir(dev.join("backend"))
+        .output()
+        .map_err(|e| format!("node を実行できません: {e}"))?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).into_owned());
+    }
+    print!("{}", String::from_utf8_lossy(&out.stdout));
+    if !o.json {
+        eprintln!(
+            "({sub} として{}。12 時間有効。使い方: curl -H \"Authorization: Bearer <この文字列>\" …)",
+            if admin { "管理者(全件閲覧あり)" } else { "一般の利用者" }
+        );
+    }
+    Ok(0)
 }
 
 /// `koto dev`: 検査 → backend と web を生成 → 初期データ → 起動(画面と API は同じポート)
@@ -472,15 +525,23 @@ fn cmd_dev(o: &mut Opts) -> Result<i32, String> {
     let entry = api["entry_screen"].as_str().unwrap_or("");
     eprintln!("\n準備ができました。");
     eprintln!("  画面:   http://127.0.0.1:{port}/   (最初の画面: {entry})");
-    eprintln!("  ログイン: 画面右上の「ログイン」→「開発用: 名前を入れてすぐ入る」");
+    eprintln!("  ログイン: 画面右上の「ログイン」→ 名前を入れて「一般の利用者として入る」か「管理者として入る」");
     eprintln!("  API:    http://127.0.0.1:{port}/api/…  (Authorization: Bearer で呼べます)");
+    eprintln!(
+        "  動作確認のトークン: koto -C {} token --sub 花子 [--admin]   (koto dev 専用の秘密で作ります)",
+        o.dir.display()
+    );
     eprintln!("  データ: {}(消すと空からやり直せます)", db.display());
     eprintln!("  止めるとき: Ctrl+C\n");
     eprint!("{}", safety_text(&api));
     if no_start {
         return Ok(0);
     }
-    let bport = port.checked_add(1).ok_or("--port が大きすぎます")?;
+    // backend のポートは OS に空きを選ばせる(port+1 だと使用中や、ブラウザの fetch が禁止するポート(4045 など)に当たることがある)
+    let bport = std::net::TcpListener::bind(("127.0.0.1", 0))
+        .and_then(|l| l.local_addr())
+        .map(|a| a.port())
+        .map_err(|e| format!("空きポートを探せません: {e}"))?;
     let mut backend = std::process::Command::new("node")
         .args(["--no-warnings", "src/main.ts"])
         .env("PORT", bport.to_string())
@@ -508,7 +569,7 @@ fn cmd_dev(o: &mut Opts) -> Result<i32, String> {
         if b.is_some() || w.is_some() {
             let _ = backend.kill();
             let _ = webp.kill();
-            eprintln!("サーバーが止まりました(ポート {port} / {bport} が使用中でないか確認してください。--port で変えられます)");
+            eprintln!("サーバーが止まりました(ポート {port} が使用中でないか確認してください。--port で変えられます)");
             return Ok(1);
         }
     }

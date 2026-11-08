@@ -216,7 +216,9 @@ export function createApp(app: App, db: Database, env: NodeJS.ProcessEnv = proce
           const denied = missing.length > 0 || (a.capabilities.length === 0 && a.grant !== undefined);
           if (denied) {
             audit({ event: "forbidden", trace_id: traceId, sub, route: m.route.id });
-            throw new HttpError(403, "forbidden", `権限がありません: ${[a.grant, ...missing].filter((x) => x).join(" または ")}`);
+            const need = missing.length > 0 ? `${missing.join(" と ")} が必要です` : "";
+            const alt = a.grant ? `(または許可 ${a.grant} があれば、これだけで足ります)` : "";
+            throw new HttpError(403, "forbidden", `権限がありません。${need || `許可 ${a.grant} が必要です`}${need ? alt : ""}`);
           }
         }
       }

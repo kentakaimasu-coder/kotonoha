@@ -302,8 +302,24 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                 }
                 Component::Form { action, params } => {
                     let fs: Vec<Value> = params.iter().map(|(n, t)| field_desc(ir, n, t)).collect();
+                    // 詳細画面(入力データ D がある画面)のフォームで、引数「DID」(識別子)は表示中の D の ID を自動で入れる
+                    let fixed = match &s.input {
+                        Some(d) => params
+                            .iter()
+                            .find(|(n, t)| *n == format!("{d}ID") && matches!(t, Type::Id))
+                            .map(|(n, _)| {
+                                format!(
+                                    "(p.data[{}]?.ok ? {{ {}: p.data[{}].body[\"ID\"] }} : null)",
+                                    js_str(&format!("get:{d}")),
+                                    js_str(n),
+                                    js_str(&format!("get:{d}"))
+                                )
+                            })
+                            .unwrap_or_else(|| "null".into()),
+                        None => "null".into(),
+                    };
                     body.push(format!(
-                        "h(ActionForm, {{ key: {ci}, action: {}, fields: {}, reload: p.reload, tz: p.tz }})",
+                        "h(ActionForm, {{ key: {ci}, action: {}, fields: {}, reload: p.reload, tz: p.tz, fixed: {fixed} }})",
                         js_str(action),
                         serde_json::to_string(&fs).unwrap()
                     ));

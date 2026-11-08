@@ -126,10 +126,12 @@ export function createWebServer(
   const devLogin = opts.devLogin ?? oidc === null;
   // 開発用のワンクリックログイン(koto dev が設定する)。名前を入れるだけで、アプリの全権限を持つ利用者として入れる
   const devQuick = devLogin && opts.devQuick && opts.devQuick.secret.length >= 32 ? opts.devQuick : null;
-  const devToken = (sub: string) => {
+  const devToken = (sub: string, admin: boolean) => {
     const b = (x: unknown) => Buffer.from(JSON.stringify(x)).toString("base64url");
     const now = Math.floor(Date.now() / 1000);
-    const head = `${b({ alg: "HS256", typ: "JWT" })}.${b({ sub, caps: devQuick!.caps, iat: now, exp: now + 12 * 3600 })}`;
+    // 一般の利用者は「本人のものだけ」のデータを本人の分だけ見る。管理者は全件閲覧の許可も持つ
+    const caps = admin ? devQuick!.caps : devQuick!.caps.filter((c) => !c.startsWith("全件閲覧."));
+    const head = `${b({ alg: "HS256", typ: "JWT" })}.${b({ sub, caps, iat: now, exp: now + 12 * 3600 })}`;
     return `${head}.${createHmac("sha256", devQuick!.secret).update(head).digest("base64url")}`;
   };
   let discovery: { authorization_endpoint: string; token_endpoint: string } | null = null;
@@ -281,7 +283,7 @@ export function createWebServer(
           res.writeHead(400, securityHeaders({ "Content-Type": "text/plain; charset=utf-8" }));
           return res.end("名前は 64 文字以内にしてください");
         }
-        res.writeHead(303, securityHeaders({ Location: "/", "Set-Cookie": `${COOKIE}=${devToken(name)}; HttpOnly; SameSite=Strict; Path=/${secure}` }));
+        res.writeHead(303, securityHeaders({ Location: "/", "Set-Cookie": `${COOKIE}=${devToken(name, form.get("role") === "admin")}; HttpOnly; SameSite=Strict; Path=/${secure}` }));
         return res.end();
       }
       if (url.pathname === "/login") {
@@ -304,7 +306,7 @@ export function createWebServer(
         return res.end(
           page(
             "ログイン",
-            `<section class="page"><h1>ログイン</h1>${oidc ? `<p><a class="button" href="/login/oidc">認証基盤でログイン</a></p>` : ""}${devQuick ? `<form method="post" action="/login/dev" class="form"><h2>開発用: 名前を入れてすぐ入る</h2><p>アプリのすべての権限を持つ利用者として入ります(開発中だけの機能です)。別の名前で入ると別の人として扱われます。</p><div class="field"><label for="dev-name">名前</label><input id="dev-name" name="name" value="開発者" maxlength="64" autocomplete="off"></div><button type="submit">この名前で入る</button></form>` : ""}${devLogin ? `<p>開発用: 発行済みのトークンを入力してログインします。</p><form method="post" action="/login"><div class="field"><label for="token">トークン</label><input id="token" name="token" type="password" required autocomplete="off"></div><button type="submit">ログイン</button></form>` : ""}<form method="post" action="/logout"><button type="submit">ログアウト</button></form></section>`,
+            `<section class="page"><h1>ログイン</h1>${oidc ? `<p><a class="button" href="/login/oidc">認証基盤でログイン</a></p>` : ""}${devQuick ? `<form method="post" action="/login/dev" class="form"><h2>開発用: 名前を入れてすぐ入る</h2><p>開発中だけの機能です。別の名前で入ると別の人として扱われます。「本人のものだけ閲覧可」のデータは、一般の利用者なら自分の分だけ、管理者なら全員の分が見えます。</p><div class="field"><label for="dev-name">名前</label><input id="dev-name" name="name" value="開発者" maxlength="64" autocomplete="off"></div><button type="submit" name="role" value="user">一般の利用者として入る</button> <button type="submit" name="role" value="admin">管理者として入る</button></form>` : ""}${devLogin ? `<p>開発用: 発行済みのトークンを入力してログインします。</p><form method="post" action="/login"><div class="field"><label for="token">トークン</label><input id="token" name="token" type="password" required autocomplete="off"></div><button type="submit">ログイン</button></form>` : ""}<form method="post" action="/logout"><button type="submit">ログアウト</button></form></section>`,
             null,
           ),
         );
@@ -343,7 +345,9 @@ export function createWebServer(
       const links = app.nav.map((n) => `<li><a href="/s/${encodeURIComponent(n)}">${escHtml(n)}</a></li>`).join("");
       res.end(page("見つかりません", `<section class="page"><h1>見つかりません</h1><p>画面の URL は <code>/s/画面名</code> の形です。</p><ul>${links}</ul><a href="/">トップへ</a></section>`, null));
     } catch (e) {
-      process.stdout.write(JSON.stringify({ ts: new Date().toISOString(), level: "error", trace_id: traceId, msg: String((e as Error)?.stack ?? e) }) + "\n");
+      // fetch の失敗は原因(cause: 接続拒否・禁止ポートなど)まで記録する
+      const cause = (e as { cause?: unknown })?.cause;
+      process.stdout.write(JSON.stringify({ ts: new Date().toISOString(), level: "error", trace_id: traceId, msg: String((e as Error)?.stack ?? e), cause: cause ? String((cause as Error)?.message ?? cause) : undefined }) + "\n");
       if (!res.headersSent) res.writeHead(500, securityHeaders({ "Content-Type": "text/plain; charset=utf-8" }));
       res.end("内部エラー");
     }

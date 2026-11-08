@@ -417,7 +417,12 @@ impl<'e> Checker<'e> {
     /// 式の型を求める。`expected` はリテラルの型付け(文字列→列挙、なし→選択)にだけ使う。
     pub fn expr(&mut self, e: &Expr, expected: Option<&Type>) -> Type {
         match &e.kind {
-            ExprKind::Int(_) => self.lift(Type::Int, expected),
+            // 金額が期待される所の整数リテラルは、その通貨の金額(例: `価格 > 0`、`3000 を返す`)
+            ExprKind::Int(_) => match expected {
+                Some(Type::Money(c)) => Type::Money(c.clone()),
+                Some(Type::Option(t)) if matches!(t.as_ref(), Type::Money(_)) => expected.unwrap().clone(),
+                _ => self.lift(Type::Int, expected),
+            },
             ExprKind::Decimal(_) => self.lift(Type::Decimal, expected),
             ExprKind::Bool(_) => self.lift(Type::Bool, expected),
             ExprKind::Str(s) => {
@@ -459,6 +464,15 @@ impl<'e> Checker<'e> {
                     let mut d = self.err(Code::REF001, e.span, format!("`{n}` は定義されていません"));
                     if let Some(kw) = kotonoha_lexer_suffix(n) {
                         d = d.hint(format!("`{} {kw}` のように空白で区切る必要があるかもしれません", &n[..n.len() - kw.len()]));
+                    } else if let Some((en, _)) = self.env.enums.iter().find(|(_, vs)| vs.iter().any(|v| v == n)) {
+                        d = d.hint(format!("列挙 {en} の値は文字列で書きます: \"{n}\""));
+                    } else if let Some(vs) = self.env.enums.get(n) {
+                        // `返事.参加` のように書いた場合(ペルソナ評価で多かった間違い)
+                        d = d.hint(format!(
+                            "`{n}` は列挙の型名です。列挙の値は文字列で書きます(例: \"{}\")。使える値: {}",
+                            vs.first().cloned().unwrap_or_default(),
+                            vs.join(" / ")
+                        ));
                     } else if self.env.is_type_name(n) {
                         d = d.hint(format!("`{n}` は型名です。値として使うには変数を定義してください"));
                     }

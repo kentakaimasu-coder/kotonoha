@@ -56,7 +56,7 @@ jobs:
         working-directory: tests/e2e
       - run: npx playwright install --with-deps chromium
         working-directory: tests/e2e
-      - run: node --no-warnings --test tests/e2e/backend.test.ts tests/e2e/backend_security.test.ts tests/e2e/postgres.test.ts tests/e2e/web.test.ts tests/e2e/oidc.test.ts tests/e2e/extensions.test.ts tests/e2e/event_app.test.ts tests/e2e/dev.test.ts
+      - run: node --no-warnings --test tests/e2e/backend.test.ts tests/e2e/backend_security.test.ts tests/e2e/postgres.test.ts tests/e2e/web.test.ts tests/e2e/oidc.test.ts tests/e2e/extensions.test.ts tests/e2e/event_app.test.ts tests/e2e/dev.test.ts tests/e2e/izakaya_app.test.ts
       - run: ./target/debug/koto -C examples/shop test
       - run: ./target/debug/koto -C examples/lab test
       - run: ./target/debug/koto -C examples/event test
@@ -74,7 +74,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        example: [shop, lab, event]   # lab: 拡張部品(Kotlin)・分析・実験 / event: 実際に作ったアプリ(日時入力を含む)
+        example: [shop, lab, event, izakaya]   # lab: 拡張部品(Kotlin)・分析・実験 / event: 実際に作ったアプリ(日時入力を含む)
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -97,7 +97,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        example: [shop, lab, event]   # lab: 拡張部品(Swift)・分析・実験 / event: 実際に作ったアプリ(日時入力を含む)
+        example: [shop, lab, event, izakaya]   # lab: 拡張部品(Swift)・分析・実験 / event: 実際に作ったアプリ(日時入力を含む)
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
