@@ -26,7 +26,7 @@ fn shop_intents_resolve() {
     assert!(d.is_empty(), "{d:#?}");
     let list = &m.screens[0];
     assert_eq!(list.name, "商品一覧");
-    assert!(matches!(&list.intents[0].kind, IntentKind::ListData { data } if data == "商品"));
+    assert!(matches!(&list.intents[0].kind, IntentKind::ListData { data, .. } if data == "商品"));
     assert!(matches!(&list.intents[1].kind, IntentKind::NavigateOnSelect { data, screen } if data == "商品" && screen == "商品詳細"));
     let detail = &m.screens[1];
     assert_eq!(detail.input.as_deref(), Some("商品"));
@@ -149,4 +149,73 @@ fn owner_contract_requires_id_or_string_field() {
     assert_eq!(codes(&run(&s, &[]).1), [Code::TYP001]);
     let s = SHOP.replace("注文は注文者が本人のものだけ閲覧可", "注文は担当者が本人のものだけ閲覧可");
     assert_eq!(codes(&run(&s, &[]).1), [Code::REF001]);
+}
+
+const IZAKAYA: &str = "アプリ「店」\n\n列挙 注文状態:\n    調理中\n    提供済み\n\nデータ 注文:\n    ID: 識別子\n    卓: 識別子\n    品名: 文字列\n    数量: 整数\n    急ぎ: 真偽\n    状態: 注文状態\n    注文日時: 日時\n\n";
+
+fn list_of(lines: &str) -> (Vec<IntentKind>, Vec<Code>) {
+    let src = format!("{IZAKAYA}画面 一覧:\n{lines}");
+    let (m, d) = run(&src, &[]);
+    (m.screens[0].intents.iter().map(|i| i.kind.clone()).collect(), codes(&d))
+}
+
+#[test]
+fn list_order_and_filters() {
+    let (k, c) = list_of("    注文を注文日時の新しい順に一覧表示\n    注文のうち状態が調理中かつ数量が2のものを数量順に一覧表示\n    注文のうち注文日時が今日のものを一覧表示\n    注文のうち状態が提供済みでないかつ卓が本人かつ急ぎが真のものを一覧表示\n");
+    assert!(c.is_empty(), "{c:?}");
+    let IntentKind::ListData { order, filters, .. } = &k[0] else { panic!() };
+    assert_eq!(
+        order,
+        &Some(ListOrder {
+            field: "注文日時".into(),
+            desc: true,
+            label: "注文日時の新しい".into()
+        })
+    );
+    assert!(filters.is_empty());
+    let IntentKind::ListData { order, filters, .. } = &k[1] else { panic!() };
+    assert_eq!(
+        order,
+        &Some(ListOrder {
+            field: "数量".into(),
+            desc: false,
+            label: "数量".into()
+        })
+    );
+    assert_eq!(
+        list_query(order, filters),
+        vec![
+            ("eq.状態".to_string(), "調理中".to_string()),
+            ("eq.数量".to_string(), "2".to_string()),
+            ("order".to_string(), "数量".to_string()),
+        ]
+    );
+    let IntentKind::ListData { filters, .. } = &k[2] else { panic!() };
+    assert_eq!(filters[0].op, FilterOp::Today);
+    let IntentKind::ListData { filters, .. } = &k[3] else { panic!() };
+    assert_eq!(filters.iter().map(|f| f.op).collect::<Vec<_>>(), vec![FilterOp::Ne, FilterOp::Me, FilterOp::Eq]);
+    assert_eq!(filters[2].value.as_deref(), Some("true"));
+    assert_eq!(list_caption("注文", &None, filters), "注文の一覧(状態が提供済みでない・卓が自分・急ぎが真)");
+    let IntentKind::ListData { order, filters, .. } = &k[0] else { panic!() };
+    assert_eq!(list_caption("注文", order, filters), "注文の一覧(注文日時の新しい順)");
+}
+
+#[test]
+fn list_filter_errors_are_reported() {
+    for (line, code) in [
+        ("注文のうち状態が壊れたのものを一覧表示", Code::TYP001),
+        ("注文のうち色が赤のものを一覧表示", Code::REF001),
+        ("注文を色順に一覧表示", Code::REF001),
+        ("注文のうち品名が今日のものを一覧表示", Code::TYP001),
+        ("注文のうち数量が多いのものを一覧表示", Code::TYP001),
+        ("注文のうち数量が本人のものを一覧表示", Code::TYP001),
+        ("注文のうち調理中のものを一覧表示", Code::SYN001),
+        ("注文のうち注文日時が2026-12-05のものを一覧表示", Code::TYP001),
+    ] {
+        let (_, c) = list_of(&format!("    {line}\n"));
+        assert_eq!(c, vec![code], "{line}");
+    }
+    // 知らないデータは未解決(推測しない)
+    let (_, c) = list_of("    会計のうち状態が調理中のものを一覧表示\n");
+    assert_eq!(c, vec![Code::AMB001]);
 }

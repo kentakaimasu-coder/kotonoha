@@ -27,9 +27,16 @@ pub enum Mode {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "pattern")]
 pub enum IntentKind {
-    /// P-LIST `{データ}を一覧表示`
+    /// P-LIST `{データ}を一覧表示`。並べ替え `{データ}を{フィールド}(の新しい)順に一覧表示` と
+    /// 絞り込み `{データ}のうち{条件}(かつ{条件})*のものを…一覧表示` を付けられる(ADR-0128)
     #[serde(rename = "list")]
-    ListData { data: String },
+    ListData {
+        data: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        order: Option<ListOrder>,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        filters: Vec<ListFilter>,
+    },
     /// P-FIELDS `{データ}の{フィールド}(と{フィールド})*を表示`
     #[serde(rename = "show_fields")]
     ShowFields { data: String, fields: Vec<String> },
@@ -74,6 +81,94 @@ pub enum IntentKind {
     /// C-AUTH `未認証なら{データ}不可`
     #[serde(rename = "auth_required")]
     AuthRequired { data: String },
+}
+
+/// 一覧の並べ替え(ADR-0128)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ListOrder {
+    pub field: String,
+    pub desc: bool,
+    /// 書かれた言い方(「注文日時の新しい」)。見出しに使う
+    #[serde(skip)]
+    pub label: String,
+}
+
+/// 一覧の絞り込み条件の種類
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FilterOp {
+    /// `{フィールド}が{値}`
+    Eq,
+    /// `{フィールド}が{値}でない`
+    Ne,
+    /// `{フィールド}が今日`(日時・日付。アプリの時刻帯の暦日)
+    Today,
+    /// `{フィールド}が本人`(識別子・文字列。ログイン中の人)
+    Me,
+}
+
+/// 一覧の絞り込み(ADR-0128)。値は JSON の表記(数値・真偽・文字列)で持つ
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ListFilter {
+    pub field: String,
+    pub op: FilterOp,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+}
+
+impl ListFilter {
+    /// 一覧 API のクエリ(`eq.状態=調理中` など)
+    pub fn query(&self) -> (String, String) {
+        let op = match self.op {
+            FilterOp::Eq => "eq",
+            FilterOp::Ne => "ne",
+            FilterOp::Today => "today",
+            FilterOp::Me => "me",
+        };
+        (format!("{op}.{}", self.field), self.value.clone().unwrap_or_else(|| "1".into()))
+    }
+}
+
+/// 一覧 API に付けるクエリ(順序固定)
+pub fn list_query(order: &Option<ListOrder>, filters: &[ListFilter]) -> Vec<(String, String)> {
+    let mut q: Vec<(String, String)> = filters.iter().map(|f| f.query()).collect();
+    if let Some(o) = order {
+        q.push(("order".into(), o.field.clone()));
+        if o.desc {
+            q.push(("desc".into(), "1".into()));
+        }
+    }
+    q
+}
+
+fn shown(v: Option<&str>) -> &str {
+    match v {
+        Some("true") => "真",
+        Some("false") => "偽",
+        Some(x) => x,
+        None => "",
+    }
+}
+
+/// 一覧の説明(「注文(状態が調理中・注文日時の新しい順)」)
+pub fn list_caption(data: &str, order: &Option<ListOrder>, filters: &[ListFilter]) -> String {
+    let mut parts: Vec<String> = filters
+        .iter()
+        .map(|f| match f.op {
+            FilterOp::Eq => format!("{}が{}", f.field, shown(f.value.as_deref())),
+            FilterOp::Ne => format!("{}が{}でない", f.field, shown(f.value.as_deref())),
+            FilterOp::Today => format!("{}が今日", f.field),
+            FilterOp::Me => format!("{}が自分", f.field),
+        })
+        .collect();
+    if let Some(o) = order {
+        parts.push(format!("{}順", o.label));
+    }
+    if parts.is_empty() {
+        format!("{data}の一覧")
+    } else {
+        format!("{data}の一覧({})", parts.join("・"))
+    }
 }
 
 fn ser_args<S: serde::Serializer>(a: &[Expr], s: S) -> Result<S::Ok, S::Error> {
@@ -476,12 +571,11 @@ impl Ctx<'_> {
                 });
             }
         }
-        // P-LIST
-        if let Some(d) = s.strip_suffix("を一覧表示") {
-            if self.env.data.contains_key(d) {
-                return Match::Ok(IntentKind::ListData { data: d.into() });
+        // P-LIST(並べ替え・絞り込み付きを含む)
+        if let Some(rest) = s.strip_suffix("一覧表示") {
+            if let Some(m) = self.match_list(rest, span) {
+                return m;
             }
-            return Match::NoMatch(vec![format!("「{d}」はデータとして定義されていません。どのデータの一覧ですか")]);
         }
         // P-KNOWLEDGE(件数上書き)
         if let Some(stem) = s.strip_suffix("件表示") {
@@ -589,6 +683,185 @@ impl Ctx<'_> {
     }
 
     /// `{データ}の…` のデータ名を最長一致で取り出す。
+    /// `…一覧表示` の前半を照合する。一覧の文でなければ None。
+    fn match_list(&self, rest: &str, span: Span) -> Option<Match> {
+        let (target, order_text) = if let Some(x) = rest.strip_suffix("順に") {
+            let (t, o) = x.rsplit_once('を')?;
+            (t, Some(o))
+        } else {
+            (rest.strip_suffix('を')?, None)
+        };
+        let (d, conds) = match target.strip_suffix("のもの").and_then(|x| x.split_once("のうち")) {
+            Some((d, c)) => (d, Some(c)),
+            None => (target, None),
+        };
+        let Some(info) = self.env.data.get(d) else {
+            return Some(Match::NoMatch(vec![format!("「{d}」はデータとして定義されていません。どのデータの一覧ですか")]));
+        };
+        let field = |f: &str| -> Result<Type, Match> {
+            info.field(f).cloned().ok_or_else(|| {
+                Match::Invalid(
+                    Diagnostic::error(Code::REF001, span, format!("データ `{d}` にフィールド `{f}` はありません")).hint(format!(
+                        "フィールド: {}",
+                        info.fields.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(" / ")
+                    )),
+                )
+            })
+        };
+        let mut order = None;
+        if let Some(o) = order_text {
+            const DESC: &[&str] = &["の新しい", "の大きい", "の多い", "の高い", "の遅い", "の降"];
+            const ASC: &[&str] = &["の古い", "の小さい", "の少ない", "の安い", "の低い", "の早い", "の昇"];
+            let (f, desc) = if let Some(f) = DESC.iter().find_map(|x| o.strip_suffix(x)) {
+                (f, true)
+            } else if let Some(f) = ASC.iter().find_map(|x| o.strip_suffix(x)) {
+                (f, false)
+            } else {
+                (o, false)
+            };
+            match field(f) {
+                Err(m) => return Some(m),
+                Ok(Type::Bool | Type::Int | Type::Money(_) | Type::DateTime | Type::Date | Type::Str | Type::Id | Type::Enum(_) | Type::Email) => {}
+                Ok(t) => {
+                    return Some(Match::Invalid(Diagnostic::error(
+                        Code::TYP001,
+                        span,
+                        format!("{t} のフィールド `{f}` では並べ替えできません"),
+                    )))
+                }
+            }
+            order = Some(ListOrder {
+                field: f.into(),
+                desc,
+                label: o.into(),
+            });
+        }
+        let mut filters = Vec::new();
+        for c in conds.map(|c| c.split("かつ").collect::<Vec<_>>()).unwrap_or_default() {
+            let Some((f, v)) = c.split_once('が') else {
+                return Some(Match::Invalid(
+                    Diagnostic::error(Code::SYN001, span, format!("条件「{c}」は「フィールドが値」の形で書きます"))
+                        .hint(format!("例: 「{d}のうち状態が受付のものを一覧表示」「{d}のうち日時が今日のものを一覧表示」")),
+                ));
+            };
+            let t = match field(f) {
+                Err(m) => return Some(m),
+                Ok(t) => t,
+            };
+            let base = match &t {
+                Type::Option(x) => x.as_ref().clone(),
+                x => x.clone(),
+            };
+            if v == "今日" {
+                if !matches!(base, Type::DateTime | Type::Date) {
+                    return Some(Match::Invalid(Diagnostic::error(
+                        Code::TYP001,
+                        span,
+                        format!("「{f}が今日」は日時か日付のフィールドに使います(`{f}` は {t})"),
+                    )));
+                }
+                filters.push(ListFilter {
+                    field: f.into(),
+                    op: FilterOp::Today,
+                    value: None,
+                });
+                continue;
+            }
+            if v == "本人" {
+                if !matches!(base, Type::Id | Type::Str) {
+                    return Some(Match::Invalid(Diagnostic::error(
+                        Code::TYP001,
+                        span,
+                        format!("「{f}が本人」は識別子か文字列のフィールドに使います(`{f}` は {t})"),
+                    )));
+                }
+                filters.push(ListFilter {
+                    field: f.into(),
+                    op: FilterOp::Me,
+                    value: None,
+                });
+                continue;
+            }
+            let (v, op) = match v.strip_suffix("でない").or_else(|| v.strip_suffix("ではない")) {
+                Some(x) => (x, FilterOp::Ne),
+                None => (v, FilterOp::Eq),
+            };
+            let raw = v.strip_prefix('「').and_then(|x| x.strip_suffix('」')).unwrap_or(v);
+            let value = match &base {
+                Type::Enum(e) => {
+                    if !self.env.enum_has(e, raw) {
+                        return Some(Match::Invalid(
+                            Diagnostic::error(Code::TYP001, span, format!("「{raw}」は列挙 `{e}` の値ではありません"))
+                                .hint(format!("値: {}", self.env.enums[e].join(" / "))),
+                        ));
+                    }
+                    raw.to_string()
+                }
+                Type::Bool => match raw {
+                    "真" | "はい" => "true".into(),
+                    "偽" | "いいえ" => "false".into(),
+                    _ => {
+                        return Some(Match::Invalid(Diagnostic::error(
+                            Code::TYP001,
+                            span,
+                            format!("真偽のフィールド `{f}` の値は 真 / 偽 です"),
+                        )))
+                    }
+                },
+                Type::Int | Type::Money(_) => {
+                    let n: String = raw
+                        .chars()
+                        .map(|c| {
+                            if ('０'..='９').contains(&c) {
+                                char::from_u32(c as u32 - '０' as u32 + '0' as u32).unwrap()
+                            } else {
+                                c
+                            }
+                        })
+                        .filter(|c| *c != ',')
+                        .collect();
+                    match n.parse::<i64>() {
+                        Ok(x) if x.unsigned_abs() <= (1u64 << 53) => x.to_string(),
+                        _ => {
+                            return Some(Match::Invalid(Diagnostic::error(
+                                Code::TYP001,
+                                span,
+                                format!("`{f}` は整数のフィールドです(「{raw}」は整数ではありません)"),
+                            )))
+                        }
+                    }
+                }
+                Type::Str | Type::Id | Type::Email | Type::Url => raw.to_string(),
+                Type::Date => {
+                    let ok = raw.len() == 10 && raw.as_bytes()[4] == b'-' && raw.as_bytes()[7] == b'-';
+                    if !ok {
+                        return Some(Match::Invalid(Diagnostic::error(
+                            Code::TYP001,
+                            span,
+                            format!("日付の値は 2026-12-05 の形で書きます(「{raw}」)"),
+                        )));
+                    }
+                    raw.to_string()
+                }
+                _ => {
+                    return Some(Match::Invalid(
+                        Diagnostic::error(Code::TYP001, span, format!("{t} のフィールド `{f}` は値で絞り込めません")).hint("日時は「…が今日」で絞り込めます"),
+                    ))
+                }
+            };
+            filters.push(ListFilter {
+                field: f.into(),
+                op,
+                value: Some(value),
+            });
+        }
+        Some(Match::Ok(IntentKind::ListData {
+            data: d.into(),
+            order,
+            filters,
+        }))
+    }
+
     fn split_data_prefix<'s>(&self, x: &'s str) -> Option<(&'s str, &'s str)> {
         let mut best: Option<(&str, &str)> = None;
         for (i, _) in x.match_indices('の') {
@@ -641,7 +914,7 @@ impl Ctx<'_> {
                 .intents
                 .iter()
                 .filter_map(|i| {
-                    if let IntentKind::ListData { data } = &i.kind {
+                    if let IntentKind::ListData { data, .. } = &i.kind {
                         Some(data.as_str())
                     } else {
                         None
@@ -754,6 +1027,20 @@ pub fn example_sentences(env: &Env, reg: &Registry, contract: bool) -> Vec<Strin
     }
     for (d, info) in &env.data {
         out.push(format!("{d}を一覧表示"));
+        for (f, t) in &info.fields {
+            match t {
+                kotonoha_types::Type::DateTime | kotonoha_types::Type::Date => {
+                    out.push(format!("{d}を{f}の新しい順に一覧表示"));
+                    out.push(format!("{d}のうち{f}が今日のものを一覧表示"));
+                }
+                kotonoha_types::Type::Enum(e) => {
+                    if let Some(v) = env.enums.get(e).and_then(|vs| vs.first()) {
+                        out.push(format!("{d}のうち{f}が{v}のものを一覧表示"));
+                    }
+                }
+                _ => {}
+            }
+        }
         let fs: Vec<&str> = info.fields.iter().map(|(f, _)| f.as_str()).filter(|f| *f != "ID").collect();
         if !fs.is_empty() {
             out.push(format!("{d}の{}を表示", fs.join("と")));

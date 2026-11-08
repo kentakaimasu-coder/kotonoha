@@ -103,6 +103,18 @@ test("客 2 卓が同時に注文 → それぞれ自分の注文だけ → 厨�
   await k.page.click(`button:has-text("提供済みにする")`);
   assert.equal((await served).status(), 200);
 
+  // 厨房の画面: まだ出していない注文だけが、古い順に並ぶ(並べ替え・絞り込み)
+  await k.page.goto(`${url}/s/${enc("厨房")}`);
+  const pending = await k.page.locator("tbody tr").allTextContents();
+  assert.equal(pending.length, 2, pending.join(" | "));
+  assert.ok(pending.every((r: string) => r.includes("調理中") && !r.includes("唐揚げ")), pending.join(" | "));
+  assert.match((await k.page.textContent("main"))!, /状態が調理中/);
+  // 今日の注文: 新しい順(最後に頼んだ唐揚げが先頭)
+  await k.page.goto(`${url}/s/${enc("今日の注文")}`);
+  const today = await k.page.locator("tbody tr").allTextContents();
+  assert.equal(today.length, 3, today.join(" | "));
+  assert.ok(today[0].includes("唐揚げ"), today.join(" | "));
+
   // 客の画面に反映される
   await t1.page.goto(`${url}/s/${enc("注文の状況")}`);
   const rows = await t1.page.locator("tbody tr").allTextContents();
@@ -135,6 +147,20 @@ test("客 2 卓が同時に注文 → それぞれ自分の注文だけ → 厨�
     assert.deepEqual(s.errors, []);
     await s.ctx.close();
   }
+});
+
+test("一覧の絞り込み API: 本人の行の制限は外れない・不正なフィールドや値は 400", async () => {
+  const cust = token("9番卓", CUSTOMER);
+  const get = (q: string) => fetch(`${url}/api/data/${enc("注文")}?${q}`, { headers: { Authorization: `Bearer ${cust}` } });
+  const mine = await get(`${enc("ne.状態")}=${enc("提供済み")}`);
+  assert.equal(mine.status, 200);
+  assert.ok((await mine.json()).every((r: any) => r.卓 === "9番卓"));
+  assert.equal((await get(`order=${enc("存在しない")}`)).status, 400);
+  assert.equal((await get(`${enc("eq.状態")}=${enc("壊れた値")}`)).status, 400);
+  assert.equal((await get(`${enc("eq.数量")}=abc`)).status, 400);
+  assert.equal((await get(`${enc("today.品名")}=1`)).status, 400);
+  // SQL を紛れ込ませても、フィールド名の照合で拒否される
+  assert.equal((await get(`order=${enc('数量" DESC; DROP TABLE "注文')}`)).status, 400);
 });
 
 test("権限の境界: 客は提供済みにできない・品切れにできない・他の卓の注文を ID で見られない・数量の上限", async () => {

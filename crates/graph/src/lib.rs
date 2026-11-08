@@ -58,18 +58,25 @@ pub fn build_vag(inp: &GraphInput, status: Status) -> Value {
             };
             let (kind, title, inputs, outs, effects, caps, kref, detail): (&str, String, Vec<String>, Vec<String>, Vec<&str>, Vec<String>, Vec<String>, Value) =
                 match &i.kind {
-                    IntentKind::ListData { data } => {
+                    IntentKind::ListData { data, order, filters } => {
                         let o = format!("一覧<{data}>");
                         outputs.push(o.clone());
+                        let mut detail = json!({"ui": "list", "data": data});
+                        if let Some(o) = order {
+                            detail["order"] = json!({"field": o.field, "desc": o.desc});
+                        }
+                        if !filters.is_empty() {
+                            detail["filters"] = serde_json::to_value(filters).unwrap();
+                        }
                         (
                             "display",
-                            format!("{data}の一覧"),
+                            kotonoha_intent::list_caption(data, order, filters),
                             vec![],
                             vec![o],
                             vec!["data.read"],
                             vec![format!("{data}.read")],
                             vec![],
-                            json!({"ui": "list", "data": data}),
+                            detail,
                         )
                     }
                     IntentKind::ShowFields { data, fields } => (

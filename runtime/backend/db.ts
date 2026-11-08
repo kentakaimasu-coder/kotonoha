@@ -464,17 +464,121 @@ export async function adGet(ctx: Ctx, table: string, id: unknown, optional: bool
 
 export const PAGE_MAX = 1000;
 
-export async function adList(ctx: Ctx, table: string, page: { limit: number; offset: number } = { limit: 1_000_000, offset: 0 }): Promise<Row[]> {
+export interface ListView {
+  sql: string;
+  params: unknown[];
+  order: string;
+}
+
+/** アプリの時刻帯(「今日」の判定・応答の日時の表記。既定 Asia/Tokyo) */
+export function appTz(): string {
+  return process.env.KOTONOHA_APP_TZ || "Asia/Tokyo";
+}
+
+/** 時刻 t(ミリ秒)における時刻帯 tz の UTC からのずれ(ミリ秒) */
+export function tzOffsetMs(t: number, tz: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(new Date(t));
+  const n = (k: string) => Number(parts.find((p) => p.type === k)!.value);
+  return Date.UTC(n("year"), n("month") - 1, n("day"), n("hour"), n("minute"), n("second")) - Math.floor(t / 1000) * 1000;
+}
+
+/** 時刻帯 tz での今日の暦日("2026-12-05")と、その始まり・終わり(ミリ秒) */
+export function todayIn(tz: string, now: number = Date.now()): { date: string; start: number; end: number } {
+  const local = now + tzOffsetMs(now, tz);
+  const d = new Date(local);
+  const date = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+  const midnightLocal = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const start = midnightLocal - tzOffsetMs(midnightLocal, tz);
+  const nextLocal = midnightLocal + 86_400_000;
+  return { date, start, end: nextLocal - tzOffsetMs(nextLocal, tz) };
+}
+
+/** 一覧 API の並べ替え・絞り込み(?order=&desc=1&eq.F=&ne.F=&today.F=1&me.F=1。ADR-0128)。
+ *  フィールド名は表の定義にあるものだけ、値は型で検証する。行レベル認可の条件は常に付ける。 */
+export function listView(ctx: Ctx, table: string, query: URLSearchParams = new URLSearchParams()): ListView {
   const oc = ownerCond(ctx, table);
-  const where = oc.sql ? ` WHERE 1 = 1${oc.sql}` : "";
-  const rows = await ctx.conn.all(`SELECT * FROM ${q(table)}${where} ORDER BY "ID" LIMIT ? OFFSET ?`, [...oc.params, BigInt(page.limit), BigInt(page.offset)]);
+  const fields = ctx.schema.entities[table];
+  const fieldOf = (name: string) => {
+    const f = fields.find((x) => x.name === name);
+    if (!f) throw new HttpError(400, "invalid_input", `${table} にフィールド ${name} はありません`);
+    return f;
+  };
+  let sql = oc.sql;
+  const params: unknown[] = [...oc.params];
+  for (const [key, raw] of query) {
+    const dot = key.indexOf(".");
+    if (dot < 0) continue;
+    const op = key.slice(0, dot);
+    if (!["eq", "ne", "today", "me"].includes(op)) continue;
+    const f = fieldOf(key.slice(dot + 1));
+    const w = baseWire(f.type);
+    if (op === "today") {
+      const t = todayIn(appTz());
+      if (w.kind === "datetime") {
+        sql += ` AND ${q(f.name)} >= ? AND ${q(f.name)} < ?`;
+        params.push(BigInt(t.start), BigInt(t.end));
+      } else if (w.kind === "date") {
+        sql += ` AND ${q(f.name)} = ?`;
+        params.push(t.date);
+      } else throw new HttpError(400, "invalid_input", `${f.name} は日時・日付ではありません`);
+      continue;
+    }
+    if (op === "me") {
+      if (ctx.principal === null) {
+        sql += " AND 1 = 0";
+        continue;
+      }
+      sql += ` AND ${q(f.name)} = ?`;
+      params.push(ctx.principal.sub);
+      continue;
+    }
+    let v: unknown;
+    switch (w.kind) {
+      case "int":
+      case "money":
+        if (!/^-?\d+$/.test(raw)) throw new HttpError(400, "invalid_input", `${f.name} は整数です`);
+        v = BigInt(raw);
+        break;
+      case "bool":
+        if (raw !== "true" && raw !== "false") throw new HttpError(400, "invalid_input", `${f.name} は true / false です`);
+        v = raw === "true" ? 1n : 0n;
+        break;
+      case "enum":
+        if (!ctx.schema.enums[w.name].includes(raw)) throw new HttpError(400, "invalid_input", `${f.name} は ${ctx.schema.enums[w.name].join(" / ")} のいずれかです`);
+        v = raw;
+        break;
+      case "string":
+      case "id":
+      case "email":
+      case "url":
+      case "date":
+        v = raw;
+        break;
+      default:
+        throw new HttpError(400, "invalid_input", `${f.name} では絞り込めません`);
+    }
+    // 「でない」は値が空(NULL)の行も含める
+    sql += op === "eq" ? ` AND ${q(f.name)} = ?` : ` AND (${q(f.name)} IS NULL OR ${q(f.name)} <> ?)`;
+    params.push(v);
+  }
+  let order = `"ID"`;
+  const o = query.get("order");
+  if (o !== null) {
+    const f = fieldOf(o);
+    order = `${q(f.name)} ${query.get("desc") === "1" ? "DESC" : "ASC"}, "ID"`;
+  }
+  return { sql, params, order };
+}
+
+export async function adList(ctx: Ctx, table: string, page: { limit: number; offset: number } = { limit: 1_000_000, offset: 0 }, view: ListView = listView(ctx, table)): Promise<Row[]> {
+  const where = view.sql ? ` WHERE 1 = 1${view.sql}` : "";
+  const rows = await ctx.conn.all(`SELECT * FROM ${q(table)}${where} ORDER BY ${view.order} LIMIT ? OFFSET ?`, [...view.params, BigInt(page.limit), BigInt(page.offset)]);
   return rows.map((r) => decodeRow(ctx, table, r));
 }
 
-export async function adCount(ctx: Ctx, table: string): Promise<number> {
-  const oc = ownerCond(ctx, table);
-  const where = oc.sql ? ` WHERE 1 = 1${oc.sql}` : "";
-  return Number((await ctx.conn.all(`SELECT COUNT(*) AS n FROM ${q(table)}${where}`, oc.params))[0].n);
+export async function adCount(ctx: Ctx, table: string, view: ListView = listView(ctx, table)): Promise<number> {
+  const where = view.sql ? ` WHERE 1 = 1${view.sql}` : "";
+  return Number((await ctx.conn.all(`SELECT COUNT(*) AS n FROM ${q(table)}${where}`, view.params))[0].n);
 }
 
 /** 一覧 API のページング(?limit=&offset=。既定 100 件、上限 1000 件) */

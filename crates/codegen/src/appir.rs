@@ -136,6 +136,9 @@ pub enum Component {
         data: String,
         fields: Vec<(String, Type)>,
         link_to: Option<String>,
+        /// 一覧 API に付けるクエリ(並べ替え・絞り込み。ADR-0128)
+        query: Vec<(String, String)>,
+        caption: String,
     },
     Detail {
         data: String,
@@ -274,12 +277,14 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
         let mut comps = Vec::new();
         for i in &s.intents {
             match &i.kind {
-                IntentKind::ListData { data } => {
+                IntentKind::ListData { data, order, filters } => {
                     list_data.insert(data.clone());
                     comps.push(Component::List {
                         data: data.clone(),
                         fields: display_fields(env, data),
                         link_to: nav.get(data).cloned(),
+                        query: kotonoha_intent::list_query(order, filters),
+                        caption: kotonoha_intent::list_caption(data, order, filters),
                     });
                 }
                 IntentKind::ShowFields { data, fields } => {

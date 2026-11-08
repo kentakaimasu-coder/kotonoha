@@ -300,7 +300,7 @@ export const routes: Route[] = [
     segments: ["api","data","商品"],
     hasId: false,
     access: {"capabilities":[],"public":true},
-    handle: async (ctx, req) => ({ status: 200, body: (await db.adList(ctx, "商品", db.pageOf(req.query))).map((e) => rt.encode(e, { kind: "entity", name: "商品" }, schema)), headers: { "X-Total-Count": String(await db.adCount(ctx, "商品")) } }),
+    handle: async (ctx, req) => { const v = db.listView(ctx, "商品", req.query); return { status: 200, body: (await db.adList(ctx, "商品", db.pageOf(req.query), v)).map((e) => rt.encode(e, { kind: "entity", name: "商品" }, schema)), headers: { "X-Total-Count": String(await db.adCount(ctx, "商品", v)) } }; },
   },
   {
     id: "data.list.注文",
@@ -308,7 +308,7 @@ export const routes: Route[] = [
     segments: ["api","data","注文"],
     hasId: false,
     access: {"capabilities":[],"owner":"注文","public":false},
-    handle: async (ctx, req) => ({ status: 200, body: (await db.adList(ctx, "注文", db.pageOf(req.query))).map((e) => rt.encode(e, { kind: "entity", name: "注文" }, schema)), headers: { "X-Total-Count": String(await db.adCount(ctx, "注文")) } }),
+    handle: async (ctx, req) => { const v = db.listView(ctx, "注文", req.query); return { status: 200, body: (await db.adList(ctx, "注文", db.pageOf(req.query), v)).map((e) => rt.encode(e, { kind: "entity", name: "注文" }, schema)), headers: { "X-Total-Count": String(await db.adCount(ctx, "注文", v)) } }; },
   },
   {
     id: "data.get.商品",

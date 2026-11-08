@@ -182,7 +182,7 @@ pub fn validate(env: &Env, facts: &BTreeMap<String, Facts>, intents: &IntentMode
         let mut sum = EffectSummary::default();
         for i in &s.intents {
             let read = match &i.kind {
-                IntentKind::ListData { data } | IntentKind::ShowFields { data, .. } => Some(data.clone()),
+                IntentKind::ListData { data, .. } | IntentKind::ShowFields { data, .. } => Some(data.clone()),
                 IntentKind::ShowKnowledge { spec, .. } => Some(spec.source.clone()),
                 IntentKind::Analysis { analysis } => {
                     for t in env.externals.get(analysis).map(|x| x.tables()).unwrap_or_default() {

@@ -146,10 +146,25 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
         let _ = init;
         for (ci, c) in s.components.iter().enumerate() {
             match c {
-                Component::List { data, fields, link_to } => {
+                Component::List {
+                    data,
+                    fields,
+                    link_to,
+                    query,
+                    caption,
+                } => {
                     let var = format!("list{ci}");
                     state.push(format!("    @State private var {var}: [{}] = []", type_name("Entity_", data)));
-                    loads.push(format!("{var} = try await api.get(\"api\", \"data\", {})", swift_str(data)));
+                    if query.is_empty() {
+                        loads.push(format!("{var} = try await api.get(\"api\", \"data\", {})", swift_str(data)));
+                    } else {
+                        let q: Vec<String> = query.iter().map(|(k, v)| format!("{}: {}", swift_str(k), swift_str(v))).collect();
+                        loads.push(format!(
+                            "{var} = try await api.get(\"api\", \"data\", {}, query: [{}])",
+                            swift_str(data),
+                            q.join(", ")
+                        ));
+                    }
                     let cells: Vec<String> = fields
                         .iter()
                         .map(|(n, t)| format!("Text({}).font(.body)", display_expr(&format!("row.{}", bt(n)), t)))
@@ -159,10 +174,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         Some(t) => format!("NavigationLink {{ {}(itemID: row.`ID`) }} label: {{ {row} }}", type_name("Screen_", t)),
                         None => row,
                     };
-                    body.push(format!(
-                        "Section({}) {{ ForEach({var}, id: \\.self) {{ row in {item} }} }}",
-                        swift_str(&format!("{data}の一覧"))
-                    ));
+                    body.push(format!("Section({}) {{ ForEach({var}, id: \\.self) {{ row in {item} }} }}", swift_str(caption)));
                 }
                 Component::Detail { fields, .. } => {
                     let rows: Vec<String> = fields

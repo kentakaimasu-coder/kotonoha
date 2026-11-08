@@ -220,10 +220,24 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
         }
         for (ci, c) in s.components.iter().enumerate() {
             match c {
-                Component::List { data, fields, link_to } => {
-                    let key = format!("list:{data}");
+                Component::List {
+                    data,
+                    fields,
+                    link_to,
+                    query,
+                    caption,
+                } => {
+                    let key = if query.is_empty() {
+                        format!("list:{data}")
+                    } else {
+                        format!("list:{data}?{}", query.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join("&"))
+                    };
                     if !loaders.iter().any(|l| l["key"] == key) {
-                        loaders.push(json!({"key": key, "segments": ["api", "data", data], "withId": false}));
+                        let mut l = json!({"key": key, "segments": ["api", "data", data], "withId": false});
+                        if !query.is_empty() {
+                            l["query"] = Value::Object(query.iter().map(|(k, v)| (k.clone(), Value::String(v.clone()))).collect());
+                        }
+                        loaders.push(l);
                     }
                     let fs: Vec<Value> = fields.iter().map(|(n, t)| field_desc(ir, n, t)).collect();
                     let link = match link_to {
@@ -235,7 +249,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         "h(DataList, {{ key: {ci}, r: p.data[{}], fields: {}, tz: p.tz, caption: {}{link}{refs} }})",
                         js_str(&key),
                         serde_json::to_string(&fs).unwrap(),
-                        js_str(&format!("{data}の一覧"))
+                        js_str(caption)
                     ));
                 }
                 Component::Detail { data, fields } => {

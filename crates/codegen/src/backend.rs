@@ -331,7 +331,7 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
         let access = ep.access_json();
         let handler = match &ep.kind {
             EndpointKind::ListData { data } => format!(
-                "async (ctx, req) => ({{ status: 200, body: (await db.adList(ctx, {d}, db.pageOf(req.query))).map((e) => rt.encode(e, {{ kind: \"entity\", name: {d} }}, schema)), headers: {{ \"X-Total-Count\": String(await db.adCount(ctx, {d})) }} }})",
+                "async (ctx, req) => {{ const v = db.listView(ctx, {d}, req.query); return {{ status: 200, body: (await db.adList(ctx, {d}, db.pageOf(req.query), v)).map((e) => rt.encode(e, {{ kind: \"entity\", name: {d} }}, schema)), headers: {{ \"X-Total-Count\": String(await db.adCount(ctx, {d}, v)) }} }}; }}",
                 d = js_str(data)
             ),
             EndpointKind::GetData { data } => format!(

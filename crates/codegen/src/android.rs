@@ -161,12 +161,26 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
         }
         for (ci, c) in s.components.iter().enumerate() {
             match c {
-                Component::List { data, fields, link_to } => {
+                Component::List {
+                    data,
+                    fields,
+                    link_to,
+                    query,
+                    caption,
+                } => {
                     let var = format!("list{ci}");
                     let et = tn("Entity_", data);
                     state.push(format!("    var {var} by remember {{ mutableStateOf<List<{et}>>(emptyList()) }}"));
+                    let q = if query.is_empty() {
+                        String::new()
+                    } else {
+                        format!(
+                            ", mapOf({})",
+                            query.iter().map(|(k, v)| format!("{} to {}", kstr(k), kstr(v))).collect::<Vec<_>>().join(", ")
+                        )
+                    };
                     loads.push(format!(
-                        "{var} = api.getArray(listOf(\"api\", \"data\", {})).map {{ parse{et}(it) }}",
+                        "{var} = api.getArray(listOf(\"api\", \"data\", {}){q}).map {{ parse{et}(it) }}",
                         kstr(data)
                     ));
                     let texts: Vec<String> = fields.iter().map(|(n, t)| format!("Text({})", display(&format!("row.{}", bt(n)), t))).collect();
@@ -174,10 +188,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         Some(t) => format!(".clickable {{ nav.navigate(\"screen{}/\" + Kotonoha.enc(row.`ID`)) }}", index_of(t)),
                         None => String::new(),
                     };
-                    items.push(format!(
-                        "item {{ Text({}, style = MaterialTheme.typography.titleMedium) }}",
-                        kstr(&format!("{data}の一覧"))
-                    ));
+                    items.push(format!("item {{ Text({}, style = MaterialTheme.typography.titleMedium) }}", kstr(caption)));
                     items.push(format!(
                         "items({var}) {{ row -> Column(Modifier.fillMaxWidth(){click}.padding(vertical = 8.dp)) {{ {} }}; HorizontalDivider() }}",
                         texts.join("; ")
