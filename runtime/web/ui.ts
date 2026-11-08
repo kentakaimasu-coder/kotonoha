@@ -38,6 +38,21 @@ export interface ScreenProps {
   id: string | null;
   tz: string;
   reload: () => Promise<void>;
+  /** ログイン中の人の権限(表示の出し分けだけに使う。認可は backend が行う)。未ログインなら null */
+  caps: string[] | null;
+}
+
+/** 動作に必要な権限(資源の権限をすべて、または許可 1 つ) */
+export interface Need {
+  caps: string[];
+  grant?: string;
+}
+
+/** ログイン中で、必要な権限が無いと分かっている操作は表示しない(押して 403 になるのを防ぐ)。未ログインなら表示する */
+export function canUse(caps: string[] | null, need: Need | undefined): boolean {
+  if (!need || caps === null) return true;
+  if (need.grant && caps.includes(need.grant)) return true;
+  return need.caps.every((c) => caps.includes(c));
 }
 
 export interface ScreenDef {
@@ -56,6 +71,8 @@ export interface Init {
   nav: string[];
   /** ログイン中か(表示の切り替えだけに使う。認可は backend が行う) */
   loggedIn?: boolean;
+  /** ログイン中の人の権限(表示の出し分けだけ) */
+  caps?: string[] | null;
 }
 
 export function enc(s: string): string {
@@ -225,7 +242,7 @@ function MessageView(p: { m: { kind: "ok" | "error"; text: string; login?: boole
   );
 }
 
-export function ActionButton(p: { label: string; action: string; args: () => Record<string, unknown> | null; reload: () => Promise<void> }) {
+export function ActionButton(p: { label: string; action: string; args: () => Record<string, unknown> | null; reload: () => Promise<void>; need?: Need; caps?: string[] | null }) {
   const [m, setM] = useMessage();
   const [busy, setBusy] = React.useState(false);
   const onClick = async () => {
@@ -242,6 +259,7 @@ export function ActionButton(p: { label: string; action: string; args: () => Rec
       setBusy(false);
     }
   };
+  if (!canUse(p.caps ?? null, p.need)) return null;
   return h("div", { className: "action" }, h("button", { type: "button", onClick, disabled: busy }, p.label), h(MessageView, { m }));
 }
 
@@ -332,7 +350,7 @@ export function zonedToIso(local: string, tz: string): string | null {
   return Number.isNaN(t) ? null : new Date(t).toISOString();
 }
 
-export function ActionForm(p: { action: string; fields: Field[]; reload: () => Promise<void>; tz?: string; fixed?: Record<string, unknown> | null }) {
+export function ActionForm(p: { action: string; fields: Field[]; reload: () => Promise<void>; tz?: string; fixed?: Record<string, unknown> | null; need?: Need; caps?: string[] | null }) {
   const [m, setM] = useMessage();
   const [busy, setBusy] = React.useState(false);
   const formId = "form-" + p.action;
@@ -358,6 +376,7 @@ export function ActionForm(p: { action: string; fields: Field[]; reload: () => P
   const onKeyDown = (ev: any) => {
     if (ev.key === "Enter" && (ev.nativeEvent?.isComposing || ev.keyCode === 229)) ev.preventDefault();
   };
+  if (!canUse(p.caps ?? null, p.need)) return null;
   return h(
     "form",
     { className: "form", onSubmit, onKeyDown, "aria-labelledby": formId + "-title" },
@@ -387,6 +406,6 @@ export function App(p: { init: Init; screens: Record<string, ScreenDef> }) {
       h("nav", { "aria-label": "画面" }, p.init.nav.map((n) => h("a", { key: n, href: screenHref(n), "aria-current": n === p.init.screen ? "page" : undefined }, n))),
       h("a", { className: "login", href: "/login" }, p.init.loggedIn ? "ログイン中" : "ログイン"),
     ),
-    h("main", null, h(def.View, { data, id: p.init.id, tz: p.init.tz, reload })),
+    h("main", null, h(def.View, { data, id: p.init.id, tz: p.init.tz, reload, caps: p.init.caps ?? null })),
   );
 }

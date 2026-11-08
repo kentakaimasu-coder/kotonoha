@@ -75,6 +75,8 @@ test("客 2 卓が同時に注文 → それぞれ自分の注文だけ → 厨�
   const [a, b, c] = await Promise.all([order(t1.page, "生ビール", "2"), order(t2.page, "枝豆", "1"), (async () => 0)()]);
   assert.deepEqual([a, b, c], [200, 200, 0]);
   assert.equal(await order(t1.page, "唐揚げ", "1"), 200);
+  // 客の画面には、厨房・店長用のボタン(品切れにする)が出ない(押して 403 になるのを防ぐ表示の出し分け)
+  assert.equal(await t1.page.locator(`button:has-text("品切れにする")`).count(), 0);
 
   // 客はそれぞれ自分の注文だけ見える
   await t1.page.goto(`${url}/s/${enc("注文の状況")}`);
@@ -96,6 +98,7 @@ test("客 2 卓が同時に注文 → それぞれ自分の注文だけ → 厨�
   // 一覧の行のリンク(先頭の列)から詳細へ
   await k.page.locator("tbody tr", { hasText: "唐揚げ" }).locator("a").first().click();
   await k.page.waitForSelector("dl");
+  assert.equal(await k.page.locator(`button:has-text("提供済みにする")`).count(), 1);
   const served = k.page.waitForResponse((r: any) => r.url().includes(enc("提供済みにする")));
   await k.page.click(`button:has-text("提供済みにする")`);
   assert.equal((await served).status(), 200);

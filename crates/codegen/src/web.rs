@@ -120,6 +120,20 @@ pub fn screen_arg_js(e: &Expr, input: Option<&str>, errs: &mut Vec<Diagnostic>) 
     }
 }
 
+/// 動作に必要な権限(表示の出し分け用。認可は backend)
+fn need_js(ir: &AppIr, action: &str) -> String {
+    match ir.endpoints.iter().find(|e| e.id == format!("action.{action}")) {
+        Some(e) => {
+            let a = e.access_json();
+            format!(
+                ", need: {}, caps: p.caps",
+                serde_json::to_string(&json!({"caps": a["capabilities"], "grant": a["grant"]})).unwrap()
+            )
+        }
+        None => String::new(),
+    }
+}
+
 /// 関連データの名前表示: フィールド「XID」(識別子)で、データ X に一覧 API があり文字列の項目を持つなら、
 /// X の一覧を読み込んで最初の文字列項目(名前など)で表示する。権限が無ければ ID のまま(API が判断する)
 fn refs_js(ir: &AppIr, fields: &[(String, Type)], loaders: &mut Vec<Value>) -> String {
@@ -274,8 +288,9 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         }
                         None => js_str(label),
                     };
+                    let need = need_js(ir, action);
                     body.push(format!(
-                        "h(ActionButton, {{ key: {ci}, label: {}, action: {}, reload: p.reload, args: () => {{ {cur}return {{ {} }}; }} }})",
+                        "h(ActionButton, {{ key: {ci}, label: {}, action: {}, reload: p.reload{need}, args: () => {{ {cur}return {{ {} }}; }} }})",
                         label_js,
                         js_str(action),
                         pairs.join(", ")
@@ -355,8 +370,9 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                             .unwrap_or_else(|| "null".into()),
                         None => "null".into(),
                     };
+                    let need = need_js(ir, action);
                     body.push(format!(
-                        "h(ActionForm, {{ key: {ci}, action: {}, fields: {}, reload: p.reload, tz: p.tz, fixed: {fixed} }})",
+                        "h(ActionForm, {{ key: {ci}, action: {}, fields: {}, reload: p.reload, tz: p.tz, fixed: {fixed}{need} }})",
                         js_str(action),
                         serde_json::to_string(&fs).unwrap()
                     ));
@@ -378,11 +394,12 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
     }
     let nav: Vec<&str> = ir.screens.iter().filter(|s| s.input.is_none()).map(|s| s.name.as_str()).collect();
     g.push_str(&format!(
-        "export const screens: Record<string, ScreenDef> = {{\n{}\n}};\n\nexport const webApp: WebApp = {{ appName: {}, entry: {}, nav: {}, screens }};\n",
+        "export const screens: Record<string, ScreenDef> = {{\n{}\n}};\n\nexport const webApp: WebApp = {{ appName: {}, entry: {}, nav: {}, screens, roles: {} }};\n",
         defs.join("\n"),
         js_str(&ir.name),
         ir.entry_screen.as_ref().map(|e| js_str(e)).unwrap_or_else(|| "null".into()),
-        serde_json::to_string(&nav).unwrap()
+        serde_json::to_string(&nav).unwrap(),
+        serde_json::to_string(&ir.roles).unwrap()
     ));
     if !errs.is_empty() {
         return Err(errs);

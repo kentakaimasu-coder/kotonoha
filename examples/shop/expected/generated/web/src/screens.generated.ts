@@ -11,13 +11,13 @@ function Screen_商品一覧(p: ScreenProps) {
 function Screen_商品詳細(p: ScreenProps) {
   return h(Page, { title: "商品詳細" },
     h(Detail, { key: 0, r: p.data["get:商品"], fields: [{"name":"名前","type":{"kind":"string"}},{"name":"価格","type":{"currency":"JPY","kind":"money","minor_units":0}},{"name":"在庫","type":{"kind":"int"}}], tz: p.tz }),
-    h(ActionButton, { key: 1, label: "購入", action: "注文する", reload: p.reload, args: () => { const r = p.data["get:商品"]; if (!r?.ok) return null; const cur: any = r.body; return { "商品ID": cur["ID"], "数量": 1 }; } })
+    h(ActionButton, { key: 1, label: "購入", action: "注文する", reload: p.reload, need: {"caps":["商品.read","商品.update","注文.create"],"grant":"動作.注文する"}, caps: p.caps, args: () => { const r = p.data["get:商品"]; if (!r?.ok) return null; const cur: any = r.body; return { "商品ID": cur["ID"], "数量": 1 }; } })
   );
 }
 
 function Screen_商品管理(p: ScreenProps) {
   return h(Page, { title: "商品管理" },
-    h(ActionForm, { key: 0, action: "商品登録", fields: [{"name":"名前","type":{"kind":"string"}},{"name":"価格","type":{"currency":"JPY","kind":"money","minor_units":0}},{"name":"在庫","type":{"kind":"int"}}], reload: p.reload, tz: p.tz, fixed: null }),
+    h(ActionForm, { key: 0, action: "商品登録", fields: [{"name":"名前","type":{"kind":"string"}},{"name":"価格","type":{"currency":"JPY","kind":"money","minor_units":0}},{"name":"在庫","type":{"kind":"int"}}], reload: p.reload, tz: p.tz, fixed: null, need: {"caps":["商品.create"],"grant":"動作.商品登録"}, caps: p.caps }),
     h(DataList, { key: 1, r: p.data["list:商品"], fields: [{"name":"名前","type":{"kind":"string"}},{"name":"価格","type":{"currency":"JPY","kind":"money","minor_units":0}},{"name":"在庫","type":{"kind":"int"}}], tz: p.tz, caption: "商品の一覧", link: (row: any) => screenHref("商品詳細", row["ID"]) })
   );
 }
@@ -42,4 +42,4 @@ export const screens: Record<string, ScreenDef> = {
   "売れ筋": { name: "売れ筋", input: null, loaders: [{"key":"query:売れ筋商品:20","query":{"limit":"20"},"segments":["api","queries","売れ筋商品"],"withId":false}], View: Screen_売れ筋 },
 };
 
-export const webApp: WebApp = { appName: "商店", entry: "商品一覧", nav: ["商品一覧","商品管理","注文履歴","売れ筋"], screens };
+export const webApp: WebApp = { appName: "商店", entry: "商品一覧", nav: ["商品一覧","商品管理","注文履歴","売れ筋"], screens, roles: {} };

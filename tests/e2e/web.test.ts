@@ -109,16 +109,17 @@ test("AT-03 フォームで商品を追加すると一覧に反映される", as
   await page.waitForSelector(".msg.ok");
   await page.waitForFunction(() => document.querySelector("table.list")?.textContent?.includes("玄米茶"));
   assert.ok((await page.textContent("table.list")).includes("¥420"), "全角の ４２０ が 420 円として登録される");
-  // 権限なし(閲覧のみの利用者)は 403
+  // 権限なし(閲覧のみの利用者)にはフォームを出さない。API に直接送っても 403(認可は backend)
   const { page: p2 } = await newPage();
   await login(p2, ["商品.read"]);
   await p2.goto(webUrl + "/s/" + encodeURIComponent("商品管理"));
-  await p2.fill("#form-商品登録-名前", "x");
-  await p2.fill("#form-商品登録-価格", "1");
-  await p2.fill("#form-商品登録-在庫", "1");
-  await p2.click("form.form button[type=submit]");
-  await p2.waitForSelector(".msg.error");
-  assert.match(await p2.textContent(".msg.error"), /権限がありません/);
+  assert.equal(await p2.locator("#form-商品登録-名前").count(), 0);
+  const r403 = await p2.evaluate(async () => {
+    const r = await fetch("/api/actions/" + encodeURIComponent("商品登録"), { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF": "1" }, body: JSON.stringify({ 名前: "x", 価格: 1, 在庫: 1 }) });
+    return { status: r.status, body: await r.json() };
+  });
+  assert.equal(r403.status, 403);
+  assert.match(r403.body.message, /権限がありません/);
   assert.deepEqual(errors, []);
 });
 

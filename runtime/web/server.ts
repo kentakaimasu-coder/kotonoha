@@ -12,6 +12,31 @@ export interface WebApp {
   entry: string | null;
   nav: string[];
   screens: Record<string, ScreenDef>;
+  /** ソースの役割(役割 → 権限)。表示の出し分けに使う */
+  roles?: Record<string, string[]>;
+}
+
+const JA_VERB: Record<string, string> = { 読取: "read", 作成: "create", 更新: "update", 削除: "delete" };
+/** トークンの中身(署名は backend が検証する)から、表示の出し分けに使う権限を読む */
+function capsOf(token: string | null, roles: Record<string, string[]>): string[] | null {
+  if (!token) return null;
+  try {
+    // 運用で権限の読み方を変えている(KOTONOHA_CAPS_CLAIM / KOTONOHA_ROLE_MAP)ときは、画面側では分からないので出し分けない
+    if (process.env.KOTONOHA_CAPS_CLAIM || process.env.KOTONOHA_ROLE_MAP) return null;
+    const c = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"));
+    // ソースに無い役割名(IdP 側の役割など)を持つなら、権限は backend でしか決まらない
+    if (Array.isArray(c.roles) && c.roles.some((r: unknown) => typeof r !== "string" || !(r in roles))) return null;
+    const out = new Set<string>();
+    for (const x of Array.isArray(c.caps) ? c.caps : typeof c.caps === "string" ? c.caps.split(" ") : []) if (typeof x === "string") out.add(x);
+    for (const r of Array.isArray(c.roles) ? c.roles : []) for (const x of roles[r] ?? []) out.add(x);
+    for (const x of [...out]) {
+      const m = /^(.+)\.(読取|作成|更新|削除)$/.exec(x);
+      if (m) out.add(`${m[1]}.${JA_VERB[m[2]]}`);
+    }
+    return [...out];
+  } catch {
+    return null;
+  }
 }
 
 const TOKEN_RE = /^[A-Za-z0-9_\-.]{1,4096}$/;
@@ -334,7 +359,7 @@ export function createWebServer(
             extra["Set-Cookie"] = `${VID}=${vid}; HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000${secure}`;
           }
           const data = await load(def, id, tokenOf(req), traceId, vid);
-          const init: Init = { appName: app.appName, screen: def.name, id, data, tz: opts.tz, nav: app.nav, loggedIn: tokenOf(req) !== null };
+          const init: Init = { appName: app.appName, screen: def.name, id, data, tz: opts.tz, nav: app.nav, loggedIn: tokenOf(req) !== null, caps: capsOf(tokenOf(req), app.roles ?? {}) };
           const html = ReactDOMServer.renderToString(h(App, { init, screens: app.screens }));
           const notFound = Object.values(data).some((d) => d.status === 404);
           res.writeHead(notFound ? 404 : 200, securityHeaders({ "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...extra }));
