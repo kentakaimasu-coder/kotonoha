@@ -580,7 +580,15 @@ fn cmd_dev(o: &mut Opts) -> Result<i32, String> {
     let entry = api["entry_screen"].as_str().unwrap_or("");
     eprintln!("\n準備ができました。");
     eprintln!("  画面:   http://127.0.0.1:{port}/   (最初の画面: {entry})");
-    eprintln!("  ログイン: 画面右上の「ログイン」→ 名前を入れて「一般の利用者として入る」か「管理者として入る」");
+    let role_names: Vec<String> = api["roles"].as_object().map(|m| m.keys().cloned().collect()).unwrap_or_default();
+    if role_names.is_empty() {
+        eprintln!("  ログイン: 画面右上の「ログイン」→ 名前を入れて「一般の利用者として入る」か「管理者として入る」");
+    } else {
+        eprintln!(
+            "  ログイン: 画面右上の「ログイン」→ 名前を入れて {}「管理者として入る」",
+            role_names.iter().map(|r| format!("「{r}として入る」")).collect::<Vec<_>>().join("")
+        );
+    }
     eprintln!("  API:    http://127.0.0.1:{port}/api/…  (Authorization: Bearer で呼べます)");
     eprintln!(
         "  動作確認のトークン: koto -C {} token --sub 花子 [--admin]   (koto dev 専用の秘密で作ります)",

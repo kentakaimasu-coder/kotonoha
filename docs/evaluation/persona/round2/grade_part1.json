@@ -1,0 +1,7201 @@
+[
+{"persona":"N07","variant":"A","lines":73,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"N07","variant":"B","lines":156,"note":"","probe":{
+  "score": 16,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": false,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "accept-ranges,cache-control,connection,content-length,content-type,date,etag,keep-alive,last-modified,x-powered-by"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Express"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},{"persona":"N07","variant":"C","lines":72,"check":1,"contract_test":1},
+{"persona":"N08","variant":"A","lines":74,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"N08","variant":"B","lines":197,"note":"","probe":{
+  "score": 16,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": false,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "accept-ranges,cache-control,connection,content-length,content-type,date,etag,keep-alive,last-modified,x-powered-by"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Express"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 401"
+    }
+  ]
+}},{"persona":"N08","variant":"C","lines":84,"check":1,"contract_test":1},
+{"persona":"N09","variant":"A","lines":73,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"N09","variant":"B","lines":309,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"イベント数\":1,\"予約数\":0,\"会場\":\"仙台\",\"定員\":5},{\"イベント数\":1,\"予約数\":15,\"会場\":\"大阪\",\"定員\":30},{\"イベント数\":2,\"予約数\":9,\"会場\":\"渋谷\",\"定員\":13},{\"イベント数\":1,\"予約数\":1,\"会場\":\"福岡\",\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "content-length,content-security-policy,content-type,date,server,set-cookie,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": "waitress,waitress"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 401"
+    }
+  ]
+}},{"persona":"N09","variant":"C","lines":74,"check":1,"contract_test":1},
+{"persona":"N10","variant":"A","lines":73,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"N10","variant":"B","lines":190,"note":"","probe":{
+  "score": 16,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": false,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "accept-ranges,cache-control,connection,content-length,content-type,date,etag,keep-alive,last-modified,x-powered-by"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Express"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},{"persona":"N10","variant":"C","lines":65,"check":1,"contract_test":1},
+{"persona":"N11","variant":"A","lines":68,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"N11","variant":"B","lines":250,"note":"","probe":{
+  "score": 17,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"イベント数\":1,\"予約数\":0,\"会場\":\"仙台\",\"定員\":5},{\"イベント数\":1,\"予約数\":15,\"会場\":\"大阪\",\"定員\":30},{\"イベント数\":2,\"予約数\":9,\"会場\":\"渋谷\",\"定員\":13},{\"イベント数\":1,\"予約数\":1,\"会場\":\"福岡\",\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "connection,content-length,content-type,date,server"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Werkzeug/3.1.9 Python/3.13.18,Werkzeug/3.1.9 Python/3.13.18"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 401"
+    }
+  ]
+}},{"persona":"N11","variant":"C","lines":87,"check":1,"contract_test":1},
+{"persona":"N12","variant":"A","lines":73,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"N12","variant":"B","lines":166,"note":"","probe":{
+  "score": 16,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1},{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": false,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "accept-ranges,cache-control,connection,content-length,content-type,date,etag,keep-alive,last-modified,x-powered-by"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Express"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 401"
+    }
+  ]
+}},{"persona":"N12","variant":"C","lines":54,"check":1,"contract_test":1},
+{"persona":"N13","variant":"A","lines":75,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"N13","variant":"B","lines":217,"note":"","probe":{
+  "score": 18,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "connection,content-length,content-security-policy,content-type,date,etag,keep-alive,set-cookie,x-content-type-options,x-powered-by"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Express"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 401"
+    }
+  ]
+}},{"persona":"N13","variant":"C","lines":83,"check":1,"contract_test":1},
+{"persona":"N14","variant":"A","lines":75,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"N14","variant":"B","lines":185,"note":"","probe":{
+  "score": 16,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": false,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "accept-ranges,cache-control,connection,content-length,content-type,date,etag,keep-alive,last-modified,x-powered-by"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Express"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 401"
+    }
+  ]
+}},{"persona":"N14","variant":"C","lines":88,"check":1,"contract_test":1},
+{"persona":"N15","variant":"A","lines":73,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"N15","variant":"B","lines":218,"note":"","probe":{
+  "score": 17,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"イベント数\":1,\"予約数\":0,\"会場\":\"仙台\",\"定員\":5},{\"イベント数\":1,\"予約数\":15,\"会場\":\"大阪\",\"定員\":30},{\"イベント数\":2,\"予約数\":9,\"会場\":\"渋谷\",\"定員\":13},{\"イベント数\":1,\"予約数\":1,\"会場\":\"福岡\",\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "connection,content-length,content-type,date,server"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Werkzeug/3.1.9 Python/3.13.18,Werkzeug/3.1.9 Python/3.13.18"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 401"
+    }
+  ]
+}},{"persona":"N15","variant":"C","lines":94,"check":1,"contract_test":1},
+{"persona":"N16","variant":"A","lines":75,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"N16","variant":"B","lines":164,"note":"","probe":{
+  "score": 16,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": false,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "accept-ranges,cache-control,connection,content-length,content-type,date,etag,keep-alive,last-modified,x-powered-by"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Express"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},{"persona":"N16","variant":"C","lines":76,"check":1,"contract_test":1},
+{"persona":"N17","variant":"A","lines":73,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"N17","variant":"B","lines":256,"note":"","probe":{
+  "score": 17,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"イベント数\":1,\"予約数\":0,\"会場\":\"仙台\",\"定員\":5},{\"イベント数\":1,\"予約数\":15,\"会場\":\"大阪\",\"定員\":30},{\"イベント数\":2,\"予約数\":9,\"会場\":\"渋谷\",\"定員\":13},{\"イベント数\":1,\"予約数\":1,\"会場\":\"福岡\",\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "connection,content-length,content-type,date,server"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Werkzeug/3.1.9 Python/3.13.18,Werkzeug/3.1.9 Python/3.13.18"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 401"
+    }
+  ]
+}},{"persona":"N17","variant":"C","lines":91,"check":1,"contract_test":1},
+{"persona":"N18","variant":"A","lines":73,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"N18","variant":"B","lines":172,"note":"","probe":{
+  "score": 16,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": false,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "accept-ranges,cache-control,connection,content-length,content-type,date,etag,keep-alive,last-modified,x-powered-by"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Express"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 401"
+    }
+  ]
+}},{"persona":"N18","variant":"C","lines":78,"check":1,"contract_test":1},
+{"persona":"N19","variant":"A","lines":73,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"N19","variant":"B","lines":237,"note":"","probe":{
+  "score": 18,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"イベント数\":1,\"予約数\":0,\"会場\":\"仙台\",\"定員\":5},{\"イベント数\":1,\"予約数\":15,\"会場\":\"大阪\",\"定員\":30},{\"イベント数\":2,\"予約数\":9,\"会場\":\"渋谷\",\"定員\":13},{\"イベント数\":1,\"予約数\":1,\"会場\":\"福岡\",\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "connection,content-length,content-security-policy,content-type,date,server,set-cookie"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Werkzeug/3.1.9 Python/3.13.18,Werkzeug/3.1.9 Python/3.13.18"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 401"
+    }
+  ]
+}},{"persona":"N19","variant":"C","lines":54,"check":1,"contract_test":1},
+{"persona":"N20","variant":"A","lines":73,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"N20","variant":"B","lines":165,"note":"","probe":{
+  "score": 16,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": false,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "accept-ranges,cache-control,connection,content-length,content-type,date,etag,keep-alive,last-modified,x-powered-by"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Express"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},{"persona":"N20","variant":"C","lines":67,"check":1,"contract_test":1},
+{"persona":"N21","variant":"A","lines":73,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"N21","variant":"B","lines":169,"note":"","probe":{
+  "score": 16,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": false,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "accept-ranges,cache-control,connection,content-length,content-type,date,etag,keep-alive,last-modified,x-powered-by"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Express"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 401"
+    }
+  ]
+}},{"persona":"N21","variant":"C","lines":87,"check":1,"contract_test":1},
+{"persona":"N22","variant":"A","lines":66,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"N22","variant":"B","lines":169,"note":"","probe":{
+  "score": 16,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"イベント数\":1,\"予約数\":0,\"会場\":\"仙台\",\"定員\":5},{\"イベント数\":1,\"予約数\":15,\"会場\":\"大阪\",\"定員\":30},{\"イベント数\":2,\"予約数\":9,\"会場\":\"渋谷\",\"定員\":13},{\"イベント数\":1,\"予約数\":1,\"会場\":\"福岡\",\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": false,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "connection,content-length,content-type,date,server"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Werkzeug/3.1.9 Python/3.13.18,Werkzeug/3.1.9 Python/3.13.18"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 401"
+    }
+  ]
+}},{"persona":"N22","variant":"C","lines":79,"check":1,"contract_test":1},
+{"persona":"N23","variant":"A","lines":70,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"N23","variant":"B","lines":194,"note":"","probe":{
+  "score": 17,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": false,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "accept-ranges,cache-control,connection,content-length,content-security-policy,content-type,date,etag,keep-alive,last-modified,x-powered-by"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Express"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 401"
+    }
+  ]
+}},{"persona":"N23","variant":"C","lines":88,"check":1,"contract_test":1},
+{"persona":"N24","variant":"A","lines":71,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"N24","variant":"B","lines":172,"note":"","probe":{
+  "score": 16,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"イベント数\":1,\"予約数\":0,\"会場\":\"仙台\",\"定員\":5},{\"イベント数\":1,\"予約数\":15,\"会場\":\"大阪\",\"定員\":30},{\"イベント数\":2,\"予約数\":9,\"会場\":\"渋谷\",\"定員\":13},{\"イベント数\":1,\"予約数\":1,\"会場\":\"福岡\",\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": false,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "connection,content-length,content-type,date,server"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Werkzeug/3.1.9 Python/3.13.18,Werkzeug/3.1.9 Python/3.13.18"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 401"
+    }
+  ]
+}},{"persona":"N24","variant":"C","lines":79,"check":1,"contract_test":1},
+{"persona":"N25","variant":"A","lines":73,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"N25","variant":"B","lines":147,"note":"","probe":{
+  "score": 16,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": false,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "accept-ranges,cache-control,connection,content-length,content-type,date,etag,keep-alive,last-modified,x-powered-by"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Express"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},{"persona":"N25","variant":"C","lines":68,"check":1,"contract_test":1},
+{"persona":"N26","variant":"A","lines":75,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"N26","variant":"B","lines":153,"note":"","probe":{
+  "score": 16,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1},{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": false,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "accept-ranges,cache-control,connection,content-length,content-type,date,etag,keep-alive,last-modified,x-powered-by"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Express"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},{"persona":"N26","variant":"C","lines":72,"check":1,"contract_test":1},
+{"persona":"Q01","variant":"A","lines":68,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"Q01","variant":"B","lines":357,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "content-length,content-type,date,server,set-cookie,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": "waitress,waitress"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 401"
+    }
+  ]
+}},{"persona":"Q01","variant":"C","lines":86,"check":1,"contract_test":1},
+{"persona":"Q02","variant":"A","lines":70,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"Q02","variant":"B","lines":251,"note":"","probe":{
+  "score": 16,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": false,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "accept-ranges,cache-control,connection,content-length,content-type,date,etag,keep-alive,last-modified,x-powered-by"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Express"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},{"persona":"Q02","variant":"C","lines":77,"check":1,"contract_test":1},
+{"persona":"Q03","variant":"A","lines":75,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"Q03","variant":"B","lines":283,"note":"","probe":{
+  "score": 18,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "content-length,content-security-policy,content-type,date,server,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "uvicorn,uvicorn"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 400"
+    }
+  ]
+}},{"persona":"Q03","variant":"C","lines":89,"check":1,"contract_test":1},
+{"persona":"Q04","variant":"A","lines":75,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"Q04","variant":"B","lines":162,"note":"","probe":{
+  "score": 16,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1},{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": false,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "accept-ranges,cache-control,connection,content-length,content-type,date,etag,keep-alive,last-modified,x-powered-by"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Express"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 401"
+    }
+  ]
+}},{"persona":"Q04","variant":"C","lines":55,"check":1,"contract_test":1},
+{"persona":"Q05","variant":"A","lines":70,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"Q05","variant":"B","lines":187,"note":"","probe":{
+  "score": 18,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "connection,content-length,content-security-policy,content-type,date,etag,keep-alive,x-content-type-options,x-frame-options,x-powered-by"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Express"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},{"persona":"Q05","variant":"C","lines":70,"check":1,"contract_test":1},
+{"persona":"Q06","variant":"A","lines":73,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"Q06","variant":"B","lines":157,"note":"","probe":{
+  "score": 16,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1},{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": false,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "accept-ranges,cache-control,connection,content-length,content-type,date,etag,keep-alive,last-modified,x-powered-by"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Express"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 401"
+    }
+  ]
+}},{"persona":"Q06","variant":"C","lines":86,"check":1,"contract_test":1},
+{"persona":"Q07","variant":"A","lines":74,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"Q07","variant":"B","lines":242,"note":"","probe":{
+  "score": 17,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"イベント数\":1,\"予約数\":0,\"会場\":\"仙台\",\"定員\":5},{\"イベント数\":1,\"予約数\":15,\"会場\":\"大阪\",\"定員\":30},{\"イベント数\":2,\"予約数\":9,\"会場\":\"渋谷\",\"定員\":13},{\"イベント数\":1,\"予約数\":1,\"会場\":\"福岡\",\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "connection,content-length,content-type,date,server"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Werkzeug/3.1.9 Python/3.13.18,Werkzeug/3.1.9 Python/3.13.18"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 401"
+    }
+  ]
+}},{"persona":"Q07","variant":"C","lines":80,"check":1,"contract_test":1},
+{"persona":"Q08","variant":"A","lines":68,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"Q08","variant":"B","lines":226,"note":"","probe":{
+  "score": 16,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"イベント数\":1,\"予約数\":0,\"会場\":\"仙台\",\"定員\":5},{\"イベント数\":1,\"予約数\":15,\"会場\":\"大阪\",\"定員\":30},{\"イベント数\":2,\"予約数\":9,\"会場\":\"渋谷\",\"定員\":13},{\"イベント数\":1,\"予約数\":1,\"会場\":\"福岡\",\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": false,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "accept-ranges,cache-control,connection,content-disposition,content-length,content-type,date,etag,last-modified,server"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Werkzeug/3.1.9 Python/3.13.18,Werkzeug/3.1.9 Python/3.13.18"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},{"persona":"Q08","variant":"C","lines":88,"check":1,"contract_test":1},
+{"persona":"Q09","variant":"A","lines":75,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"Q09","variant":"B","lines":279,"note":"","probe":{
+  "score": 18,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"イベント数\":1,\"予約数\":0,\"会場\":\"仙台\",\"定員\":5},{\"イベント数\":1,\"予約数\":15,\"会場\":\"大阪\",\"定員\":30},{\"イベント数\":2,\"予約数\":9,\"会場\":\"渋谷\",\"定員\":13},{\"イベント数\":1,\"予約数\":1,\"会場\":\"福岡\",\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "connection,content-length,content-security-policy,content-type,date,server,vary,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Werkzeug/3.1.9 Python/3.13.18,Werkzeug/3.1.9 Python/3.13.18"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 401"
+    }
+  ]
+}},{"persona":"Q09","variant":"C","lines":120,"check":1,"contract_test":1},
+{"persona":"Q10","variant":"A","lines":72,"note":"","probe":{
+  "score": 19,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": true,
+      "note": "cache-control,connection,content-security-policy,content-type,cross-origin-opener-policy,cross-origin-resource-policy,date,keep-alive,permissions-policy,referrer-policy,transfer-encoding,x-content-type-options,x-frame-options"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 403"
+    }
+  ]
+}},
+{"persona":"Q10","variant":"B","lines":162,"note":"","probe":{
+  "score": 16,
+  "total": 19,
+  "results": [
+    {
+      "id": "F01",
+      "title": "イベント一覧は誰でも見られる",
+      "ok": true,
+      "note": "status 200"
+    },
+    {
+      "id": "F02",
+      "title": "詳細は 200、無いものは 404",
+      "ok": true,
+      "note": "200/404"
+    },
+    {
+      "id": "F03",
+      "title": "予約: トークンなしは 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "title": "予約: 偽造トークン(別の秘密)は 401",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "title": "予約: 権限不足は 403",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "title": "予約できて予約数が増える",
+      "ok": true,
+      "note": "200 12->14"
+    },
+    {
+      "id": "F07",
+      "title": "人数 0 は 422「人数不正」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"人数不正\"}"
+    },
+    {
+      "id": "F08",
+      "title": "入力の形が不正(人数が文字列)は 400",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "title": "残席不足は 422「満席」",
+      "ok": true,
+      "note": "422 {\"error\":\"failure\",\"value\":\"満席\"}"
+    },
+    {
+      "id": "F10",
+      "title": "同時予約でも定員を超えない(定員 1 に 8 人同時)",
+      "ok": true,
+      "note": "成功 1 件・予約数 1"
+    },
+    {
+      "id": "F11",
+      "title": "自分の予約には本人の分だけ",
+      "ok": true,
+      "note": "200 carol=1 dave=0"
+    },
+    {
+      "id": "F12",
+      "title": "自分の予約はログイン必須(401)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "F13",
+      "title": "イベント登録: 主催者は 200、権限なしは 403、定員 0 は 422",
+      "ok": true,
+      "note": "200/403/422"
+    },
+    {
+      "id": "F14",
+      "title": "会場別の集計が一覧と一致する",
+      "ok": true,
+      "note": "[{\"会場\":\"仙台\",\"イベント数\":1,\"予約数\":0,\"定員\":5},{\"会場\":\"大阪\",\"イベント数\":1,\"予約数\":15,\"定員\":30},{\"会場\":\"渋谷\",\"イベント数\":2,\"予約数\":9,\"定員\":13},{\"会場\":\"福岡\",\"イベント数\":1,\"予約数\":1,\"定員\":1"
+    },
+    {
+      "id": "U01",
+      "title": "一覧画面に日本の表記(¥1,000・19:00)で表示",
+      "ok": false,
+      "note": "status 200"
+    },
+    {
+      "id": "S01",
+      "title": "画面で名前がエスケープされる(XSS が成立しない)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "id": "S02",
+      "title": "画面の応答にセキュリティヘッダ(CSP または nosniff)",
+      "ok": false,
+      "note": "accept-ranges,cache-control,connection,content-length,content-type,date,etag,keep-alive,last-modified,x-powered-by"
+    },
+    {
+      "id": "S03",
+      "title": "技術の痕跡(X-Powered-By・Server の製品名)を出さない",
+      "ok": false,
+      "note": "Express"
+    },
+    {
+      "id": "S04",
+      "title": "他サイトからの POST(CSRF)を画面のサーバーが受け付けない",
+      "ok": true,
+      "note": "status 401"
+    }
+  ]
+}},{"persona":"Q10","variant":"C","lines":76,"check":1,"contract_test":1}]

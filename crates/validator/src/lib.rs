@@ -151,19 +151,28 @@ pub fn validate(env: &Env, facts: &BTreeMap<String, Facts>, intents: &IntentMode
                 }
                 for c in decl {
                     if !computed.contains_key(c) {
+                        // 宣言した権限は、処理で使わなくても要求する(作者が意図した追加の制限を黙って外さない。ペルソナ評価で判明)
                         diags.push(
-                            Diagnostic::warning(Code::SEC002, sig.span, format!("動作 `{name}` の Capability {} は使われていません", c.source()))
-                                .hint("最小権限のため削除を検討してください"),
+                            Diagnostic::warning(
+                                Code::SEC002,
+                                sig.span,
+                                format!("動作 `{name}` の Capability {} は処理では使われていませんが、宣言どおり要求します", c.source()),
+                            )
+                            .hint("意図した制限でなければ削除してください(最小権限)"),
                         );
                     }
                 }
             }
         }
+        let mut required: BTreeSet<Capability> = computed.keys().cloned().collect();
+        if let Some(decl) = &sig.declared_caps {
+            required.extend(decl.iter().cloned());
+        }
         v.actions.insert(
             name.clone(),
             EffectSummary {
                 effects,
-                capabilities: computed.keys().cloned().collect(),
+                capabilities: required,
             },
         );
     }

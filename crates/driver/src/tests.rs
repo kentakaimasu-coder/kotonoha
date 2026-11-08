@@ -553,3 +553,17 @@ fn analyses_can_be_made_public_explicitly_even_over_owner_data() {
         .unwrap();
     assert!(e2["access"]["capabilities"].as_array().unwrap().iter().any(|c| c == "全件閲覧.注文"));
 }
+
+#[test]
+fn declared_capabilities_are_enforced_even_if_unused() {
+    // 作者が `必要` に書いた追加の権限(ここでは 出発枠.作成)は、処理で使わなくても API で要求する
+    let src = "アプリ「t」\nデータ 出発枠:\n    ID: 識別子\n    受付中: 真偽\nアダプタ 枠を取得(ID: 識別子) -> 出発枠:\n    操作 = 取得(出発枠)\n動作 締め切る(ID: 識別子) -> 識別子:\n    必要 = [出発枠.読取, 出発枠.更新, 出発枠.作成]\n    厳密:\n        取引:\n            x = 枠を取得(ID)\n            x.受付中 = 偽\n            ID を返す\n";
+    let p = with_src(src);
+    let a = analyze(&p, &none());
+    assert!(a.ok(), "{:#?}", a.diags.items);
+    assert!(a.diags.items.iter().any(|d| d.message_ja.contains("宣言どおり要求します")));
+    let b = build_target(&p, &a, "backend").unwrap();
+    let api: serde_json::Value = serde_json::from_str(&b.files.iter().find(|f| f.0 == "api.json").unwrap().1).unwrap();
+    let e = api["endpoints"].as_array().unwrap().iter().find(|e| e["id"] == "action.締め切る").unwrap();
+    assert!(e["access"]["capabilities"].as_array().unwrap().iter().any(|c| c == "出発枠.create"), "{e}");
+}
