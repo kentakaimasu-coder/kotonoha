@@ -435,7 +435,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
             ),
         ),
         GeneratedFile::text("build.gradle.kts", root_build.into()),
-        GeneratedFile::text("gradle.properties", "android.useAndroidX=true\nkotlin.code.style=official\n".into()),
+        GeneratedFile::text("gradle.properties", "android.useAndroidX=true\nkotlin.code.style=official\n# D8 の dex 結合は既定の 512MB では足りないことがある(CI で OOM)\norg.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8\n".into()),
         GeneratedFile::text("app/build.gradle.kts", app_build),
         GeneratedFile::text("app/src/main/AndroidManifest.xml", manifest.into()),
         GeneratedFile::text("app/src/main/res/xml/network_security_config.xml", nsc.into()),
