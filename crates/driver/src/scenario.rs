@@ -5,6 +5,7 @@
 //!   人は 名前(役割)・名前(役割を省くと一般の利用者)・`ログインしていない人`
 //! - `{人}から {データ}が {N}件見える`(一覧 API で、その人に見える件数)
 //! - `{データ}({ID})の{フィールド}は {値}`(データベースの値。だれから見えるかに関係なく確かめる)
+//! - `→ 成功(依頼A)` で、動作が返した ID に名前を付ける。後の行の引数や `依頼(依頼A)の状況は 完了` で使える(ADR-0134)
 //!
 //! 引数の値は、動作の引数の型に合わせて読む(数・真/偽・文字列・日付 2026-12-05・日時 2026-12-05 19:00・なし)。
 //! 確かめる手順はアプリの意味(VAG)には入らない(生成物の tests/ にだけ出る)。
@@ -116,6 +117,8 @@ fn value(raw: &str, t: &Type, env: &Env) -> Result<Value, String> {
 struct Ctx<'a> {
     env: &'a Env,
     diags: Vec<Diagnostic>,
+    /// この「確かめる」の中で `→ 成功(名前)` と名付けた結果
+    labels: std::collections::BTreeSet<String>,
 }
 
 impl Ctx<'_> {
@@ -178,6 +181,11 @@ impl Ctx<'_> {
             }
             let mut body = serde_json::Map::new();
             for ((n, t), r) in sig.params.iter().zip(&raw) {
+                // 前の行で名付けた結果(作った行の ID)
+                if self.labels.contains(r.trim()) {
+                    body.insert(n.clone(), json!({"$ref": r.trim()}));
+                    continue;
+                }
                 match value(r, t, self.env) {
                     Ok(v) => {
                         body.insert(n.clone(), v);
@@ -189,7 +197,14 @@ impl Ctx<'_> {
                 }
             }
             let expect = expect.trim();
+            // `成功(依頼A)`: 返した ID に名前を付ける
+            let saved = expect
+                .strip_prefix("成功(")
+                .and_then(|x| x.strip_suffix(')'))
+                .map(|x| x.trim().to_string())
+                .filter(|x| !x.is_empty() && !x.contains(['"', '「', ' ']));
             let exp = match expect {
+                _ if saved.is_some() => json!({"status": 200, "save": saved.clone().unwrap()}),
                 "成功" => json!({"status": 200}),
                 "失敗" => json!({"status": 422}),
                 "ログインが必要" => json!({"status": 401}),
@@ -214,6 +229,9 @@ impl Ctx<'_> {
                 },
             };
             let who = self.person(who, span)?;
+            if let Some(l) = saved {
+                self.labels.insert(l);
+            }
             return Some(json!({"kind": "action", "text": text, "who": who, "action": name, "body": body, "expect": exp}));
         }
         // 2. 見える件数
@@ -256,7 +274,9 @@ impl Ctx<'_> {
                     };
                     return match value(v, &t, self.env) {
                         Ok(val) => {
-                            Some(json!({"kind": "field", "text": text, "data": d, "id": unquote(id.trim()).unwrap_or(id.trim()), "field": f, "value": val}))
+                            let id = unquote(id.trim()).unwrap_or(id.trim());
+                            let id = if self.labels.contains(id) { json!({"$ref": id}) } else { json!(id) };
+                            Some(json!({"kind": "field", "text": text, "data": d, "id": id, "field": f, "value": val}))
                         }
                         Err(e) => {
                             self.diags.push(Diagnostic::error(Code::TYP001, span, e));
@@ -273,11 +293,16 @@ impl Ctx<'_> {
 
 /// ソースの「確かめる」をすべて検査し、実行用の JSON(無ければ空の配列)を返す。
 pub fn compile(asts: &[SourceFile], env: &Env) -> (Value, Vec<Diagnostic>) {
-    let mut c = Ctx { env, diags: Vec::new() };
+    let mut c = Ctx {
+        env,
+        diags: Vec::new(),
+        labels: Default::default(),
+    };
     let mut out = Vec::new();
     for f in asts {
         for it in &f.items {
             if let Decl::Scenario(s) = &it.decl {
+                c.labels.clear();
                 let steps: Vec<Value> = s.lines.iter().filter_map(|l| c.line(&l.text, l.span)).collect();
                 out.push(json!({"name": s.name.name, "steps": steps}));
             }

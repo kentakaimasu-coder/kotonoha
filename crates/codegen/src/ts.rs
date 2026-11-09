@@ -284,6 +284,8 @@ impl<'a> TsGen<'a> {
                     BinOp::Or => format!("({l} || {r})"),
                 }
             }
+            // 名前付き引数は解析の段階で並べ替えて取り除かれる(ADR-0134)
+            ExprKind::Named { value, .. } => self.expr(value),
             ExprKind::List(xs) => {
                 let a: Vec<String> = xs.iter().map(|x| self.expr(x)).collect();
                 format!("[{}]", a.join(", "))

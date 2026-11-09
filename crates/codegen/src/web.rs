@@ -197,9 +197,28 @@ fn refs_js(ir: &AppIr, fields: &[(String, Type)], loaders: &mut Vec<Value>) -> S
             continue;
         }
         let Some(ent) = ir.entities.iter().find(|e| e.name == x) else { continue };
-        let Some((label, _)) = ent.fields.iter().find(|(f, ft)| f != "ID" && matches!(ft, Type::Str)) else {
-            continue;
+        // 選ぶ欄の表示: 最初の文字列の項目。日付・日時の項目があれば添える(同じ文字の行を見分けられるように)。
+        // 文字列の項目が無ければ日付・日時だけで出す
+        let base = |t: &Type| match t {
+            Type::Option(x) => x.as_ref().clone(),
+            t => t.clone(),
         };
+        let text = ent
+            .fields
+            .iter()
+            .find(|(f, ft)| f != "ID" && matches!(base(ft), Type::Str))
+            .map(|(f, _)| f.clone());
+        let when = ent
+            .fields
+            .iter()
+            .find(|(_, ft)| matches!(base(ft), Type::Date | Type::DateTime))
+            .map(|(f, _)| f.clone());
+        let (label, extra) = match (text, when) {
+            (Some(t), w) => (t, w),
+            (None, Some(w)) => (w, None),
+            (None, None) => continue,
+        };
+        let label = &label;
         if !ir.endpoints.iter().any(|e| e.id == format!("data.list.{x}")) {
             continue;
         }
@@ -208,11 +227,12 @@ fn refs_js(ir: &AppIr, fields: &[(String, Type)], loaders: &mut Vec<Value>) -> S
             loaders.push(json!({"key": key, "segments": ["api", "data", x], "withId": false}));
         }
         parts.push(format!(
-            "{}: {{ r: p.data[{}], label: {}, title: {} }}",
+            "{}: {{ r: p.data[{}], label: {}, title: {}{} }}",
             js_str(n),
             js_str(&key),
             js_str(label),
-            js_str(x)
+            js_str(x),
+            extra.map(|e| format!(", extra: {}", js_str(&e))).unwrap_or_default()
         ));
     }
     if parts.is_empty() {

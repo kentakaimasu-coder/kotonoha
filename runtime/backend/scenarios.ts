@@ -50,6 +50,9 @@ for (const sc of scenarios) {
     return signToken(claims, secret);
   };
   console.log(`確かめる「${sc.name}」`);
+  // `→ 成功(名前)` で名付けた ID(後の行の {"$ref": 名前} を置き換える)
+  const saved = new Map<string, unknown>();
+  const resolve = (v: any): unknown => (v !== null && typeof v === "object" && typeof v.$ref === "string" ? saved.get(v.$ref) ?? `(${v.$ref} はまだ作られていません)` : v);
   for (const st of sc.steps) {
     let ok = false;
     let got = "";
@@ -58,8 +61,10 @@ for (const sc of scenarios) {
         const t = token(st.who);
         const headers: Record<string, string> = { "Content-Type": "application/json" };
         if (t) headers.Authorization = `Bearer ${t}`;
-        const r = await fetch(`${url}/api/actions/${enc(st.action)}`, { method: "POST", headers, body: JSON.stringify(st.body) });
+        const body = Object.fromEntries(Object.entries(st.body ?? {}).map(([k, v]) => [k, resolve(v)]));
+        const r = await fetch(`${url}/api/actions/${enc(st.action)}`, { method: "POST", headers, body: JSON.stringify(body) });
         const b: any = await r.json().catch(() => null);
+        if (st.expect.save && r.status === 200) saved.set(st.expect.save, b?.ok);
         ok = r.status === st.expect.status && (st.expect.value === undefined || b?.value === st.expect.value) && (st.expect.error === undefined || b?.error === st.expect.error);
         got = r.status === 200 ? "成功" : r.status === 422 ? `失敗(${show(b?.value)})` : r.status === 409 && b?.error === "invalid_transition" ? `順番が違う(${b?.message ?? ""})` : r.status === 409 ? `重複(${b?.message ?? ""})` : `${r.status} ${b?.message ?? ""}`.trim();
       } else if (st.kind === "count") {
@@ -75,8 +80,9 @@ for (const sc of scenarios) {
       } else if (st.kind === "field") {
         const d = await openDb(db, tables);
         try {
-          const rows: any[] = await d.conn.all(`SELECT ${q(st.field)} AS v FROM ${q(st.data)} WHERE "ID" = ?`, [st.id]);
-          if (rows.length === 0) got = `${st.data}「${st.id}」がありません`;
+          const id = resolve(st.id);
+          const rows: any[] = await d.conn.all(`SELECT ${q(st.field)} AS v FROM ${q(st.data)} WHERE "ID" = ?`, [id]);
+          if (rows.length === 0) got = `${st.data}「${typeof st.id === "string" ? st.id : st.id.$ref}」がありません`;
           else {
             let v: unknown = rows[0].v;
             if (typeof v === "bigint") v = Number(v);

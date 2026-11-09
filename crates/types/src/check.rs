@@ -548,6 +548,12 @@ impl<'e> Checker<'e> {
                 }
             }
             ExprKind::Binary { op, lhs, rhs } => self.binary(*op, lhs, rhs, e.span),
+            // 呼び出しの名前付き引数は型検査の前に並べ替えて取り除く(残るのは呼び出し以外に書いたとき)
+            ExprKind::Named { name, value } => {
+                let d = self.err(Code::SYN001, e.span, format!("`{}: …` は呼び出しの引数の中でだけ書けます", name.name));
+                self.diags.push(d);
+                self.expr(value, expected)
+            }
             ExprKind::List(items) => {
                 let want_elem = match expected {
                     Some(Type::List(t)) | Some(Type::Array(t)) => Some(t.as_ref().clone()),

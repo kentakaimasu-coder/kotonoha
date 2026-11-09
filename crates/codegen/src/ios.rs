@@ -463,9 +463,14 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
         .map(|s| format!("NavigationLink({}) {{ {}() }}", swift_str(&s.name), type_name("Screen_", &s.name)))
         .collect();
     v.push_str(&format!(
-        "struct RootView: View {{\n    var body: some View {{\n        NavigationStack {{\n            List {{\n                {}\n                NavigationLink(\"ログイン\") {{ LoginView() }}\n            }}\n            .navigationTitle({})\n        }}\n    }}\n}}\n\n@main\nstruct GeneratedApp: App {{\n    @StateObject private var api = KotonohaAPI()\n    var body: some Scene {{ WindowGroup {{ RootView().environmentObject(api) }} }}\n}}\n",
+        "struct RootView: View {{\n    var body: some View {{\n        NavigationStack {{\n            List {{\n                {}\n                NavigationLink(\"ログイン\") {{ LoginView() }}\n            }}\n            .navigationTitle({})\n        }}\n    }}\n}}\n\n@main\nstruct GeneratedApp: App {{\n    @StateObject private var api = KotonohaAPI()\n    var body: some Scene {{ WindowGroup {{ RootView().environmentObject(api){} }} }}\n}}\n",
         menu.join("\n                "),
-        swift_str(&ir.name)
+        swift_str(&ir.name),
+        // kotonoha.json の theme.color(ADR-0131): ボタン・リンクの色
+        ir.theme_color.as_deref().map(|hex| {
+            let c = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).unwrap_or(0) as f64 / 255.0;
+            format!(".tint(Color(red: {:.3}, green: {:.3}, blue: {:.3}))", c(1), c(3), c(5))
+        }).unwrap_or_default()
     ));
 
     let _ = ir.endpoints.iter().filter(|e| matches!(e.kind, EndpointKind::Action { .. })).count();

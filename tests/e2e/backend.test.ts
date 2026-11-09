@@ -50,7 +50,7 @@ test("AT-04 / TC-007 認可はサーバーで強制(401 / 403)", async () => {
   const weak = token(["注文.create"]);
   const r = await api("POST", p("api", "actions", "注文する"), { 商品ID: "P01", 数量: 1 }, weak);
   assert.equal(r.status, 403);
-  assert.match(r.body.message, /商品.read/);
+  assert.match(r.body.message, /商品.読取/);
   // 非公開データ(注文明細)の集計
   assert.equal((await api("GET", p("api", "queries", "売れ筋商品"))).status, 401);
 });

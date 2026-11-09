@@ -210,10 +210,12 @@ pub fn analyze(p: &Project, approvals: &ApprovalsFile) -> Analysis {
         diags.extend(d);
         asts.push(ast);
     }
-    let refs: Vec<&SourceFile> = asts.iter().collect();
     // 2. 宣言収集・型
-    let (env, d) = kotonoha_types::collect_env(&refs);
+    let (env, d) = kotonoha_types::collect_env(&asts.iter().collect::<Vec<_>>());
     diags.extend(d);
+    // 名前付き引数(`項目名: 値`)を宣言の順に並べ替える(ADR-0134)
+    diags.extend(kotonoha_types::resolve_named_args(&env, &mut asts));
+    let refs: Vec<&SourceFile> = asts.iter().collect();
     let mut facts = BTreeMap::new();
     for f in &refs {
         for it in &f.items {

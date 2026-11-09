@@ -310,6 +310,16 @@ fn all_caps(api: &serde_json::Value) -> Vec<String> {
     caps.into_iter().collect()
 }
 
+/// 権限の名前をソースと同じ日本語で表示する(`予約.create` → `予約.作成`)。トークンにはどちらの書き方でも入れられる
+fn ja_cap(c: &str) -> String {
+    for (en, ja) in [("read", "読取"), ("create", "作成"), ("update", "更新"), ("delete", "削除")] {
+        if let Some(d) = c.strip_suffix(&format!(".{en}")) {
+            return format!("{d}.{ja}");
+        }
+    }
+    c.to_string()
+}
+
 /// 自動で入る安全対策(K-26: 利用者から見えるようにする)
 fn safety_text(api: &serde_json::Value) -> String {
     let mut s = String::from("自動で入っている安全対策:\n");
@@ -328,7 +338,7 @@ fn safety_text(api: &serde_json::Value) -> String {
     if let Some(rs) = api["roles"].as_object().filter(|m| !m.is_empty()) {
         s.push_str("\n役割(ソースの `役割` 宣言。トークンの roles に役割名を入れると、その権限を持つ):\n");
         for (r, caps) in rs {
-            let cs: Vec<&str> = caps.as_array().into_iter().flatten().filter_map(|c| c.as_str()).collect();
+            let cs: Vec<String> = caps.as_array().into_iter().flatten().filter_map(|c| c.as_str()).map(ja_cap).collect();
             s.push_str(&format!("  {r}: {}\n", cs.join(", ")));
         }
         // 役割ごとに実行できる動作(意図しない役割が実行できないかを見るため。ADR-0132)
@@ -362,7 +372,7 @@ fn safety_text(api: &serde_json::Value) -> String {
             let caps: Vec<&str> = a["capabilities"].as_array().into_iter().flatten().filter_map(|c| c.as_str()).collect();
             let mut v = Vec::new();
             if !caps.is_empty() {
-                v.push(format!("権限 {}", caps.join(" + ")));
+                v.push(format!("権限 {}", caps.iter().map(|c| ja_cap(c)).collect::<Vec<_>>().join(" + ")));
             }
             if let Some(g) = a["grant"].as_str() {
                 v.push(format!("許可 {g}"));
@@ -438,7 +448,10 @@ fn cmd_patterns(o: &mut Opts) -> Result<i32, String> {
         if let Some((f, _)) = info.fields.iter().find(|(n, t)| n != "ID" && t.to_string() == "整数") {
             s.push_str(&format!("    件.{f} = 件.{f} + 1              … 書き換え(自動で保存)\n"));
         }
-        s.push_str(&format!("    {d}を登録({}) を返す   … 新しく登録(値は項目の順)\n", fields.join(", ")));
+        s.push_str(&format!(
+            "    {d}を登録({}) を返す   … 新しく登録(項目名: 値。順は自由、選択<…> の項目は省ける)\n",
+            fields.iter().map(|f| format!("{f}: …")).collect::<Vec<_>>().join(", ")
+        ));
     }
     s.push_str("    数量 > 0 を確認 または 失敗(\"数量不正\")   … 条件を満たさなければ失敗(それまでの変更は元に戻る)\n");
     // 確かめる
@@ -544,7 +557,34 @@ fn cmd_token(o: &mut Opts) -> Result<i32, String> {
     Ok(0)
 }
 
-/// `koto dev`: 検査 → backend と web を生成 → 初期データ → 起動(画面と API は同じポート)
+/// `koto dev` の作り直しの合図(ソースが変わった)
+const DEV_RESTART: i32 = -100;
+
+/// ソースの変更を見張る対象(kotonoha.json・src・seed.json・分析の SQL・拡張の実装)の更新時刻と大きさ
+fn source_fingerprint(root: &Path) -> Vec<(PathBuf, Option<std::time::SystemTime>, u64)> {
+    fn walk(d: &Path, out: &mut Vec<(PathBuf, Option<std::time::SystemTime>, u64)>) {
+        let Ok(rd) = std::fs::read_dir(d) else { return };
+        for e in rd.flatten() {
+            let p = e.path();
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') || name == "node_modules" || name == "build" || name == "out" {
+                continue;
+            }
+            match e.metadata() {
+                Ok(m) if m.is_dir() => walk(&p, out),
+                Ok(m) => out.push((p, m.modified().ok(), m.len())),
+                Err(_) => {}
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(root, &mut out);
+    out.sort();
+    out
+}
+
+/// `koto dev`: 検査 → backend と web を生成 → 初期データ → 起動(画面と API は同じポート)。
+/// 起動した後はソースを見張り、変わったら作り直して起動し直す(止めなくてよい)
 fn cmd_dev(o: &mut Opts) -> Result<i32, String> {
     let port: u16 = take_value(&mut o.args, "--port")?
         .map(|p| p.parse().map_err(|_| "--port は数字です".to_string()))
@@ -552,6 +592,28 @@ fn cmd_dev(o: &mut Opts) -> Result<i32, String> {
         .unwrap_or(3000);
     let no_start = take_flag(&mut o.args, "--no-start");
     no_extra(&o.args)?;
+    let mut started = false;
+    loop {
+        let fp = source_fingerprint(&o.dir);
+        let code = dev_once(o, port, no_start, &mut started)?;
+        if code == DEV_RESTART {
+            eprintln!("\nソースが変わりました。検査して作り直します…\n");
+            continue;
+        }
+        if !started || no_start {
+            return Ok(code);
+        }
+        // 一度起動した後に検査で止まったときは、直すのを待つ(Ctrl+C で終わる)
+        eprintln!("\nソースを直して保存すると、自動でやり直します(止めるとき: Ctrl+C)");
+        while source_fingerprint(&o.dir) == fp {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        eprintln!("\nソースが変わりました。検査して作り直します…\n");
+    }
+}
+
+fn dev_once(o: &mut Opts, port: u16, no_start: bool, ever_started: &mut bool) -> Result<i32, String> {
+    let fp = source_fingerprint(&o.dir);
     let (p, a) = match analyzed(o) {
         Ok(x) => x,
         Err(c) => return Ok(c),
@@ -668,7 +730,7 @@ fn cmd_dev(o: &mut Opts) -> Result<i32, String> {
         o.dir.display()
     );
     eprintln!("  データ: {}(消すと空からやり直せます)", db.display());
-    eprintln!("  止めるとき: Ctrl+C\n");
+    eprintln!("  止めるとき: Ctrl+C(ソースを直して保存すると、自動で作り直します)\n");
     eprint!("{}", safety_text(&api));
     if no_start {
         return Ok(0);
@@ -715,6 +777,8 @@ fn cmd_dev(o: &mut Opts) -> Result<i32, String> {
         .current_dir(&web)
         .spawn()
         .map_err(|e| format!("画面のサーバーを起動できません: {e}"))?;
+    *ever_started = true;
+    let mut tick = 0u32;
     loop {
         std::thread::sleep(std::time::Duration::from_millis(300));
         let b = backend.try_wait().map_err(|e| e.to_string())?;
@@ -724,6 +788,14 @@ fn cmd_dev(o: &mut Opts) -> Result<i32, String> {
             let _ = webp.kill();
             eprintln!("サーバーが止まりました(ポート {port} が使用中でないか確認してください。--port で変えられます)");
             return Ok(1);
+        }
+        tick += 1;
+        if tick.is_multiple_of(3) && source_fingerprint(&o.dir) != fp {
+            let _ = backend.kill();
+            let _ = webp.kill();
+            let _ = backend.wait();
+            let _ = webp.wait();
+            return Ok(DEV_RESTART);
         }
     }
 }

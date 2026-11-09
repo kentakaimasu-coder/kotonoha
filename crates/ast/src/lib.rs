@@ -371,6 +371,11 @@ pub enum ExprKind {
         rhs: Box<Expr>,
     },
     List(Vec<Expr>),
+    /// 呼び出しの名前付き引数 `項目名: 値`(ADR-0134)。型検査の前に宣言順へ並べ替えて取り除く
+    Named {
+        name: Ident,
+        value: Box<Expr>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

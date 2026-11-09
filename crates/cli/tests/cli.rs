@@ -510,3 +510,57 @@ fn role_named_actions_are_only_for_those_roles_and_state_rules_are_checkable() {
         "同じ状態にもう一度するのも順番違い: {err}"
     );
 }
+
+#[test]
+fn named_arguments_reorder_by_declaration_and_explain_mistakes() {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("named_args");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::write(
+        root.join("kotonoha.json"),
+        r#"{"name":"named","sources":["src/app.koto"],"targets":["backend"]}"#,
+    )
+    .unwrap();
+    let app = |body: &str| {
+        format!(
+            "アプリ「named」\n\n列挙 依頼失敗:\n    件名が空\n\nデータ 依頼:\n    ID: 識別子\n    件名: 文字列\n    依頼者: 識別子\n    担当者: 選択<識別子>\n    件数: 整数\n\n動作 依頼する(件名: 文字列) -> 結果<識別子, 依頼失敗>:\n    長さ(件名) > 0 を確認 または 失敗(\"件名が空\")\n    {body} を返す\n\n確かめる 依頼:\n    花子が 依頼する(\"印刷\") → 成功\n    花子が 依頼する(\"\") → 失敗(\"件名が空\")\n"
+        )
+    };
+    // 書いた順は自由。選択<…> の担当者は省ける(なし)
+    std::fs::write(root.join("src/app.koto"), app("依頼を登録(件数: 1, 依頼者: 本人, 件名: 件名)")).unwrap();
+    let (c, _, err) = koto(&root, &["test"]);
+    assert_eq!(c, 0, "{err}");
+    assert!(err.contains("すべて確かめました"), "{err}");
+    // koto fmt は名前付きのまま残す
+    let (c, out, err) = koto(&root, &["fmt", "--check"]);
+    assert!(c == 0 || out.contains("依頼者: 本人") || err.contains("依頼者: 本人"), "{out}{err}");
+    // 間違い: 無い項目・省けない項目・混在
+    for (body, want) in [
+        ("依頼を登録(件数: 1, 依頼人: 本人, 件名: 件名)", "引数 `依頼人` はありません"),
+        ("依頼を登録(件名: 件名, 依頼者: 本人)", "件数(整数) がありません"),
+        ("依頼を登録(件名, 依頼者: 本人, 件数: 1)", "全部に名前を付けるか"),
+    ] {
+        std::fs::write(root.join("src/app.koto"), app(body)).unwrap();
+        let (c, _, err) = koto(&root, &["check"]);
+        assert_ne!(c, 0, "{body}");
+        assert!(err.contains(want), "{body}: {err}");
+    }
+}
+
+#[test]
+fn scenarios_can_name_created_rows_and_use_them_later() {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("scenario_refs");
+    let _ = std::fs::remove_dir_all(&root);
+    let (c, _, err) = koto(Path::new("."), &["init", root.to_str().unwrap(), "--template", "問い合わせ"]);
+    assert_eq!(c, 0, "{err}");
+    let app = root.join("src/app.koto");
+    let s = std::fs::read_to_string(&app).unwrap()
+        + "\n確かめる 作った問い合わせを完了にする:\n    花子が 問い合わせる(\"配送\", \"いつ届く?\") → 成功(問1)\n    問い合わせ(問1)の状況は 未対応\n    花子が 完了にする(問1) → 成功\n    問い合わせ(問1)の状況は 完了\n    太郎が 完了にする(問1) → 見つからない\n";
+    std::fs::write(&app, s).unwrap();
+    let (c, _, err) = koto(&root, &["test"]);
+    assert_eq!(c, 0, "{err}");
+    assert!(
+        err.contains("✓ 問い合わせ(問1)の状況は 完了") && err.contains("✓ 太郎が 完了にする(問1) → 見つからない"),
+        "{err}"
+    );
+}

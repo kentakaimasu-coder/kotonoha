@@ -243,6 +243,7 @@ pub fn expr_str(e: &Expr) -> String {
         ExprKind::Call { callee, args } => {
             format!("{}({})", callee.name, args.iter().map(expr_str).collect::<Vec<_>>().join(", "))
         }
+        ExprKind::Named { name, value } => format!("{}: {}", name.name, expr_str(value)),
         ExprKind::Unary { op, expr } => {
             let o = match op {
                 UnaryOp::Neg => "-",

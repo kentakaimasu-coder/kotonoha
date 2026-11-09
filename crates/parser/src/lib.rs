@@ -1026,7 +1026,31 @@ impl<'t> TokStream<'t> {
             return Ok(args);
         }
         loop {
-            args.push(self.expr()?);
+            // 名前付き引数 `項目名: 値`(ADR-0134)
+            let named = match (self.toks.get(self.pos), self.toks.get(self.pos + 1)) {
+                (
+                    Some(Token {
+                        kind: TokenKind::Ident(n),
+                        span,
+                    }),
+                    Some(Token {
+                        kind: TokenKind::Sym(Sym::Colon),
+                        ..
+                    }),
+                ) => Some(Ident { name: n.clone(), span: *span }),
+                _ => None,
+            };
+            if let Some(name) = named {
+                self.pos += 2;
+                let value = self.expr()?;
+                let span = name.span.to(value.span);
+                args.push(Expr {
+                    kind: ExprKind::Named { name, value: Box::new(value) },
+                    span,
+                });
+            } else {
+                args.push(self.expr()?);
+            }
             if self.eat_sym(Sym::RParen) {
                 return Ok(args);
             }

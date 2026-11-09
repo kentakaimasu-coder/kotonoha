@@ -182,12 +182,24 @@ export function Page(p: { title: string; children?: React.ReactNode }) {
 }
 
 /** 関連データの名前で表示する(フィールド「イベントID」→ イベントの名前)。読めなければ ID のまま */
-export type Refs = Record<string, { r: LoadResult | undefined; label: string; title: string }>;
+export type Refs = Record<string, { r: LoadResult | undefined; label: string; title: string; extra?: string }>;
+
+/** 選ぶ欄の 1 行の表示(名前と、あれば日付) */
+function optionText(row: any, ref: { label: string; extra?: string }): string {
+  const fmt = (v: unknown) => {
+    const s = String(v ?? "");
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return formatValue(s, { kind: "date" }, "Asia/Tokyo");
+    if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return formatValue(s, { kind: "datetime" }, "Asia/Tokyo");
+    return s;
+  };
+  const main = row[ref.label] === null || row[ref.label] === undefined ? String(row.ID) : fmt(row[ref.label]);
+  return ref.extra && row[ref.extra] !== null && row[ref.extra] !== undefined ? `${main}(${fmt(row[ref.extra])})` : main;
+}
 function refText(refs: Refs | undefined, f: Field, v: unknown, tz: string): string {
   const ref = refs?.[f.name];
   if (ref && ref.r?.ok && Array.isArray(ref.r.body) && v !== null && v !== undefined) {
     const hit = ref.r.body.find((x: any) => x.ID === v);
-    if (hit && hit[ref.label] !== undefined && hit[ref.label] !== null) return String(hit[ref.label]);
+    if (hit && hit[ref.label] !== undefined && hit[ref.label] !== null) return optionText(hit, { label: ref.label });
   }
   return formatValue(v, f.type, tz);
 }
@@ -316,7 +328,7 @@ function inputFor(f: Field, id: string, refs?: Refs) {
       "select",
       { ...common, defaultValue: "" },
       h("option", { value: "", disabled: f.type.kind !== "optional" }, "選んでください"),
-      (ref.r.body as any[]).map((row) => h("option", { key: row.ID, value: row.ID }, String(row[ref.label] ?? row.ID))),
+      (ref.r.body as any[]).map((row) => h("option", { key: row.ID, value: row.ID }, optionText(row, ref))),
     );
   }
   if (base.kind === "string" && LONG_TEXT.test(f.name)) return h("textarea", { ...common, rows: 4, maxLength: 10000 });

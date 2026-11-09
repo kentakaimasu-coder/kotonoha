@@ -223,9 +223,13 @@ export function createApp(app: App, db: Database, env: NodeJS.ProcessEnv = proce
           const denied = missing.length > 0 || (a.capabilities.length === 0 && a.grant !== undefined);
           if (denied) {
             audit({ event: "forbidden", trace_id: traceId, sub, route: m.route.id });
-            const need = missing.length > 0 ? `${missing.join(" と ")} が必要です` : "";
+            // 権限の名前はソースと同じ日本語で出す(予約.create → 予約.作成)
+            const ja = (c: string) => c.replace(/\.(read|create|update|delete)$/, (_, v: string) => "." + ({ read: "読取", create: "作成", update: "更新", delete: "削除" } as Record<string, string>)[v]);
+            const onlyGrant = a.grant !== undefined && a.capabilities.length === 1 && a.capabilities[0] === a.grant;
+            const need = missing.length > 0 && !onlyGrant ? `${missing.map(ja).join(" と ")} が必要です` : "";
             const alt = a.grant ? `(または許可 ${a.grant} があれば、これだけで足ります)` : "";
-            throw new HttpError(403, "forbidden", `権限がありません。${need || `許可 ${a.grant} が必要です`}${need ? alt : ""}`);
+            const msg = onlyGrant ? `この操作は、役割の権限に ${a.grant} を書いた人だけができます` : need ? need + alt : `許可 ${a.grant} が必要です`;
+            throw new HttpError(403, "forbidden", `権限がありません。${msg}`);
           }
         }
       }
