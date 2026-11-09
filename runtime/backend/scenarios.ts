@@ -17,11 +17,12 @@ const scenarios = JSON.parse(readFileSync(join(root, "tests/scenarios.json"), "u
 const api = JSON.parse(readFileSync(join(root, "api.json"), "utf8"));
 const seed = process.env.KOTONOHA_SEED && existsSync(process.env.KOTONOHA_SEED) ? process.env.KOTONOHA_SEED : null;
 
-// 役割を書かなかった人(一般の利用者): ソースのすべての操作の権限(全件閲覧は除く)
+// 役割を書かなかった人(一般の利用者): ソースのすべての操作の権限(全件閲覧と、役割で名指しした動作は除く)
+const named = new Set<string>(Object.values((api.roles ?? {}) as Record<string, string[]>).flat().filter((c) => c.startsWith("動作.")));
 const general = new Set<string>();
 for (const e of api.endpoints) {
-  for (const c of e.access.capabilities ?? []) if (!String(c).startsWith("全件閲覧.")) general.add(c);
-  if (e.access.grant) general.add(e.access.grant);
+  for (const c of e.access.capabilities ?? []) if (!String(c).startsWith("全件閲覧.") && !named.has(c)) general.add(c);
+  if (e.access.grant && !named.has(e.access.grant)) general.add(e.access.grant);
 }
 const port = () => new Promise<number>((ok) => { const s = createServer(); s.listen(0, "127.0.0.1", () => { const p = (s.address() as { port: number }).port; s.close(() => ok(p)); }); });
 const enc = encodeURIComponent;
@@ -59,8 +60,8 @@ for (const sc of scenarios) {
         if (t) headers.Authorization = `Bearer ${t}`;
         const r = await fetch(`${url}/api/actions/${enc(st.action)}`, { method: "POST", headers, body: JSON.stringify(st.body) });
         const b: any = await r.json().catch(() => null);
-        ok = r.status === st.expect.status && (st.expect.value === undefined || b?.value === st.expect.value);
-        got = r.status === 200 ? "成功" : r.status === 422 ? `失敗(${show(b?.value)})` : `${r.status} ${b?.message ?? ""}`.trim();
+        ok = r.status === st.expect.status && (st.expect.value === undefined || b?.value === st.expect.value) && (st.expect.error === undefined || b?.error === st.expect.error);
+        got = r.status === 200 ? "成功" : r.status === 422 ? `失敗(${show(b?.value)})` : r.status === 409 && b?.error === "invalid_transition" ? `順番が違う(${b?.message ?? ""})` : r.status === 409 ? `重複(${b?.message ?? ""})` : `${r.status} ${b?.message ?? ""}`.trim();
       } else if (st.kind === "count") {
         const t = token(st.who);
         const r = await fetch(`${url}/api/data/${enc(st.data)}?limit=1000`, { headers: t ? { Authorization: `Bearer ${t}` } : {} });

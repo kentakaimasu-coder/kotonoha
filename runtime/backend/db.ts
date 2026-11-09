@@ -491,10 +491,16 @@ export async function tx<T>(ctx: Ctx, body: () => Promise<T>): Promise<T> {
   }
 }
 
-/** エンティティのフィールド更新を記録する(取引の終わりに永続化)。 */
-export function markDirty(ctx: Ctx, e: Row): void {
+/** エンティティのフィールド更新を記録する(取引の終わりに永続化)。
+ *  状態の順番(ADR-0129)を持つフィールドに今と同じ値を入れたら、その場で 409(承認済をもう一度承認する、など) */
+export function markDirty(ctx: Ctx, e: Row, field?: string): void {
   if (ctx.dirty === null) throw new Error("取引外の更新(型検査で禁止されているはず)");
   if (!(META in e)) throw new Error("保存元不明のエンティティ");
+  if (field !== undefined) {
+    const meta = (e as Record<symbol, EntityMeta>)[META];
+    const rule = (ctx.sequences ?? {})[meta.table]?.[field];
+    if (rule && e[field] === meta.original[field]) throw new HttpError(409, "invalid_transition", `${field}は既に「${String(e[field])}」です`);
+  }
   ctx.dirty.add(e);
 }
 

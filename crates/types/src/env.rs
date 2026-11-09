@@ -462,14 +462,15 @@ pub fn collect_env(files: &[&SourceFile]) -> (Env, Vec<Diagnostic>) {
         caps.dedup();
         env.roles.insert(name, caps);
     }
-    implicit_adapters(&decls, &call_names, &mut env);
+    diags.extend(implicit_adapters(&decls, &call_names, &mut env));
     (env, diags)
 }
 
 /// 組込みのデータ操作(ADR-0130): `アダプタ` を宣言しなくても、動作の中で
 /// `{データ}を取得(ID)`・`{データ}を登録(フィールドを宣言順に、ID を除く)`・`{データ}の一覧()` を呼べる。
 /// 実際に呼ばれているものだけを用意する(宣言した同名のアダプタ・動作があればそちらを使う)
-fn implicit_adapters(decls: &[&Decl], call_names: &BTreeMap<String, Span>, env: &mut Env) {
+fn implicit_adapters(decls: &[&Decl], call_names: &BTreeMap<String, Span>, env: &mut Env) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
     fn walk_expr(e: &kotonoha_ast::Expr, out: &mut BTreeSet<String>) {
         use kotonoha_ast::ExprKind::*;
         match &e.kind {
@@ -521,6 +522,27 @@ fn implicit_adapters(decls: &[&Decl], call_names: &BTreeMap<String, Span>, env: 
             a.strict_blocks().for_each(|b| walk_block(b, &mut used));
         }
     }
+    // 動作の名前が組込みのデータ操作と同じで、どこかで呼ばれている: 組込みのつもりの呼び出しが動作に化ける(引数の数の誤りに見える)
+    for d in decls {
+        let Decl::Action(a) = d else { continue };
+        let name = &a.name.name;
+        let data = ["を登録", "を取得", "をIDで取得"]
+            .iter()
+            .find_map(|s| name.strip_suffix(s))
+            .or_else(|| name.strip_suffix("の一覧"))
+            .filter(|d| env.data.contains_key(*d));
+        if let (Some(data), true) = (data, used.contains(name)) {
+            let op = &name[data.len()..];
+            diags.push(
+                Diagnostic::error(
+                    Code::TYP001,
+                    a.name.span,
+                    format!("動作の名前「{name}」は、データ「{data}」の組込みの操作「{data}{op}」と同じ名前です。処理の中の「{name}(…)」は組込みの操作ではなく、この動作の呼び出しになります"),
+                )
+                .hint(format!("動作の名前を変えてください(例: 「{data}を追加」「{data}を受け付ける」)")),
+            );
+        }
+    }
     for name in used {
         if call_names.contains_key(&name) || env.adapters.contains_key(&name) {
             continue;
@@ -560,6 +582,7 @@ fn implicit_adapters(decls: &[&Decl], call_names: &BTreeMap<String, Span>, env: 
         };
         env.adapters.insert(name, sig);
     }
+    diags
 }
 
 fn resolve_alias(

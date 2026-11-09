@@ -317,7 +317,7 @@ pub fn resolve(env: &Env, intents: &IntentModel, reader: &Reader) -> (ExtModel, 
         let entry = |k: &str| x.entries.iter().find(|(kk, _, _)| kk == k).map(|(_, v, s)| (v.as_str(), *s));
         let allowed: &[&str] = match x.kind {
             ExternalKind::Function => &["実装", "効果"],
-            ExternalKind::Analysis => &["対象", "SQL"],
+            ExternalKind::Analysis => &["対象", "SQL", "集計"],
             ExternalKind::Component => &["web", "ios", "android"],
         };
         for (k, _, s) in &x.entries {
@@ -369,7 +369,16 @@ pub fn resolve(env: &Env, intents: &IntentModel, reader: &Reader) -> (ExtModel, 
                 }
             }
             ExternalKind::Analysis => {
-                let tables = x.tables();
+                let mut tables = x.tables();
+                // `集計 = "イベントの予約数と定員を会場ごとに合計"`: SQL を書かずに日本語の集計の文で書く(ADR-0133)
+                let agg = entry("集計").map(|(v, sp)| (unquote(v).unwrap_or(v).to_string(), sp));
+                if let Some((text, _)) = &agg {
+                    if let Ok(kotonoha_intent::IntentKind::Aggregate { data, .. }) = kotonoha_intent::parse_aggregate_sentence(text, env) {
+                        if tables.is_empty() {
+                            tables.push(data);
+                        }
+                    }
+                }
                 for t in &tables {
                     if !env.data.contains_key(t) {
                         diags.push(Diagnostic::error(
@@ -396,11 +405,43 @@ pub fn resolve(env: &Env, intents: &IntentModel, reader: &Reader) -> (ExtModel, 
                         format!("分析 `{name}` の戻り値は 一覧<記録{{列: 型, …}}> です({ret})"),
                     ));
                 }
+                if let Some((text, sp)) = agg {
+                    if entry("SQL").is_some() {
+                        diags.push(Diagnostic::error(
+                            Code::AMB001,
+                            sp,
+                            format!("分析 `{name}` に `SQL` と `集計` の両方があります。どちらか 1 つにします"),
+                        ));
+                        continue;
+                    }
+                    match aggregate_sql(env, &text, &ret, &x.params) {
+                        Ok(sql) => match check_sql(&sql, &tables, &x.params, sp) {
+                            Ok(checked) => m.analyses.push(AnalysisDef {
+                                name: name.clone(),
+                                params: x.params.clone(),
+                                ret,
+                                tables,
+                                file: ExtFile {
+                                    path: format!("集計: {text}"),
+                                    sha256: sha256_hex(&sql),
+                                    content: sql,
+                                },
+                                sql: checked,
+                            }),
+                            Err(ds) => diags.extend(ds),
+                        },
+                        Err(msg) => diags.push(
+                            Diagnostic::error(Code::TYP001, sp, format!("分析 `{name}` の集計: {msg}"))
+                                .hint("書き方: 集計 = \"イベントの予約数と定員を会場ごとに合計\"(結果の列は 単位・件数・各合計 の順。戻り値の記録の列名がそのまま API の列名になる)"),
+                        ),
+                    }
+                    continue;
+                }
                 let Some((v, s)) = entry("SQL") else {
                     diags.push(Diagnostic::error(
                         Code::AMB001,
                         x.span,
-                        format!("分析 `{name}` に `SQL = \"analytics/….sql\"` がありません"),
+                        format!("分析 `{name}` に `SQL = \"analytics/….sql\"` か `集計 = \"…ごとに集計\"` がありません"),
                     ));
                     continue;
                 };
@@ -598,3 +639,93 @@ pub fn vag_json(m: &ExtModel) -> Value {
 
 #[cfg(test)]
 mod tests;
+
+/// 分析の `集計 = "…"` から SQL を作る(ADR-0133)。結果の列(単位・件数・各合計)を、宣言した記録の列名に順に当てはめる
+fn aggregate_sql(env: &Env, text: &str, ret: &Type, params: &[(String, Type)]) -> Result<String, String> {
+    use kotonoha_intent::{FilterOp, IntentKind};
+    let IntentKind::Aggregate {
+        data,
+        by,
+        bucket,
+        sums,
+        filters,
+    } = kotonoha_intent::parse_aggregate_sentence(text, env)?
+    else {
+        unreachable!()
+    };
+    if bucket.is_some() {
+        return Err("日ごと・月ごとの集計は、分析ではまだ使えません(画面の集計の文で書けます)".into());
+    }
+    if !params.is_empty() {
+        return Err("集計で書く分析には引数を付けられません".into());
+    }
+    let info = &env.data[&data];
+    let base = |t: &Type| match t {
+        Type::Option(x) => x.as_ref().clone(),
+        t => t.clone(),
+    };
+    let unit_t = info.field(&by).map(&base).unwrap_or(Type::Error);
+    let mut want: Vec<(String, Type)> = vec![(by.clone(), unit_t), ("件数".into(), Type::Int)];
+    for f in &sums {
+        want.push((format!("{f}の合計"), info.field(f).map(&base).unwrap_or(Type::Error)));
+    }
+    let shape = want.iter().map(|(n, t)| format!("{n}({t})")).collect::<Vec<_>>().join(", ");
+    let Type::List(row) = ret else {
+        return Err(format!("戻り値は 一覧<記録{{…}}> にします(結果の列: {shape})"));
+    };
+    let Type::Record(cols) = row.as_ref() else {
+        return Err(format!("戻り値は 一覧<記録{{…}}> にします(結果の列: {shape})"));
+    };
+    if cols.len() != want.len() {
+        return Err(format!(
+            "集計の結果は {} 列です({shape})。戻り値の記録も {} 列にして、順に名前を付けます",
+            want.len(),
+            want.len()
+        ));
+    }
+    for ((cn, ct), (wn, wt)) in cols.iter().zip(&want) {
+        if base(ct) != *wt {
+            return Err(format!("列 `{cn}` は「{wn}」なので型は {wt} です({ct} になっています)"));
+        }
+    }
+    let q = |s: &str| format!("\"{}\"", s.replace('"', "\"\""));
+    let lit = |v: &str| -> String {
+        if v == "true" || v == "false" || v.parse::<i64>().is_ok() {
+            if v == "true" {
+                "1".into()
+            } else if v == "false" {
+                "0".into()
+            } else {
+                v.to_string()
+            }
+        } else {
+            let t = v.strip_prefix('"').and_then(|x| x.strip_suffix('"')).unwrap_or(v);
+            format!("'{}'", t.replace('\'', "''"))
+        }
+    };
+    let mut wh = Vec::new();
+    for f in &filters {
+        let v = f.value.as_deref().unwrap_or("");
+        match f.op {
+            FilterOp::Eq => wh.push(format!("{} = {}", q(&f.field), lit(v))),
+            FilterOp::Ne => wh.push(format!("({} <> {} OR {} IS NULL)", q(&f.field), lit(v), q(&f.field))),
+            _ => return Err(format!("絞り込み「{}」は分析の集計ではまだ使えません(「…が値」「…が値でない」だけ)", f.field)),
+        }
+    }
+    let mut sel = vec![format!("{} AS {}", q(&by), q(&cols[0].0)), format!("COUNT(*) AS {}", q(&cols[1].0))];
+    for (i, f) in sums.iter().enumerate() {
+        sel.push(format!("SUM({}) AS {}", q(f), q(&cols[i + 2].0)));
+    }
+    Ok(format!(
+        "SELECT {} FROM {}{} GROUP BY {} ORDER BY {}",
+        sel.join(", "),
+        q(&data),
+        if wh.is_empty() {
+            String::new()
+        } else {
+            format!(" WHERE {}", wh.join(" AND "))
+        },
+        q(&by),
+        q(&by)
+    ))
+}

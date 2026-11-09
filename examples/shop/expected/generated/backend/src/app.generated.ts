@@ -287,7 +287,7 @@ export async function act_注文する(ctx: Ctx, v_商品ID: any, v_数量: any)
       let v_商品: any = (await ad_商品をIDで取得(ctx, v_商品ID));
       if (!((v_商品["在庫"] >= v_数量))) throw new rt.Failure("在庫不足");
       v_商品["在庫"] = rt.sub(v_商品["在庫"], v_数量);
-      db.markDirty(ctx, v_商品);
+      db.markDirty(ctx, v_商品, "在庫");
       let v_注文ID: any = (await ad_注文を登録(ctx, v_商品ID, v_数量, db.principalId(ctx)));
       return { v: v_注文ID };
     }

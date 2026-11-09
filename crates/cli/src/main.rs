@@ -331,6 +331,25 @@ fn safety_text(api: &serde_json::Value) -> String {
             let cs: Vec<&str> = caps.as_array().into_iter().flatten().filter_map(|c| c.as_str()).collect();
             s.push_str(&format!("  {r}: {}\n", cs.join(", ")));
         }
+        // 役割ごとに実行できる動作(意図しない役割が実行できないかを見るため。ADR-0132)
+        s.push_str("\n役割ごとに実行できる動作(この役割の人が押せる操作):\n");
+        for (r, caps) in rs {
+            let cs: Vec<&str> = caps.as_array().into_iter().flatten().filter_map(|c| c.as_str()).collect();
+            let can: Vec<&str> = api["endpoints"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|e| e["method"] == "POST" && e["path"].as_str().is_some_and(|p| p.starts_with("/api/actions/")))
+                .filter(|e| {
+                    let a = &e["access"];
+                    let need: Vec<&str> = a["capabilities"].as_array().into_iter().flatten().filter_map(|c| c.as_str()).collect();
+                    a["grant"].as_str().is_some_and(|g| cs.contains(&g)) || (!need.is_empty() && need.iter().all(|c| cs.contains(c)))
+                })
+                .filter_map(|e| e["path"].as_str().and_then(|p| p.strip_prefix("/api/actions/")))
+                .collect();
+            s.push_str(&format!("  {r}: {}\n", if can.is_empty() { "なし".to_string() } else { can.join(", ") }));
+        }
+        s.push_str("  (ある動作を特定の役割だけにするには、その役割の権限に `動作.動作名` を書く。書いた役割だけが実行できる)\n");
     }
     s.push_str("\nAPI ごとの公開範囲:\n");
     for e in api["endpoints"].as_array().into_iter().flatten() {
@@ -632,8 +651,14 @@ fn cmd_dev(o: &mut Opts) -> Result<i32, String> {
     if role_names.is_empty() {
         eprintln!("  ログイン: 画面右上の「ログイン」→ 名前を入れて「一般の利用者として入る」か「管理者として入る」");
     } else {
+        // 役割に「管理者」があるときは、組込みの全権限ログインを別の名前で出す(同じ名前のボタンが 2 つ並ばないように)
+        let all = if role_names.iter().any(|r| r == "管理者") {
+            "すべての権限で入る"
+        } else {
+            "管理者として入る"
+        };
         eprintln!(
-            "  ログイン: 画面右上の「ログイン」→ 名前を入れて {}「管理者として入る」",
+            "  ログイン: 画面右上の「ログイン」→ 名前を入れて {}「{all}」",
             role_names.iter().map(|r| format!("「{r}として入る」")).collect::<Vec<_>>().join("")
         );
     }

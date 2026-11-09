@@ -9,7 +9,7 @@ OUT=$2
 KOTO="$ROOT/target/debug/koto"
 SECRET="grade-secret-0123456789abcdef0123456789abcdef"
 SEED="$ROOT/docs/evaluation/persona/seed.json"
-port=9100
+port=${GRADE_PORT_BASE:-9100}
 echo "[" > "$OUT"
 first=1
 # 手で書いた行数(空行・コメント行を除く)。生成物・依存・データは数えない

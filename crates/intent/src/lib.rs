@@ -371,6 +371,35 @@ struct Ctx<'a> {
     model: IntentModel,
 }
 
+/// 集計の文(`…ごとに集計` / `…ごとに合計`)を 1 つ解釈する(分析の `集計 = "…"` 用。ADR-0133)。
+/// 一致しなければ理由(説明)を返す
+pub fn parse_aggregate_sentence(text: &str, env: &Env) -> Result<IntentKind, String> {
+    let reg = Registry::default();
+    let cx = Ctx {
+        env,
+        reg: &reg,
+        approvals: &[],
+        diags: Vec::new(),
+        model: IntentModel::default(),
+    };
+    let s = text.trim();
+    let span = Span::default();
+    let m = if let Some(rest) = s.strip_suffix("ごとに集計") {
+        cx.match_aggregate(rest, false, span)
+    } else if let Some(rest) = s.strip_suffix("ごとに合計") {
+        cx.match_aggregate(rest, true, span)
+    } else {
+        None
+    };
+    match m {
+        Some(Match::Ok(k @ IntentKind::Aggregate { .. })) => Ok(k),
+        Some(Match::Invalid(d)) => Err(d.message_ja),
+        _ => Err(format!(
+            "「{s}」は集計の文として読めません(例: 「イベントを会場ごとに集計」「イベントの予約数と定員を会場ごとに合計」)"
+        )),
+    }
+}
+
 /// 意図を解決する。
 pub fn resolve_intents(files: &[&SourceFile], env: &Env, reg: &Registry, approvals: &[ApprovedInterpretation]) -> (IntentModel, Vec<Diagnostic>) {
     let mut cx = Ctx {

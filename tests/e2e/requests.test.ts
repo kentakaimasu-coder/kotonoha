@@ -142,3 +142,20 @@ test("期限切れの絞り込み: 提出期限が今日より前・今日以降
     assert.deepEqual(await get(`${enc("ge_today.提出期限")}=1`), ["先の分"], s.name);
   }
 });
+
+test("分析を集計の文で書く(SQL なし): 列の名前は記録の宣言どおり、取下げは除く、本人限定データは全件閲覧の許可が要る", async () => {
+  for (const s of servers) {
+    const viewer = runNode(dir, ["tools/dev-token.ts", "--sub", "部長", "--caps", "日報.読取,全件閲覧.日報"], { KOTONOHA_JWT_SECRET: SECRET });
+    const url = `${s.url}/api/analyses/${enc("記入者別の作業時間")}`;
+    assert.equal((await fetch(url, { headers: { Authorization: `Bearer ${tok("太郎")}` } })).status, 403, s.name);
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${viewer}` } });
+    const rows = await r.json();
+    assert.equal(r.status, 200, `${s.name} ${JSON.stringify(rows)}`);
+    const taro = rows.find((x: any) => x.記入者 === "太郎");
+    assert.ok(taro, `${s.name} ${JSON.stringify(rows)}`);
+    assert.deepEqual(Object.keys(taro).sort(), ["合計時間", "日報数", "記入者"].sort(), s.name);
+    assert.equal(typeof taro.日報数, "number", s.name);
+    assert.equal(typeof taro.合計時間, "number", s.name);
+    assert.equal(taro.合計時間, taro.日報数 * 3, `${s.name} ${JSON.stringify(taro)}`);
+  }
+});

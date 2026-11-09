@@ -593,7 +593,13 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
             segments: vec!["api".into(), "actions".into(), name.clone()],
             has_id: false,
             kind: EndpointKind::Action { action: name.clone() },
-            access: Access::Caps(caps.clone()),
+            // 役割の権限に `動作.名前` を書いた動作は、書いた役割(と全権限の人)だけが実行できる(ADR-0132)。
+            // 同じデータを更新できるだけの役割には許さない
+            access: if inp.env.roles.values().any(|cs| cs.iter().any(|c| *c == format!("動作.{name}"))) {
+                Access::Named(vec![format!("動作.{name}")])
+            } else {
+                Access::Caps(caps.clone())
+            },
         });
         actions.push(ActionIr {
             name: name.clone(),

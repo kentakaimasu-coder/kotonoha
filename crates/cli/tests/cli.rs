@@ -441,3 +441,72 @@ fn theme_color_in_project_file_reaches_web_css_and_rejects_unreadable_colors() {
     assert_ne!(c, 0);
     assert!(err.contains("明るすぎ") && err.contains("藍"), "{err}");
 }
+
+#[test]
+fn role_named_actions_are_only_for_those_roles_and_state_rules_are_checkable() {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("role_gate_tpl");
+    let _ = std::fs::remove_dir_all(&root);
+    let (c, _, err) = koto(Path::new("."), &["init", root.to_str().unwrap(), "--template", "予約受付"]);
+    assert_eq!(c, 0, "{err}");
+    let app = root.join("src/app.koto");
+    let base = std::fs::read_to_string(&app).unwrap();
+    // 受付係だけのつもりの動作。利用者も 枠.更新 を持つので、名指ししないと利用者も実行できてしまう
+    let action = "\n動作 定員を変える(枠ID: 識別子, 定員: 整数) -> 結果<識別子, 予約失敗>:\n    枠 = 枠を取得(枠ID)\n    枠.定員 = 定員\n    枠ID を返す\n";
+    let checks = "    花子(利用者)が 定員を変える(s1, 9) → 権限がない\n    受付(受付係)が 定員を変える(s1, 9) → 成功\n";
+    let src = base.replace("\n画面 枠一覧:", &format!("{action}\n画面 枠一覧:")) + checks;
+    std::fs::write(&app, &src).unwrap();
+    let (c, _, err) = koto(&root, &["test"]);
+    assert_eq!(c, 1, "名指ししていないので利用者も実行できる: {err}");
+    assert!(err.contains("✗ 花子(利用者)が 定員を変える(s1, 9) → 権限がない"), "{err}");
+    // 受付係の権限に 動作.定員を変える を書くと、受付係だけが実行できる
+    std::fs::write(
+        &app,
+        src.replace(
+            "権限 = [枠.作成, 枠.読取, 予約.読取, 全件閲覧.予約]",
+            "権限 = [枠.作成, 枠.読取, 予約.読取, 全件閲覧.予約, 動作.定員を変える]",
+        ),
+    )
+    .unwrap();
+    let (c, _, err) = koto(&root, &["test"]);
+    assert_eq!(c, 0, "{err}");
+    assert!(
+        err.contains("✓ 花子(利用者)が 定員を変える(s1, 9) → 権限がない") && err.contains("✓ 受付(受付係)が 定員を変える(s1, 9) → 成功"),
+        "{err}"
+    );
+    let (_, out, err) = koto(&root, &["safety"]);
+    let all = out + &err;
+    let line = |r: &str| {
+        all.lines()
+            .skip_while(|l| !l.contains("役割ごとに実行できる動作"))
+            .find(|l| l.trim_start().starts_with(r))
+            .unwrap_or("")
+            .to_string()
+    };
+    assert!(line("受付係:").contains("定員を変える") && !line("利用者:").contains("定員を変える"), "{all}");
+
+    // 状態の順番: 飛ばす・同じ状態にもう一度する は 409。確かめるでは「→ 順番が違う」と書ける
+    let seq = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("seq_tpl");
+    let _ = std::fs::remove_dir_all(&seq);
+    let (c, _, err) = koto(Path::new("."), &["init", seq.to_str().unwrap(), "--template", "問い合わせ"]);
+    assert_eq!(c, 0, "{err}");
+    let app = seq.join("src/app.koto");
+    let s = std::fs::read_to_string(&app).unwrap();
+    let s = s.replace("約束:\n", "約束:\n    問い合わせの状況は 未対応 → 対応中 → 完了 の順\n");
+    let s = s.replace(
+        "動作 完了にする(",
+        "動作 対応を始める(ID: 識別子) -> 結果<識別子, 受付失敗>:\n    件 = 問い合わせを取得(ID)\n    件.状況 = \"対応中\"\n    ID を返す\n\n動作 完了にする(",
+    );
+    let s = s + "\n確かめる 状況の順番:\n    次郎が 完了にする(q1) → 順番が違う\n    次郎が 対応を始める(q1) → 成功\n    次郎が 対応を始める(q1) → 順番が違う\n    次郎が 完了にする(q1) → 成功\n    問い合わせ(q1)の状況は 完了\n";
+    std::fs::write(&app, &s).unwrap();
+    std::fs::write(
+        seq.join("seed.json"),
+        r#"{"問い合わせ": [{"ID": "q1", "件名": "配送", "内容": "いつ届く?", "状況": "未対応", "送信者": "次郎", "受付日時": "2026-11-01T10:00:00+09:00"}]}"#,
+    )
+    .unwrap();
+    let (c, _, err) = koto(&seq, &["test"]);
+    assert_eq!(c, 0, "{err}");
+    assert!(
+        err.contains("✓ 次郎が 対応を始める(q1) → 順番が違う"),
+        "同じ状態にもう一度するのも順番違い: {err}"
+    );
+}

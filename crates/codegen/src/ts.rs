@@ -205,7 +205,7 @@ impl<'a> TsGen<'a> {
                     let f = js_str(&target.fields[0].name);
                     self.line(&format!("{root}[{f}] = {v};"));
                     if !self.pure {
-                        self.line(&format!("db.markDirty(ctx, {root});"));
+                        self.line(&format!("db.markDirty(ctx, {root}, {f});"));
                     }
                 }
             }
