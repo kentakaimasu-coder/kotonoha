@@ -30,6 +30,17 @@ pub struct ProjectConfig {
     pub name: String,
     pub sources: Vec<String>,
     pub targets: Vec<String>,
+    /// 見た目の設定(ADR-0131)。省略すると既定のテーマ
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme: Option<ThemeConfig>,
+}
+
+/// 見た目の設定: `"theme": {"color": "緑"}`(色の名前か #RRGGBB)
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ThemeConfig {
+    #[serde(default)]
+    pub color: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -121,6 +132,7 @@ pub fn project_from_sources(name: &str, sources: &[(&str, &str)], targets: &[&st
             name: name.into(),
             sources: sorted.iter().map(|s| s.0.to_string()).collect(),
             targets: targets.iter().map(|s| s.to_string()).collect(),
+            theme: None,
         },
         files,
         ext_files: BTreeMap::new(),
@@ -439,7 +451,7 @@ pub fn build_target(p: &Project, a: &Analysis, target: &str) -> Result<BuildOutp
     if !unsupported.is_empty() {
         return Err(unsupported);
     }
-    let ir = kotonoha_codegen::appir::build_ir(&kotonoha_codegen::appir::IrInput {
+    let mut ir = kotonoha_codegen::appir::build_ir(&kotonoha_codegen::appir::IrInput {
         env: &a.env,
         registry: &a.registry,
         intents: &a.intents,
@@ -447,6 +459,22 @@ pub fn build_target(p: &Project, a: &Analysis, target: &str) -> Result<BuildOutp
         asts: &a.asts,
         ext: &a.ext,
     });
+    if let Some(c) = p.config.theme.as_ref().and_then(|t| t.color.as_deref()) {
+        match kotonoha_codegen::web::theme_color(c) {
+            Ok(hex) => ir.theme_color = Some(hex),
+            Err(msg) => {
+                return Err(vec![Diagnostic::error(
+                    Code::APP001,
+                    Span::default(),
+                    format!("{PROJECT_FILE} の theme.color: {msg}"),
+                )
+                .hint(format!(
+                    "使える色の名前: {}",
+                    kotonoha_codegen::web::THEME_COLORS.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(" / ")
+                ))])
+            }
+        }
+    }
     let generated = match kind {
         kotonoha_codegen::TargetKind::Backend => kotonoha_codegen::backend::generate(&ir, &a.vag)?,
         kotonoha_codegen::TargetKind::Web => kotonoha_codegen::web::generate(&ir)?,

@@ -109,8 +109,9 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
 function page(title: string, body: string, initJson: string | null): string {
   return `<!doctype html>
 <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>${escHtml(title)}</title><link rel="stylesheet" href="/assets/app.css"></head>
-<body><div id="root">${body}</div>${initJson === null ? "" : `<script id="__init__" type="application/json">${initJson}</script><script type="module" src="/assets/client.js"></script>`}</body></html>`;
+<body><div id="root">${initJson === null ? `<main class="plain">${body}</main>` : body}</div>${initJson === null ? "" : `<script id="__init__" type="application/json">${initJson}</script><script type="module" src="/assets/client.js"></script>`}</body></html>`;
 }
 
 /** OIDC 認可コードフロー(PKCE)の設定。issuer が無ければ無効(ADR-002) */
@@ -279,7 +280,7 @@ export function createWebServer(
       if (url.pathname === "/login/callback" && oidc) {
         const fail = (msg: string) => {
           res.writeHead(400, securityHeaders({ "Content-Type": "text/html; charset=utf-8", "Set-Cookie": `${OIDC_COOKIE}=; HttpOnly; Path=/login; Max-Age=0` }));
-          res.end(page("ログイン", `<section class="page"><h1>ログインできませんでした</h1><p role="alert">${escHtml(msg)}</p><a href="/login">戻る</a></section>`, null));
+          res.end(page("ログイン", `<section class="page"><h1>ログインできませんでした</h1><p class="notice" role="alert">${escHtml(msg)}</p><a href="/login">戻る</a></section>`, null));
         };
         const saved = cookieOf(req, OIDC_COOKIE)?.split(".") ?? [];
         if (url.searchParams.get("error")) return fail(`認可サーバーが拒否しました: ${url.searchParams.get("error")}`);
@@ -331,7 +332,7 @@ export function createWebServer(
           const t = form.get("token") ?? "";
           if (!TOKEN_RE.test(t)) {
             res.writeHead(400, securityHeaders({ "Content-Type": "text/html; charset=utf-8" }));
-            return res.end(page("ログイン", `<p role="alert">トークンの形式が不正です</p><a href="/login">戻る</a>`, null));
+            return res.end(page("ログイン", `<p class="notice" role="alert">トークンの形式が不正です</p><a href="/login">戻る</a>`, null));
           }
           const cookie = `${COOKIE}=${t}; HttpOnly; SameSite=Strict; Path=/${opts.secureCookie ? "; Secure" : ""}`;
           res.writeHead(303, securityHeaders({ Location: "/", "Set-Cookie": cookie }));
@@ -341,7 +342,7 @@ export function createWebServer(
         return res.end(
           page(
             "ログイン",
-            `<section class="page"><h1>ログイン</h1>${oidc ? `<p><a class="button" href="/login/oidc">認証基盤でログイン</a></p>` : ""}${devQuick ? `<form method="post" action="/login/dev" class="form"><h2>開発用: 名前を入れてすぐ入る</h2><p>開発中だけの機能です。別の名前で入ると別の人として扱われます。「本人のものだけ閲覧可」のデータは、一般の利用者なら自分の分だけ、管理者なら全員の分が見えます。</p><div class="field"><label for="dev-name">名前</label><input id="dev-name" name="name" value="開発者" maxlength="64" autocomplete="off"></div>${Object.keys(devQuick.roles ?? {}).map((r) => `<button type="submit" name="role" value="r:${escHtml(r)}">${escHtml(r)}として入る</button> `).join("")}${Object.keys(devQuick.roles ?? {}).length === 0 ? `<button type="submit" name="role" value="user">一般の利用者として入る</button> ` : ""}<button type="submit" name="role" value="admin">管理者として入る</button></form>` : ""}${devLogin ? `<p>開発用: 発行済みのトークンを入力してログインします。</p><form method="post" action="/login"><div class="field"><label for="token">トークン</label><input id="token" name="token" type="password" required autocomplete="off"></div><button type="submit">ログイン</button></form>` : ""}<form method="post" action="/logout"><button type="submit">ログアウト</button></form></section>`,
+            `<section class="page"><h1>ログイン</h1>${oidc ? `<p><a class="button" href="/login/oidc">認証基盤でログイン</a></p>` : ""}${devQuick ? `<form method="post" action="/login/dev" class="form"><h2>開発用: 名前を入れてすぐ入る</h2><p>開発中だけの機能です。別の名前で入ると別の人として扱われます。「本人のものだけ閲覧可」のデータは、一般の利用者なら自分の分だけ、管理者なら全員の分が見えます。</p><div class="field"><label for="dev-name">名前</label><input id="dev-name" name="name" value="開発者" maxlength="64" autocomplete="off"></div><div class="buttons">${Object.keys(devQuick.roles ?? {}).map((r) => `<button type="submit" name="role" value="r:${escHtml(r)}">${escHtml(r)}として入る</button> `).join("")}${Object.keys(devQuick.roles ?? {}).length === 0 ? `<button type="submit" name="role" value="user">一般の利用者として入る</button> ` : ""}<button type="submit" name="role" value="admin" class="secondary">管理者として入る</button></div></form>` : ""}${devLogin ? `<form method="post" action="/login" class="form"><h2>開発用: トークンでログイン</h2><p>発行済みのトークンを入力してログインします。</p><div class="field"><label for="token">トークン</label><input id="token" name="token" type="password" required autocomplete="off"></div><div class="buttons"><button type="submit">ログイン</button></div></form>` : ""}<form method="post" action="/logout" class="logout"><button type="submit" class="secondary">ログアウト</button></form></section>`,
             null,
           ),
         );

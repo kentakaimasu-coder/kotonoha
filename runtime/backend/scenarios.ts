@@ -96,8 +96,15 @@ for (const sc of scenarios) {
       console.log(`  ✗ ${st.text}  (実際は: ${got})`);
     }
   }
+  // Windows ではサーバーが終わるまでデータベースのファイルが消せないため、終了を待ってから片付ける
+  const exited = new Promise<void>((ok) => (proc.exitCode !== null ? ok() : proc.once("exit", () => ok())));
   proc.kill();
-  rmSync(dir, { recursive: true, force: true });
+  await Promise.race([exited, new Promise((r) => setTimeout(r, 5000))]);
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  } catch {
+    // 一時フォルダが残っても確かめた結果には関係しない
+  }
 }
 console.log(failed === 0 ? "すべて確かめました" : `${failed} 件が期待と違いました`);
 process.exit(failed === 0 ? 0 : 1);

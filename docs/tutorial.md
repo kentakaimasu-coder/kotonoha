@@ -181,7 +181,15 @@ npm run seed -- seed.json      # {"商品": [{"ID": "P01", "名前": "緑茶", .
   権限はソースと同じ日本語(`注文.作成`)でも、API 契約の英語(`注文.create`)でも書けます。動作ごとの許可は `動作.注文する`
 - `npm run token -- --help` で使い方を表示します
 
-### 6.3 API をプログラムから呼ぶ
+### 6.3 見た目の色を変える
+生成される画面は、明るい / 暗い表示・スマートフォンに自動で合わせます。ボタンや選択中のタブの色は `kotonoha.json` で変えられます。
+```json
+{ "name": "my-app", "sources": ["src/app.koto"], "targets": ["web", "backend"], "theme": { "color": "緑" } }
+```
+色の名前は 藍(既定)・紺・青・緑・深緑・朱・紅・紫・橙・茶・墨、または `#1e50a2` の形。
+白い文字が読みにくい明るい色は `koto check` が止めます。列挙の値(「未対応」「完了」など)は、言葉に合わせて黄・緑などの札で表示されます。
+
+### 6.4 API をプログラムから呼ぶ
 画面のサーバー(3000 番)は API も中継するので、**1 つのポートで画面も API も使えます**。
 ```bash
 curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \

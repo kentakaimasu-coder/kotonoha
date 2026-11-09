@@ -195,16 +195,48 @@ function refTitle(refs: Refs | undefined, f: Field): string {
   return refs?.[f.name]?.title ?? f.name;
 }
 
+function baseKind(w: Wire): Wire {
+  return w.kind === "optional" ? baseKind(w.of) : w;
+}
+
+/** 数は右に揃える(桁が縦にそろう) */
+function cellClass(f: Field, refs: Refs | undefined): string | undefined {
+  if (refs?.[f.name]) return undefined;
+  const k = baseKind(f.type).kind;
+  return k === "int" || k === "money" ? "num" : undefined;
+}
+
+/** 状態の色(言葉から決める。決まらないものは名前から決まった色にする。どれも文字で意味が分かる) */
+export function toneOf(text: string): string {
+  if (/(完了|済|承認|良好|成功|公開|有効|受付中|貸出可|在庫あり|対応済)/.test(text)) return "ok";
+  if (/(却下|異常|中止|取消|キャンセル|不足|失敗|無効|停止|期限切れ|満席|満員)/.test(text)) return "err";
+  if (/(未|待ち|中|保留|要注意|確認|予定)/.test(text)) return "warn";
+  let n = 0;
+  for (const c of text) n = (n * 31 + (c.codePointAt(0) ?? 0)) % 997;
+  return "t" + (n % 4);
+}
+
+/** 値の表示(列挙・真偽は札の形で出す) */
+function Value(p: { refs: Refs | undefined; f: Field; v: unknown; tz: string }) {
+  const text = refText(p.refs, p.f, p.v, p.tz);
+  const k = baseKind(p.f.type).kind;
+  if (!p.refs?.[p.f.name] && p.v !== null && p.v !== undefined && (k === "enum" || k === "bool")) {
+    const tone = k === "bool" ? (p.v ? "ok" : "none") : toneOf(text);
+    return h("span", { className: `badge ${tone}` }, text);
+  }
+  return h(React.Fragment, null, text);
+}
+
 export function DataList(p: { r: LoadResult | undefined; fields: Field[]; tz: string; link?: (row: any) => string; caption: string; refs?: Refs }) {
   if (!p.r) return null;
   if (!p.r.ok) return h(Notice, { r: p.r });
   const rows: any[] = p.r.body ?? [];
-  if (rows.length === 0) return h("p", { className: "empty" }, "データがありません");
+  if (rows.length === 0) return h("div", { className: "empty" }, h("p", { className: "empty-title" }, p.caption), h("p", null, "データがありません"));
   return h(
     "table",
-    { className: "list" },
-    h("caption", null, p.caption),
-    h("thead", null, h("tr", null, p.fields.map((f) => h("th", { key: f.name, scope: "col" }, refTitle(p.refs, f))))),
+    { className: p.link ? "list linked" : "list" },
+    h("caption", null, p.caption, h("span", { className: "count" }, `${rows.length.toLocaleString("ja-JP")}件`)),
+    h("thead", null, h("tr", null, p.fields.map((f) => h("th", { key: f.name, scope: "col", className: cellClass(f, p.refs) }, refTitle(p.refs, f))))),
     h(
       "tbody",
       null,
@@ -213,8 +245,9 @@ export function DataList(p: { r: LoadResult | undefined; fields: Field[]; tz: st
           "tr",
           { key: row.ID ?? i },
           p.fields.map((f, j) => {
-            const text = refText(p.refs, f, row[f.name], p.tz);
-            return h("td", { key: f.name }, j === 0 && p.link ? h("a", { href: p.link(row) }, text) : text);
+            const v = h(Value, { refs: p.refs, f, v: row[f.name], tz: p.tz });
+            // 狭い画面では行をカードにして、各値の前に項目名を出す(data-label)
+            return h("td", { key: f.name, className: cellClass(f, p.refs), "data-label": refTitle(p.refs, f) }, j === 0 && p.link ? h("a", { className: "row-link", href: p.link(row) }, v) : v);
           }),
         ),
       ),
@@ -226,7 +259,7 @@ export function Detail(p: { r: LoadResult | undefined; fields: Field[]; tz: stri
   if (!p.r) return null;
   if (!p.r.ok) return h(Notice, { r: p.r });
   const e = p.r.body ?? {};
-  return h("dl", { className: "detail" }, p.fields.map((f) => h(React.Fragment, { key: f.name }, h("dt", null, refTitle(p.refs, f)), h("dd", null, refText(p.refs, f, e[f.name], p.tz)))));
+  return h("dl", { className: "detail" }, p.fields.map((f) => h("div", { key: f.name, className: "row" }, h("dt", null, refTitle(p.refs, f)), h("dd", { className: cellClass(f, p.refs) }, h(Value, { refs: p.refs, f, v: e[f.name], tz: p.tz })))));
 }
 
 function useMessage(): [{ kind: "ok" | "error"; text: string; login?: boolean } | null, (m: { kind: "ok" | "error"; text: string; login?: boolean } | null) => void] {
@@ -265,6 +298,13 @@ export function ActionButton(p: { label: string; action: string; args: () => Rec
 
 /** 長い文章を書く欄(名前で判断する。複数行の入力) */
 const LONG_TEXT = /(内容|備考|メモ|詳細|本文|説明|感想|コメント|相談|要望|理由)$/;
+
+function fieldClass(f: Field): string {
+  const b = baseKind(f.type).kind;
+  if (b === "bool") return "field check";
+  if (b === "string" && LONG_TEXT.test(f.name)) return "field wide";
+  return "field";
+}
 
 function inputFor(f: Field, id: string, refs?: Refs) {
   const base = f.type.kind === "optional" ? f.type.of : f.type;
@@ -348,6 +388,18 @@ function tzLabel(tz: string): string {
   return tz === "Asia/Tokyo" ? "日本時間" : tz;
 }
 
+/** 入力欄の見出し: 必須 / 任意 を添える(真偽は付けない) */
+function FieldLabel(p: { htmlFor: string; f: Field; tz: string }) {
+  const k = p.f.type.kind;
+  return h(
+    "label",
+    { htmlFor: p.htmlFor },
+    p.f.name,
+    isDatetime(p.f.type) ? h("span", { className: "hint" }, `(${tzLabel(p.tz)})`) : null,
+    k === "bool" ? null : k === "optional" ? h("span", { className: "tag" }, "任意") : h("span", { className: "tag req" }, "必須"),
+  );
+}
+
 /** 「2026-12-28T13:00」を時刻帯 tz の時刻とみなして ISO 8601(UTC)にする */
 export function zonedToIso(local: string, tz: string): string | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(local);
@@ -395,7 +447,7 @@ export function ActionForm(p: { action: string; fields: Field[]; reload: () => P
     "form",
     { className: "form", onSubmit, onKeyDown, "aria-labelledby": formId + "-title" },
     h("h2", { id: formId + "-title" }, p.action),
-    p.fields.filter((f) => !(p.fixed && f.name in p.fixed)).map((f) => h("div", { className: "field", key: f.name }, h("label", { htmlFor: `${formId}-${f.name}` }, f.name, isDatetime(f.type) ? `(${tzLabel(p.tz ?? "Asia/Tokyo")})` : null), inputFor(f, `${formId}-${f.name}`, p.refs))),
+    p.fields.filter((f) => !(p.fixed && f.name in p.fixed)).map((f) => h("div", { className: fieldClass(f), key: f.name }, h(FieldLabel, { htmlFor: `${formId}-${f.name}`, f, tz: p.tz ?? "Asia/Tokyo" }), inputFor(f, `${formId}-${f.name}`, p.refs))),
     h("button", { type: "submit", disabled: busy }, p.submit ?? "送信"),
     h(MessageView, { m }),
   );
@@ -430,7 +482,7 @@ export function AnalysisQuery(p: { analysis: string; params: Field[]; fields: Fi
       "form",
       { className: "form", onSubmit, "aria-labelledby": formId + "-title" },
       h("h2", { id: formId + "-title" }, p.analysis),
-      p.params.map((f) => h("div", { className: "field", key: f.name }, h("label", { htmlFor: `${formId}-${f.name}` }, f.name, isDatetime(f.type) ? `(${tzLabel(p.tz)})` : null), inputFor(f, `${formId}-${f.name}`))),
+      p.params.map((f) => h("div", { className: fieldClass(f), key: f.name }, h(FieldLabel, { htmlFor: `${formId}-${f.name}`, f, tz: p.tz }), inputFor(f, `${formId}-${f.name}`))),
       h("button", { type: "submit", disabled: busy }, "表示"),
       h(MessageView, { m }),
     ),
@@ -453,9 +505,9 @@ export function App(p: { init: Init; screens: Record<string, ScreenDef> }) {
     h(
       "header",
       null,
-      h("a", { className: "brand", href: "/" }, p.init.appName),
+      h("a", { className: "brand", href: "/" }, h("span", { className: "mark", "aria-hidden": "true" }, Array.from(p.init.appName)[0] ?? ""), h("span", { className: "name" }, p.init.appName)),
       h("nav", { "aria-label": "画面" }, p.init.nav.map((n) => h("a", { key: n, href: screenHref(n), "aria-current": n === p.init.screen ? "page" : undefined }, n))),
-      h("a", { className: "login", href: "/login" }, p.init.loggedIn ? "ログイン中" : "ログイン"),
+      h("a", { className: p.init.loggedIn ? "login on" : "login", href: "/login" }, p.init.loggedIn ? "ログイン中" : "ログイン"),
     ),
     h("main", null, h(def.View, { data, id: p.init.id, tz: p.init.tz, reload, caps: p.init.caps ?? null })),
   );

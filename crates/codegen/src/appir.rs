@@ -262,6 +262,8 @@ pub struct AppIr {
     pub roles: BTreeMap<String, Vec<String>>,
     /// 日本語の文で書いた集計(ADR-0128)
     pub aggregates: Vec<AggIr>,
+    /// テーマ色(#rrggbb。kotonoha.json の theme.color。ADR-0131)
+    pub theme_color: Option<String>,
 }
 
 pub struct IrInput<'a> {
@@ -638,6 +640,7 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
         ext: inp.ext.clone(),
         roles: env.roles.clone(),
         aggregates,
+        theme_color: None,
     }
 }
 

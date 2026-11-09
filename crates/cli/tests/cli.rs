@@ -416,3 +416,28 @@ fn scenarios_run_in_koto_test_and_report_in_japanese() {
     assert_ne!(c, 0);
     assert!(err.contains("役割 `店長` はありません"), "{err}");
 }
+
+#[test]
+fn theme_color_in_project_file_reaches_web_css_and_rejects_unreadable_colors() {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("theme_tpl");
+    let _ = std::fs::remove_dir_all(&root);
+    let (c, _, err) = koto(Path::new("."), &["init", root.to_str().unwrap(), "--template", "問い合わせ"]);
+    assert_eq!(c, 0, "{err}");
+    let set = |color: &str| {
+        let p = root.join("kotonoha.json");
+        let mut v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
+        v["theme"] = serde_json::json!({ "color": color });
+        std::fs::write(&p, serde_json::to_string_pretty(&v).unwrap()).unwrap();
+    };
+    set("緑");
+    let out = root.join("out-web");
+    let (c, _, err) = koto(&root, &["build", "--target", "web", "--out", out.to_str().unwrap()]);
+    assert_eq!(c, 0, "{err}");
+    let css = std::fs::read_to_string(out.join("assets/app.css")).unwrap();
+    assert!(css.contains(":root { --accent: #1d6b45; }"), "テーマ色が入る");
+    // ボタンの白い文字が読めない明るい色は、作る前に止める
+    set("#ffee58");
+    let (c, _, err) = koto(&root, &["check"]);
+    assert_ne!(c, 0);
+    assert!(err.contains("明るすぎ") && err.contains("藍"), "{err}");
+}

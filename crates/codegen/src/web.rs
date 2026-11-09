@@ -12,6 +12,57 @@ pub const UI_TS: &str = include_str!("../../../runtime/web/ui.ts");
 pub const SERVER_TS: &str = include_str!("../../../runtime/web/server.ts");
 pub const APP_CSS: &str = include_str!("../../../runtime/web/app.css");
 
+/// テーマ色の名前(ADR-0131)。どれも白い文字とのコントラストが 4.5 以上(ボタンの文字が読める)
+pub const THEME_COLORS: &[(&str, &str)] = &[
+    ("藍", "#1e50a2"),
+    ("紺", "#223a70"),
+    ("青", "#0b5cad"),
+    ("緑", "#1d6b45"),
+    ("深緑", "#14532d"),
+    ("朱", "#b5341f"),
+    ("紅", "#b0284a"),
+    ("紫", "#6a3d9a"),
+    ("橙", "#a64b00"),
+    ("茶", "#7a4b2a"),
+    ("墨", "#2f3237"),
+];
+
+fn channel(c: u8) -> f64 {
+    let c = f64::from(c) / 255.0;
+    if c <= 0.03928 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+/// 白とのコントラスト比(WCAG 2)
+pub fn contrast_with_white(hex: &str) -> f64 {
+    let v = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).unwrap_or(0);
+    let l = 0.2126 * channel(v(1)) + 0.7152 * channel(v(3)) + 0.0722 * channel(v(5));
+    1.05 / (l + 0.05)
+}
+
+/// theme.color を #rrggbb にする。ボタンの白い文字が読めない明るい色は断る
+pub fn theme_color(c: &str) -> Result<String, String> {
+    let c = c.trim();
+    if let Some((_, hex)) = THEME_COLORS.iter().find(|(n, _)| *n == c) {
+        return Ok(hex.to_string());
+    }
+    let ok = c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|x| x.is_ascii_hexdigit());
+    if !ok {
+        return Err(format!("「{c}」は色の名前か #RRGGBB(例: #1e50a2)で書きます"));
+    }
+    let hex = c.to_ascii_lowercase();
+    let r = contrast_with_white(&hex);
+    if r < 4.5 {
+        return Err(format!(
+            "{hex} は明るすぎて、ボタンの白い文字が読みにくくなります(コントラスト {r:.1}。4.5 以上が必要)"
+        ));
+    }
+    Ok(hex)
+}
+
 /// 依存バージョンは固定(SEC-07)。更新は意図した変更としてのみ行う。
 pub const REACT_VERSION: &str = "19.2.0";
 pub const ESBUILD_VERSION: &str = "0.25.10";
@@ -485,7 +536,13 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
         GeneratedFile::text("README.md", readme),
         GeneratedFile::text("api.json", serde_json::to_string_pretty(&api_contract(ir)).unwrap() + "\n"),
         GeneratedFile::text("build.ts", BUILD_TS.to_string()),
-        GeneratedFile::text("assets/app.css", APP_CSS.to_string()),
+        GeneratedFile::text(
+            "assets/app.css",
+            match &ir.theme_color {
+                Some(c) => format!("{APP_CSS}\n/* kotonoha.json の theme.color */\n:root {{ --accent: {c}; }}\n"),
+                None => APP_CSS.to_string(),
+            },
+        ),
         GeneratedFile::text("src/screens.generated.ts", g),
         GeneratedFile::text("src/server-main.ts", SERVER_MAIN_TS.to_string()),
         GeneratedFile::text("src/client.ts", CLIENT_TS.to_string()),
@@ -494,4 +551,21 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
     ];
     out.extend(ext_files);
     Ok(out)
+}
+
+#[cfg(test)]
+mod theme_tests {
+    use super::*;
+
+    #[test]
+    fn named_theme_colors_are_readable_with_white_text() {
+        for (n, hex) in THEME_COLORS {
+            assert!(contrast_with_white(hex) >= 4.5, "{n} {hex}");
+            assert_eq!(theme_color(n).unwrap(), *hex);
+        }
+        assert_eq!(theme_color("#0B5CAD").unwrap(), "#0b5cad");
+        assert!(theme_color("#ffeb3b").unwrap_err().contains("明るすぎ"));
+        assert!(theme_color("ピンク").is_err());
+        assert!(theme_color("#12345").is_err());
+    }
 }
