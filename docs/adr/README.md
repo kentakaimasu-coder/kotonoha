@@ -39,6 +39,7 @@
 | [ADR-0124](ADR-0124-functions-and-externals.md) | 関数・組込み関数・外部関数(TypeScript / Python) | 提案(実装) | 外部コードの隔離方式 |
 | [ADR-0125](ADR-0125-analysis-sql.md) | 分析(読み取り専用 SQL) | 提案(実装) | SQL 方言差の吸収 |
 | [ADR-0126](ADR-0126-roles.md) | 役割(ロール)と全件閲覧の許可 | 提案(実装) | 役割の継承・テナント |
+| [ADR-0135](ADR-0135-studio.md) | 画面で作る KOTONOHA Studio(日本語の指示・機種ごとの見た目の確認) | 提案(実装) | ネイティブ版の画面のシミュレータ表示 |
 | [ADR-0134](ADR-0134-named-arguments-and-scenario-labels.md) | 名前付き引数と、「確かめる」で作った物に名前を付ける | 提案(実装) | 画面の文の名前付き引数 |
 | [ADR-0133](ADR-0133-analysis-from-aggregate-sentence.md) | 分析を集計の文で書く(SQL なし) | 提案(実装) | 日ごと・月ごと、今日・本人の絞り込み |
 | [ADR-0132](ADR-0132-role-named-actions-and-state-checks.md) | 役割で名指しした動作はその役割だけ・状態の順番の確かめ方 | 提案(実装) | 名指しの無い動作の広すぎる許可の警告 |

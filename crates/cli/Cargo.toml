@@ -5,7 +5,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+kotonoha-ast.workspace = true
 kotonoha-diag.workspace = true
+kotonoha-parser.workspace = true
 kotonoha-driver.workspace = true
 kotonoha-lock.workspace = true
 kotonoha-resolver.workspace = true

@@ -43,12 +43,14 @@ const TOKEN_RE = /^[A-Za-z0-9_\-.]{1,4096}$/;
 const MAX_BODY = 64 * 1024;
 
 let hsts = false;
+/** 開発中に koto studio の機種別プレビュー(iframe)へ表示を許す相手(開発用ログインが有効なときだけ。ADR-0135) */
+let frameAncestor: string | null = null;
 function securityHeaders(extra: Record<string, string | number | string[]> = {}): Record<string, string | number | string[]> {
   return {
-    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'",
+    "Content-Security-Policy": `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors ${frameAncestor ?? "'none'"}; base-uri 'none'; form-action 'self'; object-src 'none'`,
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "same-origin",
-    "X-Frame-Options": "DENY",
+    ...(frameAncestor ? {} : { "X-Frame-Options": "DENY" }),
     "Cross-Origin-Opener-Policy": "same-origin",
     "Cross-Origin-Resource-Policy": "same-origin",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
@@ -175,6 +177,8 @@ export function createWebServer(
   COOKIE = opts.secureCookie ? "__Host-sid" : "sid";
   OIDC_COOKIE = opts.secureCookie ? "__Secure-oauth" : "oauth";
   hsts = opts.secureCookie;
+  const fa = process.env.KOTONOHA_DEV_FRAME_ANCESTOR ?? "";
+  frameAncestor = opts.devLogin && /^http:\/\/(127\.0\.0\.1|localhost):\d{1,5}( http:\/\/(127\.0\.0\.1|localhost):\d{1,5})?$/.test(fa) ? fa : null;
   const problems = checkWebProductionConfig(process.env, { secureCookie: opts.secureCookie, devLogin, oidc });
   if (problems.length > 0) throw new Error(`本番モードの設定に問題があります:\n- ${problems.join("\n- ")}`);
   const assets: Record<string, [string, string]> = {

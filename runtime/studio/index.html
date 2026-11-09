@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="studio-token" content="__TOKEN__">
+<title>KOTONOHA Studio</title>
+<link rel="stylesheet" href="/studio.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="mark" aria-hidden="true">言</span><span>KOTONOHA Studio</span><span class="app" id="app-name"></span></div>
+  <nav class="tabs" role="tablist" aria-label="切り替え">
+    <button role="tab" id="tab-build" aria-selected="true" aria-controls="panel-build">作る</button>
+    <button role="tab" id="tab-look" aria-selected="false" aria-controls="panel-look">見た目の確認</button>
+    <button role="tab" id="tab-source" aria-selected="false" aria-controls="panel-source">ソース</button>
+  </nav>
+  <div class="status">
+    <span id="status" class="pill" role="status" aria-live="polite">読み込み中…</span>
+    <button id="undo" class="ghost" type="button" disabled>取り消す</button>
+  </div>
+</header>
+
+<section class="ask" aria-labelledby="ask-title">
+  <h2 id="ask-title" class="sr">日本語で指示する</h2>
+  <form id="ask-form" class="ask-form">
+    <label for="ask-text" class="ask-label">日本語で指示する<span id="ask-target" class="target"></span></label>
+    <div class="ask-row">
+      <textarea id="ask-text" rows="2" placeholder="例: データ「お客様」を作る(名前: 文字列、電話: 文字列) / 注文に「備考」を追加 / 注文を新しい順に一覧表示 / 注文は注文者が本人のものだけ閲覧可 / 色を緑にする"></textarea>
+      <button type="submit" id="ask-send">送る</button>
+    </div>
+  </form>
+  <div id="ask-result" class="ask-result" role="status" aria-live="polite"></div>
+</section>
+
+<main>
+  <section id="panel-build" role="tabpanel" aria-labelledby="tab-build" class="build">
+    <aside class="tree" aria-label="アプリの中身" id="tree"></aside>
+    <div class="editor" id="editor"></div>
+    <aside class="side">
+      <div class="card">
+        <h3>動きの確認(確かめる)</h3>
+        <ol id="checks" class="checks"></ol>
+      </div>
+      <div class="card">
+        <h3>検査の結果</h3>
+        <ul id="problems" class="problems"></ul>
+      </div>
+    </aside>
+  </section>
+
+  <section id="panel-look" role="tabpanel" aria-labelledby="tab-look" class="look" hidden>
+    <div class="look-bar">
+      <label>開く画面 <select id="look-path"></select></label>
+      <button type="button" id="look-login" class="ghost">ログイン画面</button>
+      <button type="button" id="look-reload">すべて再読み込み</button>
+      <fieldset class="devices" id="device-picks"><legend>機種</legend></fieldset>
+    </div>
+    <p class="look-note">それぞれの機種の画面の大きさで、実際の画面を表示しています(中で操作もできます)。ログインは 1 つの機種で行うと、全部に効きます。iPhone・Android のアプリそのもの(ネイティブ版)は、OS の標準部品で表示されます。</p>
+    <div id="devices" class="device-grid"></div>
+  </section>
+
+  <section id="panel-source" role="tabpanel" aria-labelledby="tab-source" class="source" hidden>
+    <p class="look-note">ソースを直接直せます。画面の「作る」でした変更も、すべてここに文として入っています。</p>
+    <div id="sources"></div>
+  </section>
+</main>
+<script type="module" src="/studio.js"></script>
+</body>
+</html>

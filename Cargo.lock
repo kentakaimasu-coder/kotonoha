@@ -413,12 +413,14 @@ dependencies = [
 name = "kotonoha-cli"
 version = "0.1.0"
 dependencies = [
+ "kotonoha-ast",
  "kotonoha-codegen",
  "kotonoha-diag",
  "kotonoha-driver",
  "kotonoha-graph",
  "kotonoha-intent",
  "kotonoha-lock",
+ "kotonoha-parser",
  "kotonoha-resolver",
  "serde_json",
 ]

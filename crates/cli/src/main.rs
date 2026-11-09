@@ -1,6 +1,7 @@
 //! `koto` CLI(技術仕様書 §14)。
 //! 終了コード: 0=成功、2=構文/型、3=曖昧/未承認、4=権限、5=ロック、6=ターゲット非対応、7=内部障害/未実装。
 
+use kotonoha_ast::Decl;
 use kotonoha_diag::{Code, Diagnostic, Diagnostics, Span};
 use kotonoha_driver as drv;
 use serde_json::json;
@@ -18,7 +19,9 @@ const USAGE: &str = "使い方: koto [-C <dir>] [--json] <command> [args]
   init [dir] [--name 名前] [--template ひな形]
                                   新しいプロジェクトを作成(--template だけ指定するとひな形の一覧を表示)
   dev [--port 3000] [--no-start]  開発用に生成して起動(seed.json があれば初期データも入れる。画面と API は同じポート)
+  studio [--port 4000]            画面で作る(データ・画面・動作・役割を画面で足す。日本語で指示。iPhone・Android の各機種での見た目を並べて確認)
   patterns                        画面・約束に書ける文の一覧(宣言した名前で具体的に表示)
+  outline                         アプリの構成・検査の結果・書ける文を JSON で出す(Studio などの道具向け)
   safety                          生成されるアプリに自動で入る安全対策と、API ごとの公開範囲を表示
   token --sub 名前 [--role 役割 | --admin | --caps 権限,…]
                                   koto dev で動かしているアプリ用の動作確認トークンを作る(curl などで Authorization: Bearer に使う)
@@ -147,6 +150,8 @@ fn run(mut o: Opts) -> i32 {
         "init" => cmd_init(&mut o),
         "dev" => cmd_dev(&mut o),
         "patterns" => cmd_patterns(&mut o),
+        "outline" => cmd_outline(&mut o),
+        "studio" => cmd_studio(&mut o),
         "safety" => cmd_safety(&mut o),
         "token" => cmd_token(&mut o),
         "fmt" => cmd_fmt(&mut o),
@@ -418,6 +423,117 @@ fn cmd_safety(o: &mut Opts) -> Result<i32, String> {
     let api: serde_json::Value = serde_json::from_str(&b.files.iter().find(|f| f.0 == "api.json").unwrap().1).unwrap();
     print!("{}", safety_text(&api));
     Ok(0)
+}
+
+/// `koto outline`: アプリの構成(宣言とその行)・検査の結果・書ける文を JSON で出す(Studio が使う。ADR-0135)
+fn cmd_outline(o: &mut Opts) -> Result<i32, String> {
+    no_extra(&o.args)?;
+    let (p, ap) = match load(o) {
+        Ok(x) => x,
+        Err(c) => return Ok(c),
+    };
+    let a = drv::analyze(&p, &ap);
+    let mut decls = Vec::new();
+    for f in &a.asts {
+        let Some((path, content)) = p.files.get(&f.file) else { continue };
+        let lines: Vec<&str> = content.lines().collect();
+        let mut starts: Vec<usize> = f.items.iter().map(|it| it.decl.span().line as usize).collect();
+        starts.push(lines.len() + 1);
+        for (i, it) in f.items.iter().enumerate() {
+            let line = starts[i];
+            // 宣言の終わり: 次の宣言の前の、空行・注釈行でない最後の行
+            let mut end = starts[i + 1].saturating_sub(1).max(line);
+            while end > line && lines.get(end - 1).is_none_or(|l| l.trim().is_empty() || l.trim_start().starts_with('#')) {
+                end -= 1;
+            }
+            let raw = |xs: &Vec<kotonoha_ast::RawText>| xs.iter().map(|l| json!({"text": l.text, "line": l.span.line})).collect::<Vec<_>>();
+            let v = match &it.decl {
+                Decl::App(d) => json!({"kind": "app", "name": d.name}),
+                Decl::Enum(d) => json!({"kind": "enum", "name": d.name.name, "values": d.variants.iter().map(|v| v.name.clone()).collect::<Vec<_>>()}),
+                Decl::Data(d) => {
+                    json!({"kind": "data", "name": d.name.name, "fields": d.fields.iter().map(|f| json!({"name": f.name.name, "type": kotonoha_parser::printer::type_str(&f.ty), "line": f.span.line})).collect::<Vec<_>>()})
+                }
+                Decl::Action(d) => {
+                    json!({"kind": "action", "name": d.name.name, "params": d.params.iter().map(|p| json!({"name": p.name.name, "type": kotonoha_parser::printer::type_str(&p.ty)})).collect::<Vec<_>>()})
+                }
+                Decl::Screen(d) => json!({"kind": "screen", "name": d.name.name, "lines": raw(&d.lines)}),
+                Decl::Scenario(d) => json!({"kind": "scenario", "name": d.name.name, "lines": raw(&d.lines)}),
+                Decl::Contract(d) => json!({"kind": "rules", "name": "約束", "lines": raw(&d.lines)}),
+                Decl::Role(d) => {
+                    json!({"kind": "role", "name": d.name.name, "caps": a.env.roles.get(&d.name.name).map(|cs| cs.iter().map(|c| ja_cap(c)).collect::<Vec<_>>()).unwrap_or_default()})
+                }
+                Decl::External(d) => json!({"kind": "external", "name": d.name.name}),
+                Decl::Function(d) => json!({"kind": "function", "name": d.name.name}),
+                Decl::Adapter(d) => json!({"kind": "adapter", "name": d.name.name}),
+                Decl::Experiment(d) => json!({"kind": "experiment", "name": d.name.name}),
+                Decl::Knowledge(_) => json!({"kind": "knowledge"}),
+                Decl::TypeAlias(_) => json!({"kind": "alias"}),
+            };
+            let mut v = v;
+            v["file"] = json!(path);
+            v["line"] = json!(line);
+            v["end"] = json!(end);
+            decls.push(v);
+        }
+    }
+    let out = json!({
+        "app": a.env.app_name,
+        "files": p.files.values().map(|(path, _)| path.clone()).collect::<Vec<_>>(),
+        "ok": a.ok(),
+        "decls": decls,
+        "diagnostics": a.diags.items,
+        "patterns": {
+            "screen": kotonoha_intent::example_sentences(&a.env, &a.registry, false),
+            "rules": kotonoha_intent::example_sentences(&a.env, &a.registry, true),
+        },
+        "types": ["文字列", "整数", "真偽", "日付", "日時", "識別子", "金額<JPY>", "メール", "URL"],
+        "enums": a.env.enums,
+    });
+    println!("{}", serde_json::to_string_pretty(&out).unwrap());
+    Ok(0)
+}
+
+const STUDIO_FILES: &[(&str, &str)] = &[
+    ("server.ts", include_str!("../../../runtime/studio/server.ts")),
+    ("index.html", include_str!("../../../runtime/studio/index.html")),
+    ("studio.js", include_str!("../../../runtime/studio/studio.js")),
+    ("studio.css", include_str!("../../../runtime/studio/studio.css")),
+];
+
+/// `koto studio`: 画面でアプリを作る(ADR-0135)。データ・画面・動作・役割・約束・確かめるを画面で足し、
+/// 日本語で指示でき、iPhone・Android の各機種の大きさでの表示を並べて確かめられる。変更はすべてソースに文として入る
+fn cmd_studio(o: &mut Opts) -> Result<i32, String> {
+    let port: u16 = take_value(&mut o.args, "--port")?
+        .map(|p| p.parse().map_err(|_| "--port は数字です".to_string()))
+        .transpose()?
+        .unwrap_or(4000);
+    no_extra(&o.args)?;
+    let root = o.dir.canonicalize().map_err(|e| format!("{} を開けません: {e}", o.dir.display()))?;
+    if !root.join(drv::PROJECT_FILE).exists() {
+        return Err(format!(
+            "{} に kotonoha.json がありません。先に `koto init 名前 --template 予約受付` などで作ってから `koto -C 名前 studio` を実行します",
+            root.display()
+        ));
+    }
+    let dir = root.join(".koto").join("studio");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    for (name, content) in STUDIO_FILES {
+        std::fs::write(dir.join(name), content).map_err(|e| e.to_string())?;
+    }
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    eprintln!("KOTONOHA Studio を起動します: http://127.0.0.1:{port}/");
+    eprintln!("  ブラウザで開くと、画面でデータ・画面・動作・役割を作れます。日本語で指示もできます。");
+    eprintln!("  「見た目の確認」で iPhone・Android の各機種の大きさでの表示を並べて確かめられます。止めるとき: Ctrl+C");
+    let status = std::process::Command::new("node")
+        .args(["--no-warnings", "server.ts"])
+        .env("KOTO_BIN", exe)
+        .env("KOTO_PROJECT", &root)
+        .env("PORT", port.to_string())
+        .env("KOTONOHA_EXIT_WITH_PARENT", std::process::id().to_string())
+        .current_dir(&dir)
+        .status()
+        .map_err(|e| format!("Studio を起動できません(Node.js 22.18 以上が必要です): {e}"))?;
+    Ok(status.code().unwrap_or(1))
 }
 
 fn cmd_patterns(o: &mut Opts) -> Result<i32, String> {
