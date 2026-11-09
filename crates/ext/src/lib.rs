@@ -664,10 +664,10 @@ fn aggregate_sql(env: &Env, text: &str, ret: &Type, params: &[(String, Type)]) -
         Type::Option(x) => x.as_ref().clone(),
         t => t.clone(),
     };
-    let unit_t = info.field(&by).map(&base).unwrap_or(Type::Error);
+    let unit_t = info.field(&by).map(base).unwrap_or(Type::Error);
     let mut want: Vec<(String, Type)> = vec![(by.clone(), unit_t), ("件数".into(), Type::Int)];
     for f in &sums {
-        want.push((format!("{f}の合計"), info.field(f).map(&base).unwrap_or(Type::Error)));
+        want.push((format!("{f}の合計"), info.field(f).map(base).unwrap_or(Type::Error)));
     }
     let shape = want.iter().map(|(n, t)| format!("{n}({t})")).collect::<Vec<_>>().join(", ");
     let Type::List(row) = ret else {
