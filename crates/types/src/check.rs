@@ -406,10 +406,7 @@ impl<'e> Checker<'e> {
                 .hint("アダプタの 取得 で得たエンティティだけを更新できます");
             self.diags.push(d);
         }
-        if self.in_tx == 0 {
-            let d = self.err(Code::TYP002, span, "エンティティの更新は `取引:` の中でだけ行えます");
-            self.diags.push(d);
-        }
+        // データを変える動作は本体全体が自動で 1 つの取引になるため、`取引:` の外でも更新できる(ADR-0130)
         self.expect(value, &ft);
         self.facts.mutations.push((dname.clone(), field.name.clone(), span));
     }
@@ -666,11 +663,16 @@ impl<'e> Checker<'e> {
             self.facts.action_calls.push((name.to_string(), callee.span));
         }
         if params.len() != args.len() {
-            let d = self.err(
-                Code::TYP001,
-                span,
-                format!("`{name}` の引数は {} 個ですが {} 個渡されています", params.len(), args.len()),
-            );
+            let d = self
+                .err(
+                    Code::TYP001,
+                    span,
+                    format!("`{name}` の引数は {} 個ですが {} 個渡されています", params.len(), args.len()),
+                )
+                .hint(format!(
+                    "引数は順に: {}",
+                    params.iter().map(|(n, t)| format!("{n}({t})")).collect::<Vec<_>>().join(", ")
+                ));
             self.diags.push(d);
             for a in args {
                 self.expr(a, None);
@@ -685,11 +687,16 @@ impl<'e> Checker<'e> {
 
     fn check_args(&mut self, name: &str, params: &[(String, Type)], args: &[Expr], span: Span, ret: Type) -> Type {
         if params.len() != args.len() {
-            let d = self.err(
-                Code::TYP001,
-                span,
-                format!("`{name}` の引数は {} 個ですが {} 個渡されています", params.len(), args.len()),
-            );
+            let d = self
+                .err(
+                    Code::TYP001,
+                    span,
+                    format!("`{name}` の引数は {} 個ですが {} 個渡されています", params.len(), args.len()),
+                )
+                .hint(format!(
+                    "引数は順に: {}",
+                    params.iter().map(|(n, t)| format!("{n}({t})")).collect::<Vec<_>>().join(", ")
+                ));
             self.diags.push(d);
             for a in args {
                 self.expr(a, None);

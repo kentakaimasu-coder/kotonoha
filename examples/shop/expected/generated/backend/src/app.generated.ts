@@ -269,27 +269,31 @@ async function ad_注文を登録(ctx: Ctx, v_商品ID: any, v_数量: any, v_�
 
 // 動作 商品登録  必要: [商品.create]
 export async function act_商品登録(ctx: Ctx, v_名前: any, v_価格: any, v_在庫: any): Promise<any> {
-  if (!((v_在庫 >= 0n))) throw new rt.Failure("在庫不正");
-  let v_新ID: any = (await ad_商品を新規登録(ctx, v_名前, v_価格, v_在庫));
-  return v_新ID;
+  const __t: any = await db.tx(ctx, async () => {
+    if (!((v_在庫 >= 0n))) throw new rt.Failure("在庫不正");
+    let v_新ID: any = (await ad_商品を新規登録(ctx, v_名前, v_価格, v_在庫));
+    return { v: v_新ID };
+    return undefined;
+  });
+  if (__t !== undefined) return __t.v;
   return undefined;
 }
 
 // 動作 注文する  必要: [商品.read, 商品.update, 注文.create]
 export async function act_注文する(ctx: Ctx, v_商品ID: any, v_数量: any): Promise<any> {
-  if (!((v_数量 > 0n))) throw new rt.Failure("数量不正");
-  {
-    const __t: any = await db.tx(ctx, async () => {
+  const __t: any = await db.tx(ctx, async () => {
+    if (!((v_数量 > 0n))) throw new rt.Failure("数量不正");
+    {
       let v_商品: any = (await ad_商品をIDで取得(ctx, v_商品ID));
       if (!((v_商品["在庫"] >= v_数量))) throw new rt.Failure("在庫不足");
       v_商品["在庫"] = rt.sub(v_商品["在庫"], v_数量);
       db.markDirty(ctx, v_商品);
       let v_注文ID: any = (await ad_注文を登録(ctx, v_商品ID, v_数量, db.principalId(ctx)));
       return { v: v_注文ID };
-      return undefined;
-    });
-    if (__t !== undefined) return __t.v;
-  }
+    }
+    return undefined;
+  });
+  if (__t !== undefined) return __t.v;
   return undefined;
 }
 

@@ -474,7 +474,8 @@ export function all(ctx: Ctx, sql: string, params: unknown[]): Promise<Row[]> {
 // ---- 取引 ----
 /** `取引:` ブロック。失敗・例外はロールバックして再送出。更新したエンティティは終わりに永続化する。 */
 export async function tx<T>(ctx: Ctx, body: () => Promise<T>): Promise<T> {
-  if (ctx.dirty !== null) throw new Error("入れ子の取引");
+  // 既に取引の中(動作から別の動作を呼んだときなど)なら、その取引の一部として実行する
+  if (ctx.dirty !== null) return body();
   const outer = ctx.conn;
   try {
     return await ctx.db.transaction(async (c) => {

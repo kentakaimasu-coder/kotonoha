@@ -52,6 +52,8 @@ pub enum Decl {
     Adapter(AdapterDecl),
     Knowledge(KnowledgeDecl),
     Screen(ScreenDecl),
+    /// `確かめる 名前:` + 日本語の確認の行(ADR-0130)
+    Scenario(ScreenDecl),
     Action(ActionDecl),
     Contract(ContractDecl),
     /// `関数 名前(引数) -> 型:` + 厳密層の本体(副作用なし)
@@ -80,6 +82,7 @@ impl Decl {
             Decl::External(d) => d.span,
             Decl::Experiment(d) => d.span,
             Decl::Role(d) => d.span,
+            Decl::Scenario(d) => d.span,
         }
     }
 }

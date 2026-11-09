@@ -39,6 +39,7 @@
 | [ADR-0124](ADR-0124-functions-and-externals.md) | 関数・組込み関数・外部関数(TypeScript / Python) | 提案(実装) | 外部コードの隔離方式 |
 | [ADR-0125](ADR-0125-analysis-sql.md) | 分析(読み取り専用 SQL) | 提案(実装) | SQL 方言差の吸収 |
 | [ADR-0126](ADR-0126-roles.md) | 役割(ロール)と全件閲覧の許可 | 提案(実装) | 役割の継承・テナント |
+| [ADR-0130](ADR-0130-plain-actions-and-verify.md) | 専門用語を覚えずに書ける動作と、日本語で確かめる「確かめる」 | 提案(実装) | 名前付き引数 |
 | [ADR-0129](ADR-0129-data-rules-dates-forms.md) | 重複不可・状態の順番・日付の計算・応答の時刻帯・フォームの改善 | 提案(実装) | 取消など任意の値への遷移 |
 | [ADR-0128](ADR-0128-list-views-and-aggregation.md) | 一覧の並べ替え・絞り込みと、日本語の集計 | 提案(実装) | |
 | [ADR-0127](ADR-0127-local-model-and-learning.md) | 手元のオープンモデルと、承認から育つ解釈(学習記録) | 提案(実装) | 実モデルでの検証 |

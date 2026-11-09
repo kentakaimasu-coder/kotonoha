@@ -386,3 +386,33 @@ fn local_open_model_grows_from_approvals() {
     assert_ne!(c, 0);
     assert!(err.contains("ADR-006"), "{err}");
 }
+
+#[test]
+fn scenarios_run_in_koto_test_and_report_in_japanese() {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("scenario_tpl");
+    let _ = std::fs::remove_dir_all(&root);
+    let (c, _, err) = koto(Path::new("."), &["init", root.to_str().unwrap(), "--template", "予約受付"]);
+    assert_eq!(c, 0, "{err}");
+    let (c, _, err) = koto(&root, &["test"]);
+    assert_eq!(c, 0, "{err}");
+    assert!(
+        err.contains("✓ 花子(利用者)が 予約する(s2, 1) → 成功") && err.contains("すべて確かめました"),
+        "{err}"
+    );
+    // 期待と違う確かめるは ✗ と実際の値を出し、終了コード 1
+    let src = std::fs::read_to_string(root.join("src/app.koto"))
+        .unwrap()
+        .replace("枠(s2)の予約数は 2", "枠(s2)の予約数は 5");
+    std::fs::write(root.join("src/app.koto"), src).unwrap();
+    let (c, _, err) = koto(&root, &["test"]);
+    assert_eq!(c, 1);
+    assert!(err.contains("✗ 枠(s2)の予約数は 5  (実際は: 2)"), "{err}");
+    // 書き方の誤りは koto check で分かる
+    let src = std::fs::read_to_string(root.join("src/app.koto"))
+        .unwrap()
+        .replace("枠(s2)の予約数は 5", "花子(店長)が 予約する(s1, 1) → 成功");
+    std::fs::write(root.join("src/app.koto"), src).unwrap();
+    let (c, _, err) = koto(&root, &["check"]);
+    assert_ne!(c, 0);
+    assert!(err.contains("役割 `店長` はありません"), "{err}");
+}

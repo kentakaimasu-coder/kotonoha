@@ -91,11 +91,8 @@ fn money_currency_and_division_rules() {
 fn references_and_assignment_rules() {
     assert_eq!(action("        y = 未定義(x)\n        id を返す\n"), [Code::REF001]);
     assert_eq!(action("        x = 2\n        id を返す\n"), [Code::TYP002]);
-    // 取引外の更新
-    assert_eq!(
-        action("        p = 商品をIDで取得(id)\n        p.在庫 = 1\n        id を返す\n"),
-        [Code::TYP002]
-    );
+    // 取引の外の更新も可(データを変える動作は全体が自動で 1 つの取引になる。ADR-0130)
+    assert!(action("        p = 商品をIDで取得(id)\n        p.在庫 = 1\n        id を返す\n").is_empty());
     // 取引内なら OK
     assert!(action("        取引:\n            p = 商品をIDで取得(id)\n            p.在庫 = p.在庫 - x\n        id を返す\n").is_empty());
     // ID は更新不可
@@ -148,7 +145,8 @@ fn spec_sample_undefined_names_are_ref001() {
     let msgs: Vec<String> = d.iter().filter(|x| x.is_error()).map(|x| format!("{} {}", x.code, x.message_ja)).collect();
     assert!(msgs.iter().any(|m| m.contains("REF001") && m.contains("注文ID")), "{msgs:#?}");
     assert!(msgs.iter().any(|m| m.contains("REF001") && m.contains("注文失敗")), "{msgs:#?}");
-    assert!(msgs.iter().any(|m| m.contains("REF001") && m.contains("商品をIDで取得")), "{msgs:#?}");
+    // `商品をIDで取得` は宣言が無くても組込みのデータ操作として使える(ADR-0130)
+    assert!(!msgs.iter().any(|m| m.contains("商品をIDで取得")), "{msgs:#?}");
     assert!(msgs.iter().any(|m| m.contains("REF001") && m.contains("資源 `注文`")), "{msgs:#?}");
 
     let (_, d) = check_src(
@@ -184,4 +182,16 @@ fn katsu_is_and() {
         action("        x > 0 かつ x < 10 を確認 または 失敗(\"数量不正\")\n        id を返す\n"),
         vec![]
     );
+}
+
+#[test]
+fn implicit_data_operations() {
+    let src = format!("{PRELUDE}データ 注文:\n    ID: 識別子\n    商品ID: 識別子\n    数量: 整数\n    メモ: 選択<文字列>\n動作 f(x: 整数, s: 文字列, id: 識別子) -> 結果<注文ID, 注文失敗>:\n    p = 商品を取得(id)\n    p.在庫 = p.在庫 - x\n    n = 件数(注文の一覧())\n    注文を登録(id, x, なし) を返す\n");
+    assert_eq!(errors(&check_src(&src).1), vec![]);
+    // 引数の数・型が違えば通常どおりの型エラー
+    let bad = format!("{PRELUDE}データ 注文:\n    ID: 識別子\n    商品ID: 識別子\n    数量: 整数\n動作 f(x: 整数, s: 文字列, id: 識別子) -> 結果<注文ID, 注文失敗>:\n    注文を登録(id) を返す\n");
+    assert!(!errors(&check_src(&bad).1).is_empty());
+    // 知らないデータは従来どおり REF001
+    let unk = format!("{PRELUDE}動作 f(x: 整数, s: 文字列, id: 識別子) -> 結果<注文ID, 注文失敗>:\n    会計を取得(id) を返す\n");
+    assert!(errors(&check_src(&unk).1).contains(&Code::REF001));
 }

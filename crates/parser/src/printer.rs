@@ -112,6 +112,12 @@ fn print_decl(d: &Decl, out: &mut String) {
                 out.push_str(&format!("{}{} = {}\n", ind(1), kv.key.name, kv.value.text));
             }
         }
+        Decl::Scenario(x) => {
+            out.push_str(&format!("確かめる {}:\n", x.name.name));
+            for l in &x.lines {
+                out.push_str(&format!("{}{}\n", ind(1), l.text));
+            }
+        }
         Decl::Contract(c) => {
             out.push_str("約束:\n");
             for l in &c.lines {

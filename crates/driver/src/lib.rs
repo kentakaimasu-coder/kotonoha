@@ -165,6 +165,8 @@ pub struct Analysis {
     /// エラーがあれば status=draft
     pub vag: Value,
     pub hashes: Hashes,
+    /// 「確かめる」の実行用 JSON(ADR-0130。VAG には入らない)
+    pub scenarios: Value,
 }
 
 impl Analysis {
@@ -308,6 +310,8 @@ pub fn analyze(p: &Project, approvals: &ApprovalsFile) -> Analysis {
         }
         vag["status"] = Value::String("draft".into());
     }
+    let (scenarios, sd) = scenario::compile(&asts, &env);
+    diags.extend(sd);
     diags.sort();
     let hashes = Hashes {
         source: source_hash(p),
@@ -326,8 +330,12 @@ pub fn analyze(p: &Project, approvals: &ApprovalsFile) -> Analysis {
         ext,
         vag,
         hashes,
+        scenarios,
     }
 }
+
+/// 「確かめる」を実行する手書きの小さなプログラム(生成物の tools/scenarios.ts)
+const SCENARIO_RUNNER: &str = include_str!("../../../runtime/backend/scenarios.ts");
 
 /// 現在の入力から期待されるロック内容を計算する。
 pub fn compute_lock(p: &Project, a: &Analysis, approvals: &ApprovalsFile) -> LockFile {
@@ -447,6 +455,10 @@ pub fn build_target(p: &Project, a: &Analysis, target: &str) -> Result<BuildOutp
     };
     let mut files: Vec<(String, String)> = generated.into_iter().map(|f| (f.path, f.content)).collect();
     if kind == kotonoha_codegen::TargetKind::Backend {
+        if a.scenarios.as_array().is_some_and(|x| !x.is_empty()) {
+            files.push(("tests/scenarios.json".into(), serde_json::to_string_pretty(&a.scenarios).unwrap() + "\n"));
+            files.push(("tools/scenarios.ts".into(), SCENARIO_RUNNER.to_string()));
+        }
         for (name, k) in &a.registry.entries {
             let Knowledge::Ranking(spec) = k;
             for (dialect, ext) in [
@@ -529,6 +541,7 @@ pub fn now_rfc3339() -> String {
     format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", rem / 3600, rem % 3600 / 60, rem % 60)
 }
 
+pub mod scenario;
 #[cfg(test)]
 mod tests;
 

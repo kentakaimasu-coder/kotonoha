@@ -65,7 +65,8 @@ impl<'a> TsGen<'a> {
     }
 
     /// 動作 1 つ分の関数を生成する。
-    pub fn action(&mut self, name: &str, params: &[(String, kotonoha_types::Type)], body: Option<&Block>) -> String {
+    /// `auto_tx`: データを変える動作は、本体全体を 1 つの取引にする(`取引:` を書かなくても、失敗したら全部元に戻る)
+    pub fn action(&mut self, name: &str, params: &[(String, kotonoha_types::Type)], body: Option<&Block>, auto_tx: bool) -> String {
         self.out.clear();
         let ps: Vec<String> = params.iter().map(|(n, _)| format!("{}: any", mangle("v_", n))).collect();
         self.line(&format!(
@@ -77,7 +78,19 @@ impl<'a> TsGen<'a> {
         self.indent += 1;
         self.scopes.push(params.iter().map(|(n, _)| n.clone()).collect());
         if let Some(b) = body {
-            self.block_stmts(b);
+            if auto_tx {
+                self.line("const __t: any = await db.tx(ctx, async () => {");
+                self.indent += 1;
+                self.in_tx = true;
+                self.block_stmts(b);
+                self.in_tx = false;
+                self.line("return undefined;");
+                self.indent -= 1;
+                self.line("});");
+                self.line("if (__t !== undefined) return __t.v;");
+            } else {
+                self.block_stmts(b);
+            }
         }
         self.line("return undefined;");
         self.scopes.pop();
@@ -152,6 +165,14 @@ impl<'a> TsGen<'a> {
                 self.scopes.push([var.name.clone()].into_iter().collect());
                 self.block_stmts(body);
                 self.scopes.pop();
+                self.indent -= 1;
+                self.line("}");
+            }
+            Stmt::Transaction { body, .. } if self.in_tx => {
+                // 動作全体が既に取引(自動)なので、そのまま書く
+                self.line("{");
+                self.indent += 1;
+                self.block_stmts(body);
                 self.indent -= 1;
                 self.line("}");
             }

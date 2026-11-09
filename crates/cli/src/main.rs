@@ -408,6 +408,36 @@ fn cmd_patterns(o: &mut Opts) -> Result<i32, String> {
     for x in &contract {
         s.push_str(&format!("    {x}\n"));
     }
+    // 動作の中に書ける文(自分のデータ名で)
+    s.push_str("\n動作(動作 名前(引数) -> 結果<識別子, 失敗の列挙>: の下)に書ける文:\n");
+    for (d, info) in &a.env.data {
+        let fields: Vec<&str> = info.fields.iter().map(|(n, _)| n.as_str()).filter(|n| *n != "ID").collect();
+        if info.field("ID").is_none() {
+            continue;
+        }
+        s.push_str(&format!("    件 = {d}を取得({d}ID)            … 1 件を取り出す\n"));
+        if let Some((f, _)) = info.fields.iter().find(|(n, t)| n != "ID" && t.to_string() == "整数") {
+            s.push_str(&format!("    件.{f} = 件.{f} + 1              … 書き換え(自動で保存)\n"));
+        }
+        s.push_str(&format!("    {d}を登録({}) を返す   … 新しく登録(値は項目の順)\n", fields.join(", ")));
+    }
+    s.push_str("    数量 > 0 を確認 または 失敗(\"数量不正\")   … 条件を満たさなければ失敗(それまでの変更は元に戻る)\n");
+    // 確かめる
+    let role = a.env.roles.keys().next().cloned();
+    let who = role.as_ref().map(|r| format!("花子({r})")).unwrap_or_else(|| "花子".into());
+    s.push_str("\n確かめる(確かめる 名前: の下。koto dev と koto test が自動で試す)に書ける文:\n");
+    if let Some((act, sig)) = a.env.actions.iter().next() {
+        let args: Vec<String> = sig.params.iter().map(|(n, _)| n.clone()).collect();
+        s.push_str(&format!("    {who}が {act}({}) → 成功\n", args.join(", ")));
+        s.push_str(&format!("    {who}が {act}({}) → 失敗(\"…\")\n", args.join(", ")));
+        s.push_str(&format!("    ログインしていない人が {act}({}) → ログインが必要\n", args.join(", ")));
+    }
+    if let Some((d, info)) = a.env.data.iter().next() {
+        s.push_str(&format!("    花子から {d}が 1件見える\n"));
+        if let Some((f, _)) = info.fields.iter().find(|(n, _)| n != "ID") {
+            s.push_str(&format!("    {d}(ID)の{f}は 値\n"));
+        }
+    }
     s.push_str("\n役割(誰が何をできるか。トップレベルに書く):\n    役割 厨房:\n        権限 = [注文.読取, 注文.更新, 全件閲覧.注文]\n");
     s.push_str("\n補足:\n  ・「…を押すと 動作(引数)」の引数には、画面の入力データ(例: 商品.ID)や数・文字列を書けます\n  ・「…を選ぶと 画面 へ」の遷移先の画面では、選んだデータを「データの項目と項目を表示」で表示できます\n  ・詳しい説明: docs/tutorial.md、docs/spec/intent_patterns.md\n");
     print!("{s}");
@@ -586,6 +616,13 @@ fn cmd_dev(o: &mut Opts) -> Result<i32, String> {
                 .current_dir(&be),
             "初期データの投入(seed.json)",
         )?;
+    }
+    // ソースの「確かめる」を、開発用とは別の空のデータベースで試す(結果だけ表示し、失敗しても起動は続ける)
+    if be.join("tools/scenarios.ts").exists() {
+        eprintln!();
+        if !run_scenarios(&be, &seed)? {
+            eprintln!("(上の ✗ は、書いた「確かめる」と動きが違うところです。ソースを直すか、確かめるの期待を直してください)");
+        }
     }
     let caps = all_caps(&api);
     let entry = api["entry_screen"].as_str().unwrap_or("");
@@ -1157,13 +1194,33 @@ fn cmd_test(o: &mut Opts) -> Result<i32, String> {
         .current_dir(&dir)
         .status()
         .map_err(|e| format!("node を実行できません(Node.js 22.18 以上が必要です): {e}"))?;
+    // ソースの「確かめる」(ADR-0130)
+    let scen_ok = run_scenarios(&dir, &o.dir.join("seed.json"))?;
     if keep {
         eprintln!("生成物: {}", dir.display());
     } else {
         let _ = std::fs::remove_dir_all(&dir);
     }
     // テスト失敗は終了コード 1(ADR-0103 追補)
-    Ok(if status.success() { 0 } else { 1 })
+    Ok(if status.success() && scen_ok { 0 } else { 1 })
+}
+
+/// 生成した backend で「確かめる」を実行し、結果を日本語で表示する。確かめるが無ければ何もしない
+fn run_scenarios(be: &Path, seed: &Path) -> Result<bool, String> {
+    if !be.join("tools/scenarios.ts").exists() {
+        return Ok(true);
+    }
+    let mut cmd = std::process::Command::new("node");
+    cmd.args(["--no-warnings", "tools/scenarios.ts"]).current_dir(be);
+    if seed.exists() {
+        cmd.env("KOTONOHA_SEED", seed.canonicalize().map_err(|e| e.to_string())?);
+    }
+    let out = cmd.output().map_err(|e| format!("node を実行できません: {e}"))?;
+    eprint!("{}", String::from_utf8_lossy(&out.stdout));
+    if !out.status.success() && out.stdout.is_empty() {
+        eprint!("{}", String::from_utf8_lossy(&out.stderr));
+    }
+    Ok(out.status.success())
 }
 
 fn cmd_keygen(o: &mut Opts) -> Result<i32, String> {

@@ -146,18 +146,9 @@ pub fn validate(env: &Env, facts: &BTreeMap<String, Facts>, intents: &IntentMode
             }
         }
         match &sig.declared_caps {
-            None => {
-                if !computed.is_empty() {
-                    diags.push(
-                        Diagnostic::error(
-                            Code::SEC002,
-                            sig.span,
-                            format!("動作 `{name}` は資源に触れますが `必要 = [...]` が宣言されていません"),
-                        )
-                        .hint(format!("必要 = [{}]", join(computed.keys().map(|c| c.source())))),
-                    );
-                }
-            }
+            // `必要` を省略したときは、処理が触れるデータから必要な権限を決める(ADR-0130)。
+            // 何も書かなければ誰にも許可しない、という既定は変わらない(権限はトークン・役割で与える)
+            None => {}
             Some(decl) => {
                 for (c, sp) in &computed {
                     if !decl.contains(c) {
@@ -387,8 +378,15 @@ mod tests {
         // 仕様書 §2 の宣言(商品.読取 なし)
         let src = SHOP.replace("[注文.作成, 商品.読取, 商品.更新]", "[注文.作成, 商品.更新]");
         assert_eq!(errs(&run(&src).1), [Code::SEC002]);
+        // `必要` を省略すると、処理が触れるデータから決める(ADR-0130)
         let src = SHOP.replace("    必要 = [注文.作成, 商品.読取, 商品.更新]\n", "");
-        assert_eq!(errs(&run(&src).1), [Code::SEC002], "必要 未宣言はデフォルト拒否");
+        let (v, d) = run(&src);
+        assert!(errs(&d).is_empty(), "{d:?}");
+        let caps: Vec<String> = v.actions["注文する"].capabilities.iter().map(|c| c.vag()).collect();
+        assert!(
+            caps.contains(&"注文.create".to_string()) && caps.contains(&"商品.update".to_string()),
+            "{caps:?}"
+        );
     }
 
     #[test]

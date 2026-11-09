@@ -124,6 +124,11 @@ impl<'a> Parser<'a> {
         match kw {
             Some(Keyword::Knowledge) => return self.knowledge(line),
             Some(Keyword::Screen) => return self.screen(line),
+            Some(Keyword::Verify) => {
+                let (name, span) = self.header_name(line, "確かめる")?;
+                let lines = self.raw_children(line)?;
+                return Ok(Decl::Scenario(ScreenDecl { name, lines, span }));
+            }
             Some(Keyword::Contract) => return self.contract(line),
             _ => {}
         }
@@ -464,18 +469,21 @@ impl<'a> Parser<'a> {
                     }
                 }
                 _ => {
-                    if c.text.ends_with(':') {
-                        self.diags
-                            .push(Diagnostic::error(Code::SYN001, c.span, "動作本体で使えるブロックは `厳密:` だけです"));
-                        while i < ch.len() && ch[i].level > level {
-                            i += 1;
-                        }
-                        continue;
+                    // `厳密:` を書かずに、動作の下へ直接処理を書ける(ADR-0130)。次の `必要`/`効果`/`厳密:` の行までを 1 つのブロックにする
+                    let start = i - 1;
+                    while i < ch.len()
+                        && (ch[i].level > level
+                            || !matches!(
+                                Keyword::from_word(first_word(&ch[i].text)),
+                                Some(Keyword::Requires) | Some(Keyword::Effects) | Some(Keyword::Strict)
+                            ))
+                    {
+                        i += 1;
                     }
-                    items.push(ActionItem::Intent(RawText {
-                        text: c.text.clone(),
-                        span: c.span,
-                    }));
+                    match self.block(&ch[start..i], level, c.span) {
+                        Ok(b) => items.push(ActionItem::Strict(b)),
+                        Err(d) => self.diags.push(d),
+                    }
                 }
             }
         }

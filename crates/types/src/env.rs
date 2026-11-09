@@ -462,7 +462,104 @@ pub fn collect_env(files: &[&SourceFile]) -> (Env, Vec<Diagnostic>) {
         caps.dedup();
         env.roles.insert(name, caps);
     }
+    implicit_adapters(&decls, &call_names, &mut env);
     (env, diags)
+}
+
+/// 組込みのデータ操作(ADR-0130): `アダプタ` を宣言しなくても、動作の中で
+/// `{データ}を取得(ID)`・`{データ}を登録(フィールドを宣言順に、ID を除く)`・`{データ}の一覧()` を呼べる。
+/// 実際に呼ばれているものだけを用意する(宣言した同名のアダプタ・動作があればそちらを使う)
+fn implicit_adapters(decls: &[&Decl], call_names: &BTreeMap<String, Span>, env: &mut Env) {
+    fn walk_expr(e: &kotonoha_ast::Expr, out: &mut BTreeSet<String>) {
+        use kotonoha_ast::ExprKind::*;
+        match &e.kind {
+            Call { callee, args } => {
+                out.insert(callee.name.clone());
+                args.iter().for_each(|a| walk_expr(a, out));
+            }
+            Field(x, _) => walk_expr(x, out),
+            Unary { expr, .. } => walk_expr(expr, out),
+            Binary { lhs, rhs, .. } => {
+                walk_expr(lhs, out);
+                walk_expr(rhs, out);
+            }
+            List(xs) => xs.iter().for_each(|a| walk_expr(a, out)),
+            _ => {}
+        }
+    }
+    fn walk_block(b: &kotonoha_ast::Block, out: &mut BTreeSet<String>) {
+        use kotonoha_ast::Stmt::*;
+        for st in &b.stmts {
+            match st {
+                Check { cond, fail, .. } => {
+                    walk_expr(cond, out);
+                    walk_expr(fail, out);
+                }
+                Return { value, .. } => walk_expr(value, out),
+                If { branches, else_block, .. } => {
+                    for (c, bb) in branches {
+                        walk_expr(c, out);
+                        walk_block(bb, out);
+                    }
+                    if let Some(e) = else_block {
+                        walk_block(e, out);
+                    }
+                }
+                Loop { iter, body, .. } => {
+                    walk_expr(iter, out);
+                    walk_block(body, out);
+                }
+                Transaction { body, .. } => walk_block(body, out),
+                Assign { value, .. } => walk_expr(value, out),
+                Expr { expr, .. } => walk_expr(expr, out),
+            }
+        }
+    }
+    let mut used = BTreeSet::new();
+    for d in decls {
+        if let Decl::Action(a) = d {
+            a.strict_blocks().for_each(|b| walk_block(b, &mut used));
+        }
+    }
+    for name in used {
+        if call_names.contains_key(&name) || env.adapters.contains_key(&name) {
+            continue;
+        }
+        let pick = |suffix: &str| name.strip_suffix(suffix).and_then(|d| env.data.get(d)).cloned();
+        let sig = if let Some(info) = pick("を取得").or_else(|| pick("をIDで取得")) {
+            let Some(id) = info.field("ID").cloned() else { continue };
+            AdapterSig {
+                name: name.clone(),
+                params: vec![("ID".into(), id)],
+                ret: Type::Data(info.name.clone()),
+                op: OpKind::Get,
+                target: info.name.clone(),
+                span: info.span,
+            }
+        } else if let Some(info) = pick("を登録") {
+            let Some(id) = info.field("ID").cloned() else { continue };
+            AdapterSig {
+                name: name.clone(),
+                params: info.fields.iter().filter(|(n, _)| n != "ID").cloned().collect(),
+                ret: id,
+                op: OpKind::Create,
+                target: info.name.clone(),
+                span: info.span,
+            }
+        } else if let Some(info) = pick("の一覧") {
+            AdapterSig {
+                name: name.clone(),
+                params: vec![],
+                ret: Type::List(Box::new(Type::Data(info.name.clone()))),
+                op: OpKind::List,
+                target: info.name.clone(),
+                span: info.span,
+            }
+        } else {
+            continue;
+        };
+        env.adapters.insert(name, sig);
+    }
 }
 
 fn resolve_alias(

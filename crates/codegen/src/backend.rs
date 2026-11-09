@@ -326,7 +326,8 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
             a.name,
             a.caps.iter().map(|c| c.vag()).collect::<Vec<_>>().join(", ")
         ));
-        g.push_str(&tg.action(&a.name, &a.params, a.body.as_ref()));
+        let writes = a.caps.iter().any(|c| c.verb != kotonoha_types::Verb::Read);
+        g.push_str(&tg.action(&a.name, &a.params, a.body.as_ref(), writes));
         g.push('\n');
     }
     errs.append(&mut tg.errors);
