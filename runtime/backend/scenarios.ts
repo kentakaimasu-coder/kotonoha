@@ -5,13 +5,14 @@ import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { signToken } from "../src/runtime/auth.ts";
 import { openDb, q } from "../src/runtime/db.ts";
 import { tables } from "../src/app.generated.ts";
 
-const root = new URL("..", import.meta.url).pathname;
+const root = fileURLToPath(new URL("..", import.meta.url));
 const scenarios = JSON.parse(readFileSync(join(root, "tests/scenarios.json"), "utf8"));
 const api = JSON.parse(readFileSync(join(root, "api.json"), "utf8"));
 const seed = process.env.KOTONOHA_SEED && existsSync(process.env.KOTONOHA_SEED) ? process.env.KOTONOHA_SEED : null;
