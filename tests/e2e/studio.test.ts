@@ -296,5 +296,11 @@ test("日本語の指示(第 8 回の改善): 決まった名前の集計・権�
   const lsAfter = src().split("\n");
   assert.equal(lsAfter[k - 1].trim(), "予約を選ぶと 予約詳細 へ");
   assert.equal(lsAfter[k], prev);
+  // 画面の最後の 1 行は消さない(画面が壊れて足し直す欄も無くなった)
+  j = await (await api("/api/instruct", { text: "画面「お知らせ」を作る(レッスンを一覧表示)" })).json();
+  const ls2 = src().split("\n");
+  const k2 = ls2.findIndex((l) => l.trim() === "画面 お知らせ:") + 1;
+  j = await (await api("/api/op", { op: "remove_line", file: "src/app.koto", line: k2 + 1, old: ls2[k2] })).json();
+  assert.match(j.error ?? "", /最後の 1 行なので消せません/);
   assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
 });

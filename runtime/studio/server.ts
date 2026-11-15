@@ -550,7 +550,19 @@ function apply(op: Op): { file: string; line: number } | null {
     case "remove_line": {
       const ls = lines(op.file);
       if (ls[op.line - 1]?.trim() !== String(op.old ?? "").trim()) throw new Error("ソースが変わっています。もう一度読み込んでください");
-      if (op.op === "remove_line") ls.splice(op.line - 1, 1);
+      if (op.op === "remove_line") {
+        // 宣言の最後の 1 行は消さない(画面などが空になって壊れ、足し直す欄も消えた。第 7 回評価)
+        const o = outline();
+        const d = (o.decls ?? []).find((x: any) => x.file === op.file && op.line > x.line && op.line <= x.end);
+        if (d && ["screen", "rules", "scenario", "enum", "role"].includes(d.kind)) {
+          const body = ls.slice(d.line, d.end).filter((l) => l.trim() && !l.trim().startsWith("#"));
+          if (body.length <= 1) {
+            const what = ({ screen: "画面", rules: "約束", scenario: "確かめる", enum: "列挙", role: "役割" } as any)[d.kind];
+            throw new Error(`${what}「${d.name ?? "約束"}」の最後の 1 行なので消せません。先に新しい行を足すか、${what}ごと消すときは日本語の欄に「${d.name ?? "約束"}を消す」と書きます`);
+          }
+        }
+        ls.splice(op.line - 1, 1);
+      }
       else ls[op.line - 1] = ls[op.line - 1].replace(/^(\s*).*$/, (_m, ind: string) => ind + String(op.text).trim());
       write(op.file, ls.join("\n"));
       return { file: op.file, line: op.line };
@@ -1198,7 +1210,8 @@ async function freePort(): Promise<number> {
   });
 }
 async function startPreview(): Promise<void> {
-  previewPort = await freePort();
+  // 起こし直すときも同じポートを使う(番号が変わって、開いていたタブがつながらなくなった。第 7 回評価)
+  if (!previewPort) previewPort = await freePort();
   preview = spawn(KOTO, ["-C", PROJECT, "dev", "--port", String(previewPort)], {
     env: { ...process.env, KOTONOHA_DEV_FRAME_ANCESTOR: `http://127.0.0.1:${PORT} http://localhost:${PORT}` },
     stdio: ["ignore", "pipe", "pipe"],
