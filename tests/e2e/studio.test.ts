@@ -625,6 +625,13 @@ test("第 10 回評価の途中の修正: 名前が変わり済みなら伝え�
   j = await (await api("/api/instruct", { text: "画面「先生用 行事の一覧」を作る(行事を一覧表示)" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
   assert.match(src(), /画面 先生用行事の一覧:/);
+  // 詳細の画面が無いうちに 1 件を扱う動作を作ると、詳細の画面を作ってボタンを出し、一覧から開けるようにする
+  j = await (await api("/api/instruct", { text: "「増席」で行事の定員を1増やす" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(j.result.done, /詳細の画面「行事詳細」を作り、ボタンを出しました/);
+  assert.match(src(), /画面 行事詳細:\n    行事の名前と会場と定員を表示\n    「増席」を押すと 増席\(行事\.ID\)/);
+  assert.match(src(), /行事を選ぶと 行事詳細 へ/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
   // 役割を作ると、その役割では出ないボタン(動作)を知らせる
   j = await (await api("/api/instruct", { text: "役割「見学者」を作る" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));

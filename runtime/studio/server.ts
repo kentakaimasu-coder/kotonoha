@@ -1443,13 +1443,13 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     ];
     const at = apply({ op: "add_action", name: act, params: [{ name: `${dn}ID`, type: "識別子" }], body, fail: fe });
     // 詳細の画面があれば、取り消していないときだけボタンを出す
-    const after = outline();
-    const detail = (after.decls ?? []).find((d: any) => d.kind === "screen" && (d.lines ?? []).some((l: any) => l.text.startsWith(`${dn}の`) && l.text.endsWith("を表示")));
+    const ds = detailScreen(dn);
+    const detail = ds?.d;
     if (detail) apply({ op: "add_line", kind: "screen", name: detail.name, text: `${dn}の${sf.name}が${cancelV}でないとき「${act}」を押すと ${act}(${dn}.ID)` });
     return checked(
       at,
       `動作「${act}」を作りました(状態を「${cancelV}」にする${P && cnt && qty ? `・${P.name}の${cnt}を戻す` : ""}・2 回目は「取消済み」で断る)` +
-        (detail ? `。画面「${detail.name}」にボタンを出しました` : `。ボタンを出すには、${dn}の詳細の画面を作ります(画面「${dn}詳細」を作る(${dn}の…を表示))`),
+        (detail ? `。${ds!.made ? `詳細の画面「${detail.name}」を作り、` : `画面「${detail.name}」に`}ボタンを出しました` : `。ボタンを出すには、${dn}の詳細の画面を作ります(画面「${dn}詳細」を作る(${dn}の…を表示))`),
       o,
       text,
     );
@@ -1905,16 +1905,35 @@ function registration(o: any, ctx: { screen?: string }, text: string, D: any, ac
   if (sc) apply({ op: "add_line", kind: "screen", name: sc.name, text: `${act}のフォームを表示` });
   return checked(at, `動作「${act}」を作りました${sc ? `(画面「${sc.name}」にフォームを出しました)` : "。画面を選んでから「" + act + "のフォームを表示」と書くとフォームが出ます"}`, o, text);
 }
+/** D の詳細画面(「D の…を表示」がある画面)を探す。無くて、D を一覧表示している画面があれば作る
+ *  (詳細の画面が無いうちに動作を作ると、ボタンがどこにも出なかった。第 10 回評価で 5 人)。
+ *  一覧からのつながり(「D を選ぶと 詳細 へ」)は checked() の autoNav が足す */
+function detailScreen(dn: string): { d: any; made: boolean } | null {
+  const o = outline();
+  const has = (d: any) => d.kind === "screen" && (d.lines ?? []).some((l: any) => l.text.startsWith(`${dn}の`) && l.text.endsWith("を表示") && !/フォーム/.test(l.text));
+  const found = (o.decls ?? []).find(has);
+  if (found) return { d: found, made: false };
+  const listed = (o.decls ?? []).some((d: any) => d.kind === "screen" && (d.lines ?? []).some((l: any) => new RegExp(`^${reEsc(dn)}(を|のうち).*一覧表示`).test(l.text)));
+  const D = decl(o, "data", dn);
+  if (!listed || !D) return null;
+  let name = `${dn}詳細`;
+  for (let k = 2; decl(o, "screen", name); k++) name = `${dn}詳細${k}`;
+  const shown = D.fields.map((f: any) => f.name).filter((n: string) => n !== "ID" && !/ID$/.test(n)).slice(0, 5);
+  if (!shown.length) return null;
+  apply({ op: "add_screen", name, lines: [`${dn}の${shown.join("と")}を表示`] });
+  const d = decl(outline(), "screen", name);
+  return d ? { d, made: true } : null;
+}
 /** 「…」で D の…: データ D の 1 件を ID で受け取る動作を作り、D の詳細画面にボタンを出す */
 function actionTemplate(o: any, text: string, act: string, dn: string, body: (D: any) => string[]): any {
   const D = decl(o, "data", dn);
   if (!D) throw new Error(`データ「${dn}」はありません(データ: ${(o.decls ?? []).filter((d: any) => d.kind === "data").map((d: any) => d.name).join("、")})`);
   const at = apply({ op: "add_action", name: act, params: [{ name: `${dn}ID`, type: "識別子" }], body: body(D) });
-  // 詳細画面(「D の…を表示」がある画面)にボタンを出す
-  const after = outline();
-  const detail = (after.decls ?? []).find((d: any) => d.kind === "screen" && (d.lines ?? []).some((l: any) => l.text.startsWith(`${dn}の`) && l.text.endsWith("を表示")));
+  // 詳細画面(「D の…を表示」がある画面)にボタンを出す。無ければ作る
+  const ds = detailScreen(dn);
+  const detail = ds?.d;
   if (detail) apply({ op: "add_line", kind: "screen", name: detail.name, text: `「${act}」を押すと ${act}(${dn}.ID)` });
-  return checked(at, `動作「${act}」を作りました${detail ? `(画面「${detail.name}」にボタンを出しました)` : ""}`, o, text);
+  return checked(at, `動作「${act}」を作りました${detail ? `(${ds!.made ? `詳細の画面「${detail.name}」を作り、` : `画面「${detail.name}」に`}ボタンを出しました)` : `。ボタンを出すには、${dn}の詳細の画面を作ります(画面「${dn}詳細」を作る(${dn}の…を表示))`}`, o, text);
 }
 
 /** 詳細画面の「表示する X がどれか決まりません」: X を一覧表示している画面に「X を選ぶと 詳細画面 へ」を足す
