@@ -438,6 +438,16 @@ test("第 8 回評価の途中の修正: 動作の引数の順番(フォーム�
   j = await (await api("/api/instruct", { text: "レッスンに「教材費(金額)」を追加" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
   assert.match(src(), /    教材費: 金額\n/);
+  j = await (await api("/api/instruct", { text: "レッスンに「税」を追加(金額)" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /    税: 金額\n/);
+  // 上の欄で「この画面は店長だけ」(選んでいる画面に入る。2 回目は置き換える)
+  j = await (await api("/api/instruct", { text: "この画面は店長だけ", screen: "管理" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  j = await (await api("/api/instruct", { text: "画面「管理」は店長と受付係だけ" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /画面 管理:\n(    .*\n)*    この画面は店長と受付係だけ\n/);
+  assert.equal(src().match(/この画面は.*だけ/g)!.length, 1);
   // 初期データの日時は Excel の書き方(2026/11/15 11:05)でも入る
   const rows = seed["レッスン"].map((r: any, i: number) => ({ ...r, 開始日時: i === 0 ? "2026/11/15 11:05" : "2026年12月1日 9:30" }));
   j = await (await api("/api/seed", { data: "レッスン", rows })).json();

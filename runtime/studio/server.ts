@@ -777,6 +777,29 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     const at = apply({ op: "add_param", action: m[1].trim(), name: m[2], type: m[3] ?? "" });
     return checked(at, `動作「${m[1].trim()}」に受け取る値「${m[2].trim()}」を足しました(ボタン・確かめるの呼び出しにも仮の値を入れました)`, o, text);
   }
+  // 画面を役割だけにする: この画面は店長だけ / 画面「管理」は店長だけ(上の欄では読めなかった。第 8 回評価)
+  {
+    const mm = /^(?:画面「(.+?)」は|この画面は|(.+?)の画面は)「?(.+?)」?だけ(?:にする|が使える|が見られる)?$/.exec(text);
+    if (mm) {
+      const sname = (mm[1] ?? mm[2])?.trim() ?? ctx.screen;
+      const roles = mm[3].split(/[と、・,]/).map((r) => r.trim()).filter(Boolean);
+      const missing = roles.filter((r) => !decl(o, "role", r));
+      if (missing.length) throw new Error(`役割「${missing.join("・")}」がありません(役割: ${(o.decls ?? []).filter((d: any) => d.kind === "role").map((d: any) => d.name).join("、") || "なし"})。先に 役割「${missing[0]}」を作る と書きます`);
+      const screens = (o.decls ?? []).filter((d: any) => d.kind === "screen").map((d: any) => d.name);
+      const sc = sname && decl(o, "screen", sname);
+      if (!sc) return { ok: false, need: "screen", screens, message: "どの画面にしますか? 左の一覧で画面を選んでから、もう一度送ってください" };
+      const ls = lines(sc.file);
+      const line = `この画面は${roles.join("と")}だけ`;
+      const k = ls.findIndex((l, i) => i >= sc.line && i < sc.end && /^\s+この画面は.+だけ\s*$/.test(l));
+      if (k >= 0) {
+        ls[k] = ls[k].replace(/この画面は.+だけ/, line);
+        write(sc.file, ls.join("\n"));
+        return checked({ file: sc.file, line: k + 1 }, `画面「${sc.name}」を ${roles.join("・")} だけにしました`, o, text);
+      }
+      const at = apply({ op: "add_line", kind: "screen", name: sc.name, text: line });
+      return checked(at, `画面「${sc.name}」を ${roles.join("・")} だけにしました(ほかの人のメニューに出ません)`, o, text);
+    }
+  }
   // アプリの名前: アプリの名前を「料理教室」にする(画面のいちばん上に出る)
   if ((m = cmd(/^アプリ(?:の名前)?を「?(.+?)」?に(?:する|変える)$/.exec(text)))) {
     const app = (o.decls ?? []).find((d: any) => d.kind === "app");
@@ -1033,7 +1056,7 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     const at = apply({ op: "add_line", kind: "data", name: m[1].trim(), text: `${okName(m[2], "計算項目の名前")} = ${m[3].trim()}` });
     return checked(at, `「${m[1].trim()}」に計算項目「${m[2].trim()}」を足しました`, o, text);
   }
-  if ((m = cmd(/^(.+?)に(?:項目)?「?(.+?)」?(?:[(（](.+?)[)）])?を(?:追加(?:する)?|足す|加える)$/.exec(text))) && decl(o, "data", m[1].trim())) {
+  if ((m = cmd(/^(.+?)に(?:項目)?「?(.+?)」?(?:[(（](.+?)[)）])?を(?:追加(?:する)?|足す|加える)$/.exec(text) ?? /^(.+?)に(?:項目)?「?(.+?)」?を(?:追加(?:する)?|足す|加える)[(（](.+?)[)）]$/.exec(text))) && decl(o, "data", m[1].trim())) {
     // 「参加費(金額)」のように名前の中に型を書いたとき(読めなかった。第 8 回評価)
     const inner = /^(.+?)[(（](.+?)[)）]$/.exec(m[2].trim());
     if (inner && !m[3]) [m[2], m[3]] = [inner[1], inner[2]];
@@ -1730,7 +1753,8 @@ function state(): any {
   const starting = keep.some((l) => /fetch failed|ECONNREFUSED/.test(l));
   const shown = starting ? ["アプリを起動し直しています。少し待つと、もう一度試します…"] : keep;
   // 直した後、試し直すまでの間は前の結果だと分かるようにする(名前を変えた後に古い名前の結果が残った。第 7 回評価)
-  const stale = previewAlive && o.ok && wroteTime > checksTime && Date.now() - wroteTime < 90_000;
+  // アプリが起動できずに止まっている間も、前の結果だと分かるようにする(全部 ✓ に見えた。第 8 回評価)
+  const stale = (previewAlive && o.ok && wroteTime > checksTime && Date.now() - wroteTime < 90_000) || (!!devFailure && !previewAlive);
   const checks = names.size === 0 ? { lines: [], ok: null } : { lines: shown, stale, ok: starting || stale ? null : keep.some((l) => l.trim().startsWith("✗")) ? false : raw.ok };
   // アプリが起動に失敗しているとき(初期データの誤りなど)は、その理由を出す。「動いています」と出していた(第 7 回評価)
   const lastErr = Math.max(devLog.lastIndexOf("エラー["), devLog.lastIndexOf("初期データの誤り"));

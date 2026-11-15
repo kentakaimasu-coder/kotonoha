@@ -691,7 +691,7 @@ function renderSide() {
   if (!c.lines.length) ch.append(el("li", { text: S.previewPort ? "試しています…(保存すると自動で試します)" : "まだ試していません" }));
   // 検査に合格していない間は試し直せないので、前の結果だと分かるようにする(第 5 回評価: 古い結果が出続けた)
   else if (S.outline && !S.outline.ok) ch.append(el("li", { class: "ng", text: "検査に合格していないので、これは前に試した結果です。下の「問題」を直すと試し直します" }));
-  else if (c.stale) ch.append(el("li", { class: "head", text: "直したので試し直しています…(下は直す前の結果)" }));
+  else if (c.stale) ch.append(el("li", { class: "head", text: S.devError ? "アプリを起動できないので、試し直せていません(下は前の結果)。「動かす・初期データ・公開」の理由を見てください" : "直したので試し直しています…(下は直す前の結果)" }));
   for (const l of c.lines) {
     const t = l.trim();
     ch.append(el("li", { class: t.startsWith("✓") ? "ok" : t.startsWith("✗") ? "ng" : "head", text: t }));
