@@ -174,7 +174,8 @@ export function createWebServer(
     return d;
   }
   const secure = opts.secureCookie ? "; Secure" : "";
-  COOKIE = opts.secureCookie ? "__Host-sid" : "sid";
+  // 開発中(HTTP)は、ポートごとに別の名前にする。同じ 127.0.0.1 の別のアプリのログインが「ログイン中」と出た(Cookie はポートで分かれない。第 10 回評価)
+  COOKIE = opts.secureCookie ? "__Host-sid" : `sid_${String(process.env.PORT ?? "").replace(/\D/g, "") || "0"}`;
   OIDC_COOKIE = opts.secureCookie ? "__Secure-oauth" : "oauth";
   hsts = opts.secureCookie;
   const fa = process.env.KOTONOHA_DEV_FRAME_ANCESTOR ?? "";

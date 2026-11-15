@@ -481,6 +481,12 @@ test("第 9 回評価の途中の修正: 取り消せるようにしたい・項
   j = await (await api("/api/instruct", { text: "予約を取り消せるようにしたい" })).json();
   assert.match(j.error ?? "", /既にあります/);
   assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // 長さ(…) > 0 で確かめていた項目も、空でもよくすると確かめる行は外れる
+  j = await (await api("/api/instruct", { text: "レッスンに「注意書き」を追加" })).json();
+  j = await (await api("/api/op", { op: "add_line", kind: "action", name: "レッスンを追加", text: '長さ(注意書き) > 0 を確認 または 失敗("定員不正")' })).json();
+  j = await (await api("/api/instruct", { text: "「注意書き」を空でもよいにする" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.doesNotMatch(src(), /長さ\(注意書き\)/);
   // 空でないことを確かめていた項目を空でもよくすると、その確かめる行は外れる(型の誤りにしない)
   j = await (await api("/api/instruct", { text: "レッスンに「備考欄」を追加" })).json();
   j = await (await api("/api/op", { op: "add_line", kind: "action", name: "レッスンを追加", text: '備考欄 != "" を確認 または 失敗("定員不正")' })).json();
@@ -510,6 +516,10 @@ test("第 9 回評価の途中の修正: 取り消せるようにしたい・項
   assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
   j = await (await api("/api/instruct", { text: "「2名で予約」ボタンを足す" })).json();
   assert.match(j.error ?? "", /もう「2名で予約」のボタンがあります/);
+  // 画面の名前を前に書いても読む
+  j = await (await api("/api/instruct", { text: "レッスン詳細に「3名で予約」ボタンを追加" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /「3名で予約」を押すと 予約する\(/);
   // 動作に足した処理の行は「…を返す」の前に入る
   j = await (await api("/api/op", { op: "add_line", kind: "action", name: "点検する", text: "件.予約数 = 件.予約数 + 0" })).json();
   assert.match(src(), /    件\.予約数 = 件\.予約数 \+ 0\n    レッスンID を返す\n/);
@@ -542,6 +552,20 @@ test("第 9 回評価の途中の修正: 取り消せるようにしたい・項
   j = await (await api("/api/instruct", { text: "店長に申込の作成と更新を許可する" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
   assert.match(src(), /役割 店長:\n    権限 = \[[^\]]*申込\.作成[^\]]*申込\.更新|役割 店長:\n    権限 = \[[^\]]*申込\.更新[^\]]*申込\.作成/);
+  // 型と同じ名前の項目(日付: 日付)の名前を変えても、型は変わらない
+  j = await (await api("/api/instruct", { text: "データ「訪問」を作る(日付: 日付、メモ: 文字列)" })).json();
+  j = await (await api("/api/instruct", { text: "訪問を登録できるようにしたい" })).json();
+  j = await (await api("/api/instruct", { text: "訪問の「日付」を「訪問日」に変える" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /データ 訪問:\n    ID: 識別子\n    訪問日: 日付\n/);
+  assert.match(src(), /動作 訪問を追加\(訪問日: 日付, メモ: 文字列\)/);
+  // ボタンで登録しているデータに「状態」を足すと、空でもよい項目にせず、登録で最初の値を入れる
+  j = await (await api("/api/instruct", { text: "列挙「予約の進み」を作る(予約済、来院、終了)" })).json();
+  j = await (await api("/api/instruct", { text: "予約に「進みの状態」(予約の進み)を追加" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /    進みの状態: 予約の進み\n/);
+  assert.match(src(), /予約を登録\(.*進みの状態: "予約済"/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
   // 表を指示の欄に貼ると、初期データの欄を案内する
   j = await (await api("/api/instruct", { text: "名前\t開始日時\n朝\t2026-12-01 10:00" })).json();
   assert.match(j.error ?? "", /これは表のようです/);

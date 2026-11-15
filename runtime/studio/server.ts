@@ -317,9 +317,18 @@ function renameField(o: any, dn: string, from: string, to: string): void {
           vars = [];
         }
         if (!tt || tt.startsWith("#")) return l;
-        if (kind === "データ") return block === dn ? word(l) : l;
+        // 「日付: 日付」のように型と同じ名前の項目は、名前の側だけを変える(型まで変わり「型 訪問日 は定義されていません」になった。第 10 回評価)
+        if (kind === "データ") {
+          if (block !== dn) return l;
+          const fm = /^(\s+)([^:=\s]+)(\s*:.*)$/.exec(l);
+          return fm ? fm[1] + (fm[2] === from ? to : fm[2]) + fm[3] : word(l);
+        }
         if (kind === "列挙" || kind === "役割") return l;
-        if (kind === "動作" && fullActs.has(block)) return word(l);
+        if (kind === "動作" && fullActs.has(block)) {
+          // 見出しの行(動作 名前(引数: 型)): 引数の名前だけを変える
+          if (/^\S/.test(l)) return l.replace(new RegExp(`([(,]\\s*)${reEsc(from)}(\\s*:)`, "g"), `$1${to}$2`);
+          return word(l);
+        }
         if (kind === "動作" || kind === "関数") {
           if (!/^\s/.test(l)) return l;
           const mv = new RegExp(`^\\s*(\\S+)\\s*=\\s*${reEsc(dn)}を取得\\(`).exec(l);
@@ -455,7 +464,7 @@ function makeOptional(o: any, dn: string | undefined, fn: string): string[] {
         // 「メモ != "" を確認 または 失敗(…)」のように、空でないことを確かめる行は、空でもよくなったので外す
         // (残すと「文字列 が必要ですが 選択<文字列> です」になり、意味が分からなかった。第 9 回評価)
         for (let k = a.end - 1; k >= a.line; k--)
-          if (new RegExp(`^\\s*${reEsc(fn)}\\s*(!=|==|>|>=)\\s*(""|0)\\s*を確認`).test(al[k] ?? "")) al.splice(k, 1);
+          if (new RegExp(`^\\s*(?:${reEsc(fn)}|長さ\\(\\s*${reEsc(fn)}\\s*\\))\\s*(!=|==|>|>=)\\s*(""|0|1)\\s*を確認`).test(al[k] ?? "")) al.splice(k, 1);
         write(a.file, al.join("\n"));
       }
     }
@@ -511,7 +520,16 @@ function extendRegistrations(dn: string, fn: string, type: string): string[] {
     if (idx < 0) continue;
     // ボタンが位置で呼んでいる動作は、引数を足すとボタンが壊れるので触らない
     const called = srcFiles(o).some((f) => read(f).includes(`を押すと ${a.name}(`));
-    if (called || new RegExp(`[(,]\\s*${reEsc(fn)}\\s*:`).test(al[a.line - 1])) continue;
+    if (new RegExp(`[(,]\\s*${reEsc(fn)}\\s*:`).test(al[a.line - 1])) continue;
+    // 後から足した「予約者」「登録日時」なども、作ったときと同じく自動で入れる(入力の欄になった。第 10 回評価)
+    const auto = autoValue(o, fn, type);
+    if (auto) {
+      al[idx] = addParam(al[idx], `${fn}: ${auto}`, al[idx].indexOf(`${dn}を登録(`));
+      write(a.file, al.join("\n"));
+      out.push(a.name);
+      continue;
+    }
+    if (called) continue;
     // 足した項目は登録の最後に足す(先頭に入って読みにくかった。第 8 回評価)
     al[idx] = addParam(al[idx], `${fn}: ${fn}`, al[idx].indexOf(`${dn}を登録(`));
     al[a.line - 1] = addParam(al[a.line - 1], `${fn}: ${type}`);
@@ -565,7 +583,9 @@ function apply(op: Op): { file: string; line: number } | null {
       let t = okType(op.type, o, name);
       // ボタンで呼んでいる登録の動作は引数を増やせない(ボタンに値が無い)。その項目は空でもよい項目として足す
       // (足すたびに「ほかの所が誤りになりました」が残った。第 6 回評価)
-      if (!/^選択</.test(t)) {
+      // 自動で入れる値がある項目(状態 → 最初の値・予約者 → 本人 など)は、ボタンで登録していても必須のままにする
+      // (状態が空でもよい項目になり、新しい予約の状態が空でボタンが出なかった。第 10 回評価)
+      if (!/^選択</.test(t) && !autoValue(o, name, t)) {
         const srcAll = srcFiles(o).map((f) => read(f)).join("\n");
         const blocked = (o.decls ?? []).some((a: any) => {
           if (a.kind !== "action") return false;
@@ -900,6 +920,12 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   }
   // ボタンを足す: 「2名で予約」ボタンを足す(第 9 回評価: 読めず、専門の言葉の説明が出た)
   //   似たボタン(「1名で予約」)があれば、その行をまねて数を変える。動作の名前と同じなら、その動作を呼ぶ
+  // 「イベント詳細に「2名で予約」ボタンを追加」のように画面の名前を前に書いてもよい(第 10 回評価)
+  const btnScreen = /^(?:画面)?「?([^「」]+?)」?(?:の画面)?に「/.exec(text);
+  if (btnScreen && decl(o, "screen", btnScreen[1].trim())) {
+    ctx = { ...ctx, screen: btnScreen[1].trim() };
+    text = text.slice(btnScreen[0].length - 1);
+  }
   if ((m = cmd(/^「(.+?)」(?:の)?ボタンを(?:足す|付ける|つける|追加(?:する)?|作る)$/.exec(text) ?? /^(?:画面に)?ボタン「(.+?)」を(?:足す|付ける|つける|追加(?:する)?|作る)$/.exec(text)))) {
     const label = m[1].trim();
     const screens = (o.decls ?? []).filter((d: any) => d.kind === "screen");
@@ -1221,8 +1247,12 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     if (inner && !m[3]) [m[2], m[3]] = [inner[1], inner[2]];
     optionalNote = "";
     const at = apply({ op: "add_field", data: m[1].trim(), name: m[2], type: m[3] ?? "" });
-    const f = decl(outline(), "data", m[1].trim())?.fields.find((x: any) => x.name === m![2].trim());
-    return checked(at, `「${m[1]}」に項目「${m[2]}」(${f?.type ?? "?"})を足しました${optionalNote}`, o, text);
+    const D2 = decl(outline(), "data", m[1].trim());
+    const f = D2?.fields.find((x: any) => x.name === m![2].trim());
+    // 「残り」「残席」は、ほかの項目から計算で出すことが多い。その書き方を添える(文字の項目になった。第 10 回評価)
+    const ints = (D2?.fields ?? []).filter((x: any) => /^(整数|金額)/.test(x.type)).map((x: any) => x.name);
+    const calcHint = /^(残り|残席|残数|残量|在庫残|空き)/.test(m[2].trim()) && ints.length >= 2 ? `。計算で出すなら「1 つ前に戻す」を押してから「${m[1].trim()}に「${m[2].trim()} = ${ints[0]} - ${ints[1]}」を追加」と書きます` : "";
+    return checked(at, `「${m[1]}」に項目「${m[2]}」(${f?.type ?? "?"})を足しました${optionalNote}${calcHint}`, o, text);
   }
   if ((m = cmd(/^列挙「?(.+?)」?を(?:作る|作って|追加(?:する)?)[(（](.+)[)）]$/.exec(text)))) {
     const at = apply({ op: "add_enum", name: m[1], values: splitList(m[2]) });
@@ -1746,6 +1776,16 @@ function changed(before: any, done: string): any {
   undo();
   return { ok: false, errors: added.slice(0, 3).map((d: any) => ({ code: d.code, message: `${d.file}:${d.span?.line} ${d.message_ja}`, hints: d.hints ?? [] })), suggestions: [] };
 }
+/** 登録のときに自動で入れる値(操作をした人 → 本人、登録日時 → 現在日時()、状況 → 最初の値)。無ければ null */
+function autoValue(o: any, name: string, type: string): string | null {
+  const VERB = "予約|申込|申し込み|記入|送信|作成|登録|注文|依頼|連絡|投稿|報告|記録|受付|出品|回答|訪問|発行|発券|入力|提出|申請|発注|購入|相談|応募|点検|実施|貸出|借用";
+  // 操作をした人(お客様・利用者など、データを登録する本人を表す名前も。お客様が入力欄になった。第 9 回評価)
+  const actor = new RegExp(`(${VERB})者$|^(本人|記入者|送信者|作成者|お客様|お客さん|客|利用者|会員|患者|申込者|参加者)$`).test(name);
+  if (type === "識別子" && actor && !(o.decls ?? []).some((d: any) => d.kind === "data" && `${d.name}ID` === name)) return "本人";
+  if (type === "日時" && new RegExp(`(${VERB})(日時|時刻)$`).test(name)) return "現在日時()";
+  if (o.enums?.[type] && /(状況|状態|ステータス)$/.test(name)) return `"${o.enums[type][0]}"`;
+  return null;
+}
 /** データ D を登録する動作(とフォーム)。本人・登録日時・状況は自動で入れ、ほかは入力にする */
 function registration(o: any, ctx: { screen?: string }, text: string, D: any, act: string, only?: string[]): any {
   // 同じデータを、確認(満席・人数など)つきで登録している動作が既にあるときは、もう 1 つ作らない
@@ -1769,17 +1809,7 @@ function registration(o: any, ctx: { screen?: string }, text: string, D: any, ac
   const args: string[] = [];
   for (const f of D.fields.filter((x: any) => x.name !== "ID")) {
     // 本人を自動で入れるのは、その操作をした人を表す名前の項目だけ(担当者・割当先は入力にする。第 7 回評価)
-    const VERB = "予約|申込|申し込み|記入|送信|作成|登録|注文|依頼|連絡|投稿|報告|記録|受付|出品|回答|訪問|発行|発券|入力|提出|申請|発注|購入|相談|応募|点検|実施|貸出|借用";
-    // 操作をした人(お客様・利用者など、データを登録する本人を表す名前も。お客様が入力欄になった。第 9 回評価)
-    const actor = new RegExp(`(${VERB})者$|^(本人|記入者|送信者|作成者|お客様|お客さん|客|利用者|会員|患者|申込者|参加者)$`).test(f.name);
-    const auto =
-      f.type === "識別子" && actor && !(o.decls ?? []).some((d: any) => d.kind === "data" && `${d.name}ID` === f.name)
-        ? "本人"
-        : f.type === "日時" && new RegExp(`(${VERB})(日時|時刻)$`).test(f.name)
-          ? "現在日時()"
-          : o.enums?.[f.type] && /(状況|状態|ステータス)$/.test(f.name)
-            ? `"${o.enums[f.type][0]}"`
-            : null;
+    const auto = autoValue(o, f.name, f.type);
     if (auto && !(only ?? []).includes(f.name)) args.push(`${f.name}: ${auto}`);
     else if (!only || only.includes(f.name) || !/^選択</.test(f.type)) {
       params.push({ name: f.name, type: f.type });
