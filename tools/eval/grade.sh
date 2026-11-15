@@ -15,7 +15,7 @@ first=1
 # 手で書いた行数(空行・コメント行を除く)。生成物・依存・データは数えない
 count_lines() {
   find "$1" -type f \( -name '*.koto' -o -name '*.sql' -o -name '*.py' -o -name '*.ts' -o -name '*.js' -o -name '*.mjs' -o -name '*.html' -o -name '*.jinja*' -o -name '*.css' -o -name '*.sh' -o -name 'kotonoha.json' \) \
-    -not -path '*/node_modules/*' -not -path '*/.venv/*' -not -path '*/venv/*' -not -path '*/out/*' -not -path '*/dist/*' -not -path '*/__pycache__/*' -not -path '*/gen/*' -not -path '*/build/*' -not -path '*/.koto/*' -not -name 'seed*.json' -print0 \
+    -not -path '*/node_modules/*' -not -path '*/.venv/*' -not -path '*/venv/*' -not -path '*/out/*' -not -path '*/dist/*' -not -path '*/__pycache__/*' -not -path '*/gen/*' -not -path '*/build/*' -not -path '*/.koto/*' -not -path '*/公開用/*' -not -name 'seed*.json' -print0 \
     | xargs -0 -r cat | grep -v '^\s*$' | grep -Ev '^\s*(#|//|--)' | wc -l
 }
 IDS=("${@:3}")

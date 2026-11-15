@@ -69,6 +69,7 @@ function read(file: string): string {
 let wroteTime = 0;
 function write(file: string, text: string): void {
   wroteTime = Date.now();
+  queueMicrotask(retryAfterFix);
   history.push({ file, text: read(file), g: group });
   if (history.length > 300) history.shift();
   writeFileSync(srcPath(file), text.endsWith("\n") ? text : text + "\n");
@@ -83,6 +84,7 @@ function seedFiles(): string[] {
 }
 function writeRaw(file: string, text: string): void {
   wroteTime = Date.now();
+  queueMicrotask(retryAfterFix);
   const p = join(PROJECT, file);
   history.push({ file: p, text: readFileSync(p, "utf8"), g: group, raw: true });
   writeFileSync(p, text);
@@ -406,6 +408,22 @@ function makeOptional(o: any, dn: string | undefined, fn: string): string[] {
   }
   return done;
 }
+/** 動作をある役割だけにしたとき、確かめるでその動作を役割の無い人が呼んでいる行を探す
+ *  (役割の無い人のままで 403 になり、✗ の理由が分からなかった。第 7 回評価)。ソースは変えずに、直し方を伝える */
+function roleLessCallers(act: string): string[] {
+  const o = outline();
+  const out = new Set<string>();
+  for (const sc of (o.decls ?? []).filter((d: any) => d.kind === "scenario")) {
+    const ls = lines(sc.file);
+    for (let k = sc.line; k < sc.end; k++) {
+      const mm = new RegExp(`^\\s+([^\\s(（「」]+?)が\\s*${reEsc(act)}\\(`).exec(ls[k] ?? "");
+      if (!mm || /(→|->)\s*権限がない/.test(ls[k]) || /ログインしていない/.test(mm[1])) continue;
+      if (ls.slice(sc.line, sc.end).some((l) => new RegExp(`^\\s+${reEsc(mm[1])}[(（]`).test(l))) continue;
+      out.add(mm[1]);
+    }
+  }
+  return [...out];
+}
 /** 確かめるの呼び出しに入れる、型に合った仮の値 */
 function sampleValue(o: any, type: string): string {
   return /^(整数|金額)/.test(type) ? "0" : type === "真偽" ? "偽" : type === "日時" ? "2026-12-01 10:00" : type === "日付" ? "2026-12-01" : o.enums?.[type] ? `"${o.enums[type][0]}"` : '""';
@@ -604,6 +622,15 @@ function apply(op: Op): { file: string; line: number } | null {
       if (ls[d.end] !== undefined && ls[d.end].trim() === "") n += 1;
       ls.splice(d.line - 1, n);
       write(d.file, ls.join("\n"));
+      // 集計(分析)を消したら、それを出している画面の行も消す
+      if (op.kind === "analysis") {
+        const esc = String(op.name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        for (const f of new Set<string>((o.decls ?? []).map((x: any) => x.file))) {
+          const t = read(f);
+          const u = t.split("\n").filter((l) => !new RegExp(`^\\s+${esc}を表示\\s*$`).test(l)).join("\n");
+          if (u !== t) write(f, u);
+        }
+      }
       // 動作を消したら、その動作を呼ぶボタン・フォームの行と、役割の「動作.名前」も消す
       // (残すと消した直後にエラーになり、以降の操作が全部止まった)
       if (op.kind === "action") {
@@ -868,7 +895,11 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       const now: string[] = r.caps ?? [];
       if (caps.every((c) => now.includes(c))) return { ok: true, done: `役割「${r.name}」は既に ${caps.join("・")} を持っています` };
       apply({ op: "set_role_caps", name: r.name, caps: [...new Set([...now, ...caps])] });
-      return changed(o, `役割「${r.name}」に ${caps.join("・")} を足しました`);
+      const who = caps.filter((c) => c.startsWith("動作.")).flatMap((c) => roleLessCallers(c.slice(3)).map((a) => [a, c.slice(3)]));
+      const note = who.length
+        ? `。注意: 確かめるで役割の無い ${[...new Set(who.map((w) => w[0]))].join("・")} が「${[...new Set(who.map((w) => w[1]))].join("・")}」を行っています。この動作は ${r.name} だけになったので、そのままだと ✗(権限がない)になります。「${who[0][0]}(${r.name})が …」のように役割を書くか、${r.name} の人の行に書き換えてください`
+        : "";
+      return changed(o, `役割「${r.name}」に ${caps.join("・")} を足しました${note}`);
     }
   }
   // 役割を作る: 役割「店長」を作る(予約.読取、予約.更新)。権限を書かなければ、すべてのデータを見られるだけ
@@ -1330,6 +1361,7 @@ function undo(): boolean {
   while (history.length && history[history.length - 1].g === last.g) {
     const h = history.pop()!;
     wroteTime = Date.now();
+    queueMicrotask(retryAfterFix);
     writeFileSync(h.raw ? h.file : srcPath(h.file), h.text);
   }
   return true;
@@ -1357,21 +1389,42 @@ async function startPreview(): Promise<void> {
   preview = spawn(KOTO, ["-C", PROJECT, "dev", "--port", String(previewPort)], {
     // 止めるときに裏のアプリ(backend・画面)ごと止められるよう、プロセスのまとまりにする(止めても残った。第 7 回評価)
     detached: process.platform !== "win32",
-    env: { ...process.env, KOTONOHA_DEV_FRAME_ANCESTOR: `http://127.0.0.1:${PORT} http://localhost:${PORT}` },
+    // Studio が自分で起動する koto dev は、利用者が打ったコマンドとして記録しない(第 7 回の記録で、黒い画面を使ったように見えた)
+    env: { ...process.env, KOTONOHA_USAGE_LOG: "", KOTONOHA_DEV_FRAME_ANCESTOR: `http://127.0.0.1:${PORT} http://localhost:${PORT}` },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  let runLog = "";
+  devFailure = "";
   const keep = (b: Buffer) => {
     const chunk = b.toString("utf8");
     devLog = (devLog + chunk).slice(-200_000);
+    runLog = (runLog + chunk).slice(-20_000);
     if (/すべて確かめました|\d+ 件が期待と違いました|エラー\[/.test(chunk)) checksTime = Date.now();
+    if (/すべて確かめました|\d+ 件が期待と違いました|http:\/\/127\.0\.0\.1:\d+\//.test(chunk)) restarts = 0;
   };
   preview.stdout?.on("data", keep);
   preview.stderr?.on("data", keep);
   previewAlive = true;
   // 表示用のサーバーが止まったら起こし直す(止まったまま「試しています…」で固まった。第 5 回評価)
-  preview.once("exit", () => {
+  preview.once("exit", (code) => {
     previewAlive = false;
     if (stopping) return;
+    // 初期データの誤りや生成の誤りで止まったときは、起こし直しても同じ所で止まる(2 秒ごとに起動を繰り返し、
+    // 「動いています」と「起動しています…」が入れ替わり続けた。第 7 回評価)。理由を出し、次に直したときに起こす
+    // 分かる言葉の「初期データの誤り: …」があればそれを、無ければ検査の誤りを出す
+    const seedErr = runLog.lastIndexOf("初期データの誤り");
+    const i = seedErr >= 0 ? seedErr : runLog.lastIndexOf("エラー[");
+    if (code && i >= 0) {
+      devFailure = runLog
+        .slice(i)
+        .split("\n")
+        .filter((l) => l.trim() && !/^\s+at /.test(l) && !/^Node\.js v/.test(l) && !/^\(エラーの詳しい説明|^エラー \d+ 件、警告/.test(l.trim()) && !(seedErr >= 0 && /INT001/.test(l)))
+        .slice(0, 3)
+        .join(" ")
+        .slice(0, 400);
+      devLog += "\n(アプリを起動できませんでした。直すと起動し直します)\n";
+      return;
+    }
     devLog += "\n(表示用のサーバーが止まりました。起動し直します)\n";
     restarts += 1;
     setTimeout(() => void startPreview(), Math.min(10_000, 1000 * restarts));
@@ -1391,6 +1444,17 @@ function killPreview(): void {
 }
 let previewAlive = false;
 let restarts = 0;
+/** 起動できずに待っている理由(空なら待っていない) */
+let devFailure = "";
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+/** ソースや初期データを直したら、起動できずに待っているアプリを起こし直す */
+function retryAfterFix(): void {
+  if (!devFailure || stopping || previewAlive || retryTimer) return;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    if (devFailure && !stopping && !previewAlive) void startPreview();
+  }, 400);
+}
 let stopping = false;
 /** 最後に出た「確かめる」の結果(koto dev の出力から) */
 function lastChecks(): { lines: string[]; ok: boolean | null } {
@@ -1465,10 +1529,10 @@ function state(): any {
   // アプリが起動に失敗しているとき(初期データの誤りなど)は、その理由を出す。「動いています」と出していた(第 7 回評価)
   const lastErr = Math.max(devLog.lastIndexOf("エラー["), devLog.lastIndexOf("初期データの誤り"));
   const lastOk = devLog.lastIndexOf("確かめる「") > lastErr ? devLog.lastIndexOf("確かめる「") : devLog.search(/http:\/\/127\.0\.0\.1:\d+\/[^\n]*$/m);
-  const devError = previewAlive && lastErr >= 0 && lastErr > Math.max(lastOk, devLog.lastIndexOf("ソースの変更を"))
+  const devError = devFailure && !previewAlive ? devFailure : previewAlive && lastErr >= 0 && lastErr > Math.max(lastOk, devLog.lastIndexOf("ソースの変更を"))
     ? devLog.slice(lastErr).split("\n").filter((l) => l.trim() && !/^\s+at /.test(l)).slice(0, 3).join(" ").slice(0, 400)
     : "";
-  return { outline: o, sources, devError, previewPort: previewAlive ? previewPort : 0, previewNote: previewAlive ? "" : stopping ? "アプリは止めてあります(「動かす」で動きます)" : "表示用のサーバーを起動しています…", running: previewAlive, checks, canUndo: history.length > 0, theme, seed: seedState(o), published: existsSync(join(PROJECT, "公開用", "点検の結果.md")) ? readFileSync(join(PROJECT, "公開用", "点検の結果.md"), "utf8") : "" };
+  return { outline: o, sources, devError, previewPort: previewAlive ? previewPort : 0, previewNote: previewAlive ? "" : stopping ? "アプリは止めてあります(「動かす」で動きます)" : devFailure ? "アプリを起動できません。直すと起動し直します" : "表示用のサーバーを起動しています…", running: previewAlive, checks, canUndo: history.length > 0, theme, seed: seedState(o), published: existsSync(join(PROJECT, "公開用", "点検の結果.md")) ? readFileSync(join(PROJECT, "公開用", "点検の結果.md"), "utf8") : "" };
 }
 
 const server = createServer(async (req, res) => {

@@ -505,6 +505,8 @@ fn cmd_outline(o: &mut Opts) -> Result<i32, String> {
                 Decl::Role(d) => {
                     json!({"kind": "role", "name": d.name.name, "caps": a.env.roles.get(&d.name.name).map(|cs| cs.iter().map(|c| ja_cap(c)).collect::<Vec<_>>()).unwrap_or_default()})
                 }
+                Decl::External(d) if d.kind == kotonoha_ast::ExternalKind::Analysis => json!({"kind": "analysis", "name": d.name.name,
+                    "columns": d.ret.as_ref().map(kotonoha_parser::printer::type_str).unwrap_or_default()}),
                 Decl::External(d) => json!({"kind": "external", "name": d.name.name}),
                 Decl::Function(d) => json!({"kind": "function", "name": d.name.name}),
                 Decl::Adapter(d) => json!({"kind": "adapter", "name": d.name.name}),

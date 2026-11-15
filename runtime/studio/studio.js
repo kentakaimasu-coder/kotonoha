@@ -230,6 +230,7 @@ function renderTree() {
   group("画面", "screen", "新しい画面", "new-screen");
   group("動作(ボタンで行う処理)", "action", "新しい動作", "new-action");
   group("役割(だれが何をできるか)", "role", "新しい役割", "new-role");
+  group("集計(決まった名前の表)", "analysis", "新しい集計", "new-analysis");
   t.append(el("h3", { text: "約束(見てよい人・重複・順番)" }));
   t.append(item(decls("rules").length ? "約束" : "+ 約束を書く", { kind: "rules", name: "約束" }, !decls("rules").length));
   group("確かめる(動きの確認)", "scenario", "新しい確かめる", "new-scenario");
@@ -298,6 +299,73 @@ function fieldRows(box, rows) {
   return add;
 }
 
+/** 集計(分析)を作るフォーム。記号を書かずに、データ・まとめる項目・合計する項目・列の名前を選ぶ(第 7 回評価: 30 人中 29 人が例を写した) */
+function analysisForm() {
+  const msg = el("div", { class: "msg", role: "status" });
+  const name = el("input", { type: "text", placeholder: "例: 会場別の予約状況", "aria-label": "集計の名前" });
+  const datas = decls("data");
+  const data = el("select", { "aria-label": "集計するデータ" }, ...datas.map((d) => el("option", { value: d.name }, d.name)));
+  const unit = el("select", { "aria-label": "まとめる項目" });
+  const sums = el("div", { class: "rows" });
+  const cols = el("div", { class: "rows" });
+  const colNames = () => {
+    const D = datas.find((d) => d.name === data.value);
+    const picked = [...sums.querySelectorAll("input:checked")].map((x) => x.value);
+    return [unit.value, `${D?.name ?? ""}数`, ...picked];
+  };
+  const renderCols = () => {
+    // 書き換えた列の名前は、同じ列が残っている間は保つ(選び直した列は元の名前にする)
+    const kept = new Map([...cols.querySelectorAll("input")].filter((x) => x.dataset.edited).map((x) => [x.dataset.base, x.value]));
+    cols.replaceChildren(
+      ...colNames().map((c, i) => {
+        const input = el("input", { type: "text", value: kept.get(c) ?? c, "aria-label": `${i + 1} 列目の名前`, "data-base": c, oninput: () => (input.dataset.edited = "1") });
+        if (kept.has(c)) input.dataset.edited = "1";
+        return el("label", { class: "row" }, el("span", { text: `${i + 1} 列目` }), input);
+      }),
+    );
+  };
+  const fill = () => {
+    const D = datas.find((d) => d.name === data.value);
+    const fs = (D?.fields ?? []).filter((f) => f.name !== "ID");
+    unit.replaceChildren(...fs.filter((f) => !/^(整数|金額)/.test(f.type)).map((f) => el("option", { value: f.name }, f.name)));
+    sums.replaceChildren(...fs.filter((f) => /^(選択<)?(整数|金額)/.test(f.type)).map((f) => el("label", {}, el("input", { type: "checkbox", value: f.name, checked: true, onchange: renderCols }), ` ${f.name}`)));
+    renderCols();
+  };
+  data.addEventListener("change", fill);
+  unit.addEventListener("change", renderCols);
+  fill();
+  const go = async () => {
+    const D = datas.find((d) => d.name === data.value);
+    const picked = [...sums.querySelectorAll("input:checked")].map((x) => x.value);
+    const names = [...cols.querySelectorAll("input")].map((x) => x.value.trim());
+    const sentence = picked.length ? `${D.name}の${picked.join("と")}を${unit.value}ごとに合計` : `${D.name}を${unit.value}ごとに集計`;
+    const text = `分析「${name.value.trim()}」を作る(${sentence}、列: ${names.join("・")})`;
+    // 失敗したときに選んだ内容が消えないよう、ここでは編集の欄を描き直さない
+    const r0 = await fetch("/api/instruct", { method: "POST", headers: { "Content-Type": "application/json", "X-Studio-Token": TOKEN }, body: JSON.stringify({ text }) });
+    const j = await r0.json();
+    const r = j.result ?? {};
+    msg.textContent = j.error ?? (r.ok ? `✓ ${r.done}` : r.errors?.[0]?.message ?? "作れませんでした");
+    msg.className = "msg " + (j.error || !r.ok ? "err" : "ok");
+    if (j.outline) S = j;
+    if (!j.error && r.ok) {
+      notice = { kind: "ok", text: `✓ ${r.done}` };
+      select({ kind: "analysis", name: name.value.trim() });
+      reloadSoon();
+    } else renderSide();
+  };
+  return [
+    el("p", { class: "sub", text: "決まった名前の表(API)として、データを項目ごとにまとめた件数と合計を出します。画面に「集計の名前を表示」と書くと画面にも出ます。" }),
+    el("label", { class: "row" }, el("span", { text: "集計の名前" }), name),
+    el("label", { class: "row" }, el("span", { text: "どのデータを" }), data),
+    el("label", { class: "row" }, el("span", { text: "何ごとにまとめる" }), unit),
+    el("h3", { text: "合計する項目(選ばなければ件数だけ)" }),
+    sums,
+    el("h3", { text: "列の名前(左から順に。決まった名前があれば書き換える)" }),
+    cols,
+    el("div", { class: "row" }, el("button", { type: "button", onclick: go }, "作る")),
+    msg,
+  ];
+}
 const EDITORS = {
   home() {
     const themes = ["藍", "紺", "青", "緑", "深緑", "朱", "紅", "紫", "橙", "茶", "墨"];
@@ -313,6 +381,21 @@ const EDITORS = {
       msg,
     ];
   },
+  analysis() {
+    const d = decls("analysis").find((x) => x.name === sel.name);
+    if (!d) return [el("p", { text: "見つかりません" })];
+    const ls = srcLines(d.file).slice(d.line - 1, d.end);
+    return [
+      el("h2", { text: `集計「${d.name}」` }),
+      el("p", { class: "sub", text: `決まった名前の表です。アプリでは /api/analyses/${d.name} で取り出せます。画面に出すときは、画面を選んで「${d.name}を表示」と書きます。` }),
+      el("pre", { class: "code" }, ls.join("\n")),
+      el("hr"),
+      el("button", { type: "button", class: "danger", onclick: () => confirm(`集計「${d.name}」を消しますか?(出している画面の行も消します)`) && op({ op: "remove_decl", kind: "analysis", name: d.name }).then(() => select({ kind: "home" })) }, "この集計を消す"),
+    ];
+  },
+  "new-analysis"() {
+    return [el("h2", { text: "新しい集計" }), ...analysisForm()];
+  },
   data() {
     const d = decls("data").find((x) => x.name === sel.name);
     if (!d) return [el("p", { text: "見つかりません" })];
@@ -321,7 +404,15 @@ const EDITORS = {
     for (const f of d.fields) {
       const bad = diagsAt(d.file, f.line).filter((x) => x.severity === "error");
       rows.append(
-        el("div", { class: "line" + (bad.length ? " bad" : "") }, el("code", {}, `${f.name}: ${f.type}`, ...bad.map((b) => el("span", { class: "why", text: b.message_ja }))), f.name === "ID" ? el("span", { class: "help", text: "自動で決まります" }) : el("button", { type: "button", class: "small", onclick: () => op({ op: "remove_line", file: d.file, line: f.line, old: ls[f.line - 1] }) }, "消す")),
+        el(
+          "div",
+          { class: "line" + (bad.length ? " bad" : "") },
+          el("code", {}, `${f.name}: ${f.type}`, ...bad.map((b) => el("span", { class: "why", text: b.message_ja }))),
+          // 項目の順番 = 一覧の列・詳細の並び(列の順番を変えられなかった。第 7 回評価)
+          f.name === "ID" ? null : el("button", { type: "button", class: "small ghost", "aria-label": `${f.name}を上へ`, title: "上へ(一覧の列が左へ)", onclick: () => op({ op: "move_line", file: d.file, line: f.line, old: ls[f.line - 1], dir: "up" }) }, "↑"),
+          f.name === "ID" ? null : el("button", { type: "button", class: "small ghost", "aria-label": `${f.name}を下へ`, title: "下へ(一覧の列が右へ)", onclick: () => op({ op: "move_line", file: d.file, line: f.line, old: ls[f.line - 1], dir: "down" }) }, "↓"),
+          f.name === "ID" ? el("span", { class: "help", text: "自動で決まります" }) : el("button", { type: "button", class: "small", onclick: () => op({ op: "remove_line", file: d.file, line: f.line, old: ls[f.line - 1] }) }, "消す"),
+        ),
       );
     }
     for (const c of d.computed ?? []) {
@@ -338,7 +429,7 @@ const EDITORS = {
     const cmsg = el("div", { class: "msg", role: "status" });
     return [
       el("h2", { text: `データ「${d.name}」` }),
-      el("p", { class: "sub", text: "覚えておく項目の一覧です。ID は自動で付きます。計算項目は読むときに計算します(保存しません)。" }),
+      el("p", { class: "sub", text: "覚えておく項目の一覧です。ID は自動で付きます。計算項目は読むときに計算します(保存しません)。項目の順番が、一覧の列と詳細の並びになります(↑↓ で変えられます)。" }),
       rows,
       el("h3", { text: "計算項目を足す(残席 = 定員 - 予約数 など)" }),
       el("form", { class: "row", onsubmit: async (e) => { e.preventDefault(); const j = await op({ op: "add_line", kind: "data", name: d.name, text: `${cname.value.trim()} = ${cexpr.value.trim()}` }, cmsg); if (!j.error) { cname.value = ""; cexpr.value = ""; } } }, cname, el("span", { text: "=" }), cexpr, el("button", { type: "submit" }, "足す")),
@@ -519,7 +610,8 @@ function renderEditor() {
   const ed = $("editor");
   const active = document.activeElement;
   // 入力中は描き直さない(書いている途中の文を消さない)
-  if (ed.contains(active) && (active.tagName === "INPUT" || active.tagName === "TEXTAREA") && active.value) return;
+  // (選ぶ欄・チェックで選んでいる途中も同じ。集計のフォームで選んだ内容が消えた)
+  if (ed.contains(active) && (((active.tagName === "INPUT" || active.tagName === "TEXTAREA") && active.value) || active.tagName === "SELECT")) return;
   ed.replaceChildren(...(EDITORS[sel.kind] ?? EDITORS.home)().filter((x) => x !== null && x !== undefined));
   if (notice) {
     ed.prepend(el("div", { class: "msg " + notice.kind, role: "status", text: notice.text }));

@@ -366,3 +366,31 @@ test("日本語の指示(第 7 回評価の残り): 全件閲覧の言い方・�
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
   assert.match(src(), /画面 レッスン詳細:\n(    .*\n)*    レッスンの天気を表示\n    「1名で予約」を押すと/);
 });
+
+test("集計を画面のフォームで作る(記号を書かない)・項目の順番を変える", async () => {
+  const ctx = await browser.newContext({ locale: "ja-JP", viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const errors: string[] = [];
+  page.on("pageerror", (e: Error) => errors.push(String(e)));
+  await page.goto(url + "/");
+  await page.click("text=+ 新しい集計");
+  await page.fill('input[aria-label="集計の名前"]', "会場別の予約状況");
+  await page.selectOption('select[aria-label="集計するデータ"]', "レッスン");
+  await page.selectOption('select[aria-label="まとめる項目"]', "会場");
+  // 合計は予約数だけにする
+  for (const box of await page.locator('#editor input[type="checkbox"]').all()) if ((await box.getAttribute("value")) !== "予約数") await box.uncheck();
+  await page.fill('input[aria-label="2 列目の名前"]', "イベント数");
+  await page.click('#editor button:has-text("作る")');
+  await page.waitForSelector('h2:has-text("集計「会場別の予約状況」")');
+  assert.match(src(), /分析 会場別の予約状況\(\) -> 一覧<記録\{会場: 文字列, イベント数: 整数, 予約数: 整数\}>/);
+  // 項目の順番(一覧の列の順番)を変える
+  await page.click('#tree button:text-is("レッスン")');
+  const order = () => /データ レッスン:\n([\s\S]*?)\n\n/.exec(src())![1].split("\n").map((l) => l.trim().split(":")[0]);
+  const o0 = order();
+  const k = o0.indexOf("会場");
+  await page.click(`button[aria-label="会場を上へ"]`);
+  for (let i = 0; i < 50 && order().indexOf("会場") === k; i++) await page.waitForTimeout(100);
+  assert.equal(order().indexOf("会場"), k - 1);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
