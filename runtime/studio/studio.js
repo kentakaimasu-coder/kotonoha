@@ -207,6 +207,17 @@ $("seed-paste-apply").addEventListener("click", async () => {
     $("seed-msg").className = "msg err";
     return;
   }
+  // 1 行目の項目名が、選んでいるデータの項目と合わないときは入れない(別のデータの表を貼って、行が空になった。第 9 回評価)
+  const cols = seedRows.cols ?? [];
+  const unknown = head.filter((h) => h && !cols.includes(h));
+  if (cols.length && unknown.length) {
+    const other = (S?.seed ?? []).find((d) => d.data !== seedRows.data && unknown.every((h) => d.fields.some((f) => f.name === h)));
+    $("seed-msg").textContent =
+      `「${seedRows.data}」には項目「${unknown.join("」「")}」がありません(項目: ${cols.join("・")})。` +
+      (other ? `「${other.data}」の表なら、上でデータを「${other.data}」に切り替えてから貼り付けます` : "1 行目には項目名を書きます");
+    $("seed-msg").className = "msg err";
+    return;
+  }
   const before = seedRows.rows;
   seedRows.rows = lines.slice(1).map((l) => Object.fromEntries(l.split(sep).map((v, i) => [head[i], v.trim()]).filter(([k]) => k)));
   seedRows.dirty = true;

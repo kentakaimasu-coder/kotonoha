@@ -67,6 +67,11 @@ test("空のフォルダで開くと「新しいアプリを作る」。ひな�
   await page.click("#seed-paste-apply");
   await page.waitForSelector("#seed-msg.err");
   assert.match(await page.textContent("#seed-msg") ?? "", /整数/);
+  // 別のデータの表(項目名が合わない)は入れずに、切り替えるよう案内する
+  await page.fill("#seed-paste", "枠ID\t予約者\t人数\nx\ty\t1");
+  await page.click("#seed-paste-apply");
+  await page.waitForFunction(() => /には項目「枠ID」「予約者」「人数」がありません.*「予約」に切り替えて/.test(document.querySelector("#seed-msg")?.textContent ?? ""));
+  assert.match(readFileSync(join(dir, "seed.json"), "utf8"), /"夜の回"/, "前の行は残る");
   // 列の数が合わない行は断る。タブ区切りなら「1,200」のカンマで列がずれない
   await page.fill("#seed-paste", "名前\t定員\nずれ\t3\t余分");
   await page.click("#seed-paste-apply");
