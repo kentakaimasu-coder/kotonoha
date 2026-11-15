@@ -510,6 +510,19 @@ test("第 9 回評価の途中の修正: 取り消せるようにしたい・項
   assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
   j = await (await api("/api/instruct", { text: "「2名で予約」ボタンを足す" })).json();
   assert.match(j.error ?? "", /もう「2名で予約」のボタンがあります/);
+  // 動作に足した処理の行は「…を返す」の前に入る
+  j = await (await api("/api/op", { op: "add_line", kind: "action", name: "点検する", text: "件.予約数 = 件.予約数 + 0" })).json();
+  assert.match(src(), /    件\.予約数 = 件\.予約数 \+ 0\n    レッスンID を返す\n/);
+  // 前に変えた名前で書いても、今の名前に読み替えて変える
+  j = await (await api("/api/instruct", { text: "「レッスン」を「講座」に変える" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  j = await (await api("/api/instruct", { text: "「レッスンを追加」を「講座登録」に変える" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(j.result.done, /今の名前は「講座を追加」です/);
+  assert.match(src(), /動作 講座登録\(/);
+  j = await (await api("/api/instruct", { text: "「講座」を「レッスン」に変える" })).json();
+  j = await (await api("/api/instruct", { text: "「講座登録」を「レッスンを追加」に変える" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
   // 同じ画面の行は 2 つにしない
   j = await (await api("/api/op", { op: "add_line", kind: "screen", name: "レッスン一覧", text: "レッスンを選ぶと レッスン詳細 へ" })).json();
   assert.match(j.error ?? "", /もう「レッスンを選ぶと レッスン詳細 へ」があります/);

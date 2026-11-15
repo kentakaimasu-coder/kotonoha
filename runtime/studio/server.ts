@@ -71,6 +71,8 @@ function atomicWrite(p: string, text: string): void {
   writeFileSync(tmp, text);
   renameSync(tmp, p);
 }
+/** これまでに変えた名前(前の名前 → 新しい名前)。前の名前で指示されたときの読み替えに使う */
+const renamedWords: [string, string][] = [];
 /** 最後にソース・初期データを書き換えた時刻(確かめるの結果が古いかどうかの判断に使う) */
 let wroteTime = 0;
 function write(file: string, text: string): void {
@@ -208,6 +210,16 @@ function addLine(d: any, text: string): { file: string; line: number } {
         insertAfter(d.file, k, ["    " + text.trim()]);
         return { file: d.file, line: k + 1 };
       }
+  }
+  // 動作の処理の行は、最後の「…を返す」より前に入れる(後ろに入り、どこが誤りか分からなかった。第 9 回評価)
+  if (d.kind === "action" && !/を返す\s*$/.test(text.trim())) {
+    const ls = lines(d.file);
+    for (let k = d.end - 1; k >= d.line; k--) {
+      if (/^\s+.*を返す\s*$/.test(ls[k] ?? "")) {
+        insertAfter(d.file, k, ["    " + text.trim()]);
+        return { file: d.file, line: k + 1 };
+      }
+    }
   }
   insertAfter(d.file, d.end, ["    " + text.trim()]);
   return { file: d.file, line: d.end + 1 };
@@ -1035,10 +1047,23 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     (m = cmd(/^(?:データ|画面|動作|役割|列挙|確かめる)?「([^「」]+?)」を「([^「」]+?)」に(?:名前を)?(?:変える|かえる|変更(?:する)?|直す)$/.exec(text))) ||
     (m = cmd(/^(?:データ|画面|動作|役割|列挙|確かめる)?「?(.+?)」?を「?(.+?)」?に(?:名前を)?(?:変える|かえる|変更(?:する)?|直す)$/.exec(text)))
   ) {
-    const [from, to] = [m[1].trim(), m[2].trim()];
+    let [from, to] = [m[1].trim(), m[2].trim()];
+    // 前に変えた名前で書いたとき(「枠」を「イベント」に変えた後の「枠を追加」): 今の名前に読み替える(第 9 回評価)
+    let note = "";
+    if (!(o.decls ?? []).some((x: any) => x.name === from)) {
+      for (const [a, b] of renamedWords) {
+        const cand = from.split(a).join(b);
+        if (cand !== from && (o.decls ?? []).some((x: any) => x.name === cand)) {
+          note = `(「${a}」は前に「${b}」に変えたので、今の名前は「${cand}」です)`;
+          from = cand;
+          break;
+        }
+      }
+    }
     if ((o.decls ?? []).some((x: any) => x.name === from)) {
       renameDecl(o, from, to);
-      return changed(o, `「${from}」を「${to}」に変えました(使っている所と初期データもそろえました)`);
+      renamedWords.unshift([from, to]);
+      return changed(o, `「${from}」を「${to}」に変えました(使っている所と初期データもそろえました)${note}`);
     }
     const owners = (o.decls ?? []).filter((d: any) => d.kind === "data" && d.fields.some((f: any) => f.name === from));
     if (owners.length === 1) {
