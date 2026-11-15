@@ -43,7 +43,8 @@ function renderWelcome() {
       el("label", { class: "tpl" }, el("input", { type: "radio", name: "tpl", value: t.name, ...(i === 1 ? { checked: "" } : {}) }), el("b", { text: t.name || "白紙" }), el("span", { class: "help", text: t.desc })),
     ),
   );
-  if (!$("welcome-name").value) $("welcome-name").value = S.folder ?? "";
+  // フォルダ名が「A」「C」のような短い記号なら、アプリの名前には入れない(「Cサロン予約」になった。第 8 回評価)
+  if (!$("welcome-name").value && !/^[A-Za-z0-9_.-]{1,3}$/.test(S.folder ?? "")) $("welcome-name").value = S.folder ?? "";
 }
 $("welcome-form").addEventListener("submit", async (e) => {
   e.preventDefault();

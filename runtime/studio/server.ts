@@ -1872,15 +1872,28 @@ const server = createServer(async (req, res) => {
         }
       } catch (e) {
         usage({ api: url.pathname.slice(5), ok: false, error: String((e as Error).message ?? e).slice(0, 200) });
-        return send(res, 200, { ok: false, error: String((e as Error).message ?? e), ...state() });
+        let st: any = {};
+        try {
+          st = state();
+        } catch {}
+        return send(res, 200, { ok: false, error: friendlyError(e), ...st });
       }
     }
     send(res, 404, { error: "not found" });
   } catch (e) {
-    send(res, 500, { error: String((e as Error)?.message ?? e) });
+    send(res, 500, { error: friendlyError(e) });
   }
 });
 
+/** OS の英語の誤り(ENOSPC など)を、分かる言葉にする(英語の「ENOSPC」で止まった。第 8 回評価) */
+function friendlyError(e: unknown): string {
+  const code = (e as { code?: string })?.code ?? "";
+  const msg = String((e as Error)?.message ?? e);
+  if (code === "ENOSPC" || /ENOSPC/.test(msg)) return "パソコンの空き容量が足りないため、保存できませんでした。いらないファイルを消して空きを作ってから、もう一度押してください(ソースは前のまま残っています)";
+  if (code === "EACCES" || code === "EPERM" || /EACCES|EPERM/.test(msg)) return "このフォルダに書き込む許可がないため、保存できませんでした。フォルダの場所や許可を確かめてください";
+  if (code === "ENOENT" && /seed|\.koto|\.json/.test(msg)) return `ファイルが見つかりません(${msg.split("'")[1] ?? msg})。Studio を開き直してください`;
+  return msg;
+}
 const parent = Number(process.env.KOTONOHA_EXIT_WITH_PARENT ?? 0);
 const stop = () => {
   stopping = true;
