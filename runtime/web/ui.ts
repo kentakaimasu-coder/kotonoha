@@ -60,6 +60,8 @@ export interface ScreenDef {
   input: string | null;
   loaders: Loader[];
   View: (p: ScreenProps) => React.ReactElement;
+  /** 操作だけの画面: どれか 1 つでも使える人にだけメニューに出す(認可は backend) */
+  needs?: Need[];
 }
 
 export interface Init {
@@ -151,8 +153,9 @@ export class ExtBoundary extends React.Component<{ name: string; children?: Reac
 /** 動作の成功結果の表示(K-13)。値が単純なときだけ添える。 */
 export function okText(prefix: string, r: LoadResult): string {
   const v = r.body?.ok;
-  // 自動採番の ID(UUID)は利用者に意味が無いので出さない
+  // ID(自動採番の UUID・初期データの u2 など)は利用者に意味が無いので出さない(第 5 回評価)
   if (typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return `${prefix}: 完了しました`;
+  if (typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v)) return `${prefix}: 完了しました`;
   if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return `${prefix}: 完了しました(結果: ${String(v)})`;
   return `${prefix}: 完了しました`;
 }
@@ -274,8 +277,24 @@ export function Detail(p: { r: LoadResult | undefined; fields: Field[]; tz: stri
   return h("dl", { className: "detail" }, p.fields.map((f) => h("div", { key: f.name, className: "row" }, h("dt", null, refTitle(p.refs, f)), h("dd", { className: cellClass(f, p.refs) }, h(Value, { refs: p.refs, f, v: e[f.name], tz: p.tz })))));
 }
 
-function useMessage(): [{ kind: "ok" | "error"; text: string; login?: boolean } | null, (m: { kind: "ok" | "error"; text: string; login?: boolean } | null) => void] {
-  return React.useState<{ kind: "ok" | "error"; text: string; login?: boolean } | null>(null);
+type Msg = { kind: "ok" | "error"; text: string; login?: boolean } | null;
+/** 結果の知らせ。どこかで次の操作をしたら、ほかの古い知らせは消す(前の失敗が残って紛らわしい。第 5 回評価) */
+const msgListeners = new Set<(from: object) => void>();
+function useMessage(): [Msg, (m: Msg) => void] {
+  const [m, setM] = React.useState<Msg>(null);
+  const self = React.useRef({}).current;
+  React.useEffect(() => {
+    const f = (from: object) => from !== self && setM(null);
+    msgListeners.add(f);
+    return () => {
+      msgListeners.delete(f);
+    };
+  }, []);
+  const set = (x: Msg) => {
+    if (x) msgListeners.forEach((f) => f(self));
+    setM(x);
+  };
+  return [m, set];
 }
 
 function MessageView(p: { m: { kind: "ok" | "error"; text: string; login?: boolean } | null }) {
@@ -401,12 +420,13 @@ function tzLabel(tz: string): string {
 }
 
 /** 入力欄の見出し: 必須 / 任意 を添える(真偽は付けない) */
-function FieldLabel(p: { htmlFor: string; f: Field; tz: string }) {
+function FieldLabel(p: { htmlFor: string; f: Field; tz: string; refs?: Refs }) {
   const k = p.f.type.kind;
   return h(
     "label",
     { htmlFor: p.htmlFor },
-    p.f.name,
+    // 「部屋ID」で選ぶ欄は「部屋」と出す(第 5 回評価)
+    p.refs?.[p.f.name]?.title ?? p.f.name,
     isDatetime(p.f.type) ? h("span", { className: "hint" }, `(${tzLabel(p.tz)})`) : null,
     k === "bool" ? null : k === "optional" ? h("span", { className: "tag" }, "任意") : h("span", { className: "tag req" }, "必須"),
   );
@@ -457,9 +477,10 @@ export function ActionForm(p: { action: string; fields: Field[]; reload: () => P
   if (!canUse(p.caps ?? null, p.need)) return null;
   return h(
     "form",
-    { className: "form", onSubmit, onKeyDown, "aria-labelledby": formId + "-title" },
+    // 次の入力を始めたら、前の結果の知らせを消す(2 件目が入ったか分かりにくい。第 5 回評価)
+    { className: "form", onSubmit, onKeyDown, onInput: () => m && setM(null), "aria-labelledby": formId + "-title" },
     h("h2", { id: formId + "-title" }, p.action),
-    p.fields.filter((f) => !(p.fixed && f.name in p.fixed)).map((f) => h("div", { className: fieldClass(f), key: f.name }, h(FieldLabel, { htmlFor: `${formId}-${f.name}`, f, tz: p.tz ?? "Asia/Tokyo" }), inputFor(f, `${formId}-${f.name}`, p.refs))),
+    p.fields.filter((f) => !(p.fixed && f.name in p.fixed)).map((f) => h("div", { className: fieldClass(f), key: f.name }, h(FieldLabel, { htmlFor: `${formId}-${f.name}`, f, tz: p.tz ?? "Asia/Tokyo", refs: p.refs }), inputFor(f, `${formId}-${f.name}`, p.refs))),
     h("button", { type: "submit", disabled: busy }, p.submit ?? "送信"),
     h(MessageView, { m }),
   );
@@ -518,7 +539,13 @@ export function App(p: { init: Init; screens: Record<string, ScreenDef> }) {
       "header",
       null,
       h("a", { className: "brand", href: "/" }, h("span", { className: "mark", "aria-hidden": "true" }, Array.from(p.init.appName)[0] ?? ""), h("span", { className: "name" }, p.init.appName)),
-      h("nav", { "aria-label": "画面" }, p.init.nav.map((n) => h("a", { key: n, href: screenHref(n), "aria-current": n === p.init.screen ? "page" : undefined }, n))),
+      h(
+        "nav",
+        { "aria-label": "画面" },
+        p.init.nav
+          .filter((n) => n === p.init.screen || !p.screens[n]?.needs || p.screens[n].needs!.some((x) => canUse(p.init.caps ?? null, x)))
+          .map((n) => h("a", { key: n, href: screenHref(n), "aria-current": n === p.init.screen ? "page" : undefined }, n)),
+      ),
       h("a", { className: p.init.loggedIn ? "login on" : "login", href: "/login" }, p.init.loggedIn ? "ログイン中" : "ログイン"),
     ),
     h("main", null, h(def.View, { data, id: p.init.id, tz: p.init.tz, reload, caps: p.init.caps ?? null })),

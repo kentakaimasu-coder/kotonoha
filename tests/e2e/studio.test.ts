@@ -69,6 +69,38 @@ test("日本語の指示: データを作る・項目を足す・画面と約束
   assert.equal(j.result.ok, false, "文字列の項目は計算に使えないので入れない");
 });
 
+test("日本語の指示(第 5 回の改善): 動作のひな形・消す・列挙に値を足す・数字で始まる名前・登録できるようにしたい", async () => {
+  // 状態を変える動作 + 詳細画面にボタン
+  let j: any = await (await api("/api/instruct", { text: "「満席にする」で枠の予約数を99にする" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /動作 満席にする\(枠ID: 識別子\)/);
+  assert.match(src(), /「満席にする」を押すと 満席にする\(枠\.ID\)/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // 増やす
+  j = await (await api("/api/instruct", { text: "「定員を増やす」で枠の定員を1増やす" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /件\.定員 = 件\.定員 \+ 1/);
+  // 登録できるようにしたい
+  j = await (await api("/api/instruct", { text: "予約を登録できるようにしたい", screen: "管理" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /動作 予約を追加\(/);
+  assert.match(src(), /予約を追加のフォームを表示/);
+  // 列挙に値を足す
+  j = await (await api("/api/instruct", { text: "予約失敗に「受付終了」を追加" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /    受付終了\n/);
+  // 数字で始まる名前は理由を出す
+  j = await (await api("/api/instruct", { text: "枠に「1日の数」を追加" })).json();
+  assert.match(j.error ?? "", /数字で始められません/);
+  // 消す
+  j = await (await api("/api/instruct", { text: "「定員を増やす」を消す" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.doesNotMatch(src(), /動作 定員を増やす/);
+  // 呼んでいたボタンも一緒に消え、エラーが残らない
+  assert.doesNotMatch(src(), /を押すと 定員を増やす/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+});
+
 test("画面の操作: 役割を作る・権限を選ぶ・行を消す。名前と型を確かめる", async () => {
   let j: any = await (await api("/api/op", { op: "add_role", name: "先生", caps: ["枠.読取", "枠.作成", "動作.枠を追加"] })).json();
   assert.equal(j.ok, true, j.error);
@@ -131,4 +163,49 @@ test("見た目の確認: iPhone・Android の各機種の大きさで、生成�
   assert.equal(await frame!.textContent("h1"), "枠一覧");
   assert.deepEqual(errors, []);
   await ctx.close();
+});
+
+test("日本語の指示(第 6 回の改善): 名前を変える・空でもよい項目・項目を足すと登録もそろう・データをまとめて消す・取り消すで全部戻る", async () => {
+  // 名前を変える(使っている所と初期データもそろえる)
+  let j: any = await (await api("/api/instruct", { text: "「枠」を「レッスン」に変える" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /データ レッスン:/);
+  assert.match(src(), /レッスンID: 識別子/);
+  assert.doesNotMatch(src(), /枠/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  const seed = readFileSync(join(dir, "seed.json"), "utf8");
+  assert.match(seed, /"レッスン"/);
+  assert.doesNotMatch(seed, /"枠/);
+  // 項目の名前を変える(区切りを見て、その項目だけ)
+  j = await (await api("/api/instruct", { text: "レッスンの「定員」を「上限」に変える" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /    上限: 整数/);
+  assert.match(src(), /レッスン\.上限 - レッスン\.予約数/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // 項目を足すと、その項目を登録する動作の引数もそろう
+  j = await (await api("/api/instruct", { text: "レッスンに「料金」を追加" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /料金: 金額\n/);
+  assert.match(src(), /動作 レッスンを追加\([^)]*料金: 金額\)/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // ボタンで呼ぶ動作は引数を増やせないので、空でもよい項目にすれば直る
+  j = await (await api("/api/instruct", { text: "予約に「要望」を追加" })).json();
+  assert.match(j.result.done, /誤りになりました/);
+  j = await (await api("/api/instruct", { text: "「要望」を空でもよいにする" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /要望: 選択<文字列>/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // 動作「X」を作る(項目…): 項目を持つデータの登録になる。本人・日時は自動
+  j = await (await api("/api/instruct", { text: "動作「受け付ける」を作る(レッスンID、人数)" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /予約を登録\([^)]*予約者: 本人[^)]*予約日時: 現在日時\(\)/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // データをまとめて消す → 取り消すで全部戻る
+  const before = src();
+  j = await (await api("/api/instruct", { text: "予約を消す" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.doesNotMatch(src(), /予約を登録|データ 予約:|予約\.作成/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  j = await (await api("/api/undo", {})).json();
+  assert.equal(src(), before);
 });

@@ -390,6 +390,8 @@ function renderSide() {
   ch.replaceChildren();
   const c = S.checks ?? { lines: [] };
   if (!c.lines.length) ch.append(el("li", { text: S.previewPort ? "試しています…(保存すると自動で試します)" : "まだ試していません" }));
+  // 検査に合格していない間は試し直せないので、前の結果だと分かるようにする(第 5 回評価: 古い結果が出続けた)
+  else if (S.outline && !S.outline.ok) ch.append(el("li", { class: "ng", text: "検査に合格していないので、これは前に試した結果です。下の「問題」を直すと試し直します" }));
   for (const l of c.lines) {
     const t = l.trim();
     ch.append(el("li", { class: t.startsWith("✓") ? "ok" : t.startsWith("✗") ? "ng" : "head", text: t }));
@@ -485,7 +487,7 @@ function renderLook() {
   lastLookKey = key;
   const grid = $("devices");
   grid.replaceChildren();
-  if (!S.previewPort) return grid.append(el("p", { class: "help", text: "表示の準備中です…" }));
+  if (!S.previewPort) return grid.append(el("p", { class: "help", text: S.previewNote || "表示の準備中です…" }));
   // 同じ種類の機種は同じ縮尺で並べる(大きさの違いがそのまま見える)
   const SCALE = { iphone: 0.62, "iphone home": 0.62, android: 0.62, tablet: 0.5, pc: 0.5 };
   // 画面の上の、時刻と電池の帯(実機ではページはこの下から始まる)

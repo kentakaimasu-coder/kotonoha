@@ -186,20 +186,17 @@ pub fn build_vag(inp: &GraphInput, status: Status) -> Value {
                         }
                         ("display", format!("{action}のフォーム"), vec![], vec![], vec![], vec![], vec![], detail)
                     }
-                    IntentKind::ButtonInvoke { label, action, args } => {
+                    IntentKind::ButtonInvoke { label, action, args, when } => {
                         edges.insert((i.id.clone(), format!("action.{action}"), "invokes".into()));
                         edges.insert((sid.clone(), format!("action.{action}"), "invokes".into()));
                         let args: Vec<String> = args.iter().map(kotonoha_parser::printer::expr_str).collect();
-                        (
-                            "display",
-                            label.clone(),
-                            vec![],
-                            vec![],
-                            vec![],
-                            vec![],
-                            vec![],
-                            json!({"ui": "button", "event": "tap", "label": label, "action": format!("action.{action}"), "args": args}),
-                        )
+                        ("display", label.clone(), vec![], vec![], vec![], vec![], vec![], {
+                            let mut d = json!({"ui": "button", "event": "tap", "label": label, "action": format!("action.{action}"), "args": args});
+                            if let Some(w) = when {
+                                d["when"] = json!({"data": w.data, "field": w.field, "value": w.value, "negate": w.negate});
+                            }
+                            d
+                        })
                     }
                     IntentKind::PublicRead { .. }
                     | IntentKind::AuthRequired { .. }

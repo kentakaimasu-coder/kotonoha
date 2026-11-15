@@ -31,7 +31,7 @@ fn shop_intents_resolve() {
     let detail = &m.screens[1];
     assert_eq!(detail.input.as_deref(), Some("商品"));
     assert!(matches!(&detail.intents[0].kind, IntentKind::ShowFields { fields, .. } if fields == &["名前", "価格", "在庫"]));
-    assert!(matches!(&detail.intents[1].kind, IntentKind::ButtonInvoke { label, action, args } if label == "購入" && action == "注文する" && args.len() == 2));
+    assert!(matches!(&detail.intents[1].kind, IntentKind::ButtonInvoke { label, action, args, .. } if label == "購入" && action == "注文する" && args.len() == 2));
     assert_eq!(m.contracts.len(), 3);
     assert!(m
         .contracts
@@ -207,7 +207,7 @@ fn list_order_and_filters() {
     let IntentKind::ListData { filters, .. } = &k[3] else { panic!() };
     assert_eq!(filters.iter().map(|f| f.op).collect::<Vec<_>>(), vec![FilterOp::Ne, FilterOp::Me, FilterOp::Eq]);
     assert_eq!(filters[2].value.as_deref(), Some("true"));
-    assert_eq!(list_caption("注文", &None, filters), "注文の一覧(状態が提供済みでない・卓が自分・急ぎが真)");
+    assert_eq!(list_caption("注文", &None, filters), "注文の一覧(状態が提供済みでない・卓が自分・急ぎ)");
     let IntentKind::ListData { order, filters, .. } = &k[0] else { panic!() };
     assert_eq!(list_caption("注文", order, filters), "注文の一覧(注文日時の新しい順)");
 }

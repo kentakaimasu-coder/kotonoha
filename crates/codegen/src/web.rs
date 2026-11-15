@@ -351,6 +351,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                     action,
                     args,
                     experiment,
+                    when,
                 } => {
                     let Some(a) = ir.actions.iter().find(|x| &x.name == action) else { continue };
                     let pairs: Vec<String> = a
@@ -377,12 +378,23 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         None => js_str(label),
                     };
                     let need = need_js(ir, action);
-                    body.push(format!(
+                    let button = format!(
                         "h(ActionButton, {{ key: {ci}, label: {}, action: {}, reload: p.reload{need}, args: () => {{ {cur}return {{ {} }}; }} }})",
                         label_js,
                         js_str(action),
                         pairs.join(", ")
-                    ));
+                    );
+                    // 条件付きのボタン: 表示中のデータの値で出し分ける(認可は backend。第 5 回評価)
+                    body.push(match (when, &s.input) {
+                        (Some(w), Some(d)) if *d == w.data => format!(
+                            "((r) => r?.ok && ((String(r.body?.[{}]) === {}) !== {}) ? {button} : null)(p.data[{}])",
+                            js_str(&w.field),
+                            js_str(&w.value),
+                            w.negate,
+                            js_str(&format!("get:{d}"))
+                        ),
+                        _ => button,
+                    });
                 }
                 Component::Ext { component, args, experiment } => {
                     let Some(c) = ir.ext.component(component) else { continue };
@@ -507,8 +519,30 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
             js_str(&s.name),
             body.join(",\n    ")
         ));
+        // 操作(フォーム・ボタン)だけの画面は、使える人にだけメニューに出す(第 5 回評価)
+        let actions: Vec<&String> = s
+            .components
+            .iter()
+            .filter_map(|c| match c {
+                Component::Form { action, .. } | Component::Button { action, .. } => Some(action),
+                _ => None,
+            })
+            .collect();
+        let needs = if !actions.is_empty() && actions.len() == s.components.len() {
+            let ns: Vec<Value> = actions
+                .iter()
+                .filter_map(|a| ir.endpoints.iter().find(|e| e.id == format!("action.{a}")))
+                .map(|e| {
+                    let a = e.access_json();
+                    json!({"caps": a["capabilities"], "grant": a["grant"]})
+                })
+                .collect();
+            format!(", needs: {}", serde_json::to_string(&ns).unwrap())
+        } else {
+            String::new()
+        };
         defs.push(format!(
-            "  {}: {{ name: {}, input: {}, loaders: {}, View: {fname} }},",
+            "  {}: {{ name: {}, input: {}, loaders: {}, View: {fname}{needs} }},",
             js_str(&s.name),
             js_str(&s.name),
             s.input.as_ref().map(|d| js_str(d)).unwrap_or_else(|| "null".into()),

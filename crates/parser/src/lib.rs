@@ -945,11 +945,25 @@ impl<'t> TokStream<'t> {
                 self.expect_sym(Sym::Comma)?;
             }
         }
-        Ok(TypeExpr::Named {
+        let t = TypeExpr::Named {
             span: name.span.to(self.last_span()),
             name,
             args,
-        })
+        };
+        // `文字列(任意)` は `選択<文字列>` と同じ(空でもよい項目。第 5 回評価で「空でもよい項目の書き方が分からない」が多かった)
+        if matches!(self.toks.get(self.pos).map(|x| &x.kind), Some(TokenKind::Sym(Sym::LParen)))
+            && matches!(self.toks.get(self.pos + 1).map(|x| &x.kind), Some(TokenKind::Ident(n)) if n == "任意")
+            && matches!(self.toks.get(self.pos + 2).map(|x| &x.kind), Some(TokenKind::Sym(Sym::RParen)))
+        {
+            self.pos += 3;
+            let span = t.span().to(self.last_span());
+            return Ok(TypeExpr::Named {
+                name: Ident { name: "選択".into(), span },
+                args: vec![t],
+                span,
+            });
+        }
+        Ok(t)
     }
 
     // ---- 式(優先順位は docs/spec/grammar.md §4) ----

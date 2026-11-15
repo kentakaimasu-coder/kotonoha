@@ -58,6 +58,9 @@ pub enum IntentKind {
         action: String,
         #[serde(serialize_with = "ser_args")]
         args: Vec<Expr>,
+        /// `{データ}の{項目}が{値}のとき` / `…でないとき`: 表示中のデータの値でボタンを出し分ける(第 5 回評価)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        when: Option<Box<ButtonWhen>>,
     },
     /// P-COMPONENT `{部品}(引数, …)を表示`(ADR-0123)
     #[serde(rename = "component")]
@@ -152,6 +155,15 @@ pub fn aggregate_caption(data: &str, by: &str, bucket: Option<Bucket>, filters: 
     }
 }
 
+/// ボタンを出す条件(表示中のデータの項目の値。文字列で比べる。真偽は "true" / "false")
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ButtonWhen {
+    pub data: String,
+    pub field: String,
+    pub value: String,
+    pub negate: bool,
+}
+
 /// 一覧の絞り込み条件の種類
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -231,6 +243,14 @@ pub fn list_caption(data: &str, order: &Option<ListOrder>, filters: &[ListFilter
     let mut parts: Vec<String> = filters
         .iter()
         .map(|f| match f.op {
+            // 真偽は「売り切れ」「売り切れでない」と書く(「売り切れが偽」は読みにくい。第 5 回評価)
+            FilterOp::Eq | FilterOp::Ne if matches!(f.value.as_deref(), Some("true" | "false")) => {
+                if (f.op == FilterOp::Eq) == (f.value.as_deref() == Some("true")) {
+                    f.field.clone()
+                } else {
+                    format!("{}でない", f.field)
+                }
+            }
             FilterOp::Eq => format!("{}が{}", f.field, shown(f.value.as_deref())),
             FilterOp::Ne => format!("{}が{}でない", f.field, shown(f.value.as_deref())),
             FilterOp::Today => format!("{}が今日", f.field),
@@ -787,7 +807,53 @@ impl Ctx<'_> {
         ])
     }
 
-    fn match_screen(&self, s: &str, span: Span) -> Match {
+    fn match_screen(&self, s0: &str, span: Span) -> Match {
+        // P-BUTTON の前の条件: `予約の状態が受取済でないとき「取り消す」を押すと …`
+        let mut when = None;
+        let mut s = s0;
+        if let Some(i) = s0.find("のとき「") {
+            let cond = &s0[..i];
+            let parsed = cond.split_once('の').and_then(|(d, rest)| {
+                let (f, v) = rest.split_once('が')?;
+                let (v, negate) = match v.strip_suffix("でない") {
+                    Some(v) => (v, true),
+                    None => (v, false),
+                };
+                Some((d.trim(), f.trim(), v.trim(), negate))
+            });
+            let Some((d, f, v, negate)) = parsed else {
+                return Match::Invalid(Diagnostic::error(
+                    Code::AMB001,
+                    span,
+                    format!("条件「{cond}」は「データの項目が値」の形で書きます(例: 予約の状態が受取済でないとき)"),
+                ));
+            };
+            let Some(t) = self.env.data.get(d).and_then(|x| x.shown(f)) else {
+                return Match::Invalid(Diagnostic::error(Code::REF001, span, format!("条件の「{d}の{f}」がありません")));
+            };
+            let value = match t {
+                Type::Bool | Type::Option(_) if matches!(t, Type::Bool) => match v {
+                    "真" | "はい" => "true".to_string(),
+                    "偽" | "いいえ" => "false".to_string(),
+                    _ => return Match::Invalid(Diagnostic::error(Code::TYP001, span, format!("「{f}」は 真 / 偽 です"))),
+                },
+                Type::Enum(e) if !self.env.enum_has(e, v) => {
+                    return Match::Invalid(Diagnostic::error(
+                        Code::TYP001,
+                        span,
+                        format!("「{v}」は列挙 `{e}` の値ではありません(値: {})", self.env.enums[e].join(" / ")),
+                    ))
+                }
+                _ => v.to_string(),
+            };
+            when = Some(Box::new(ButtonWhen {
+                data: d.into(),
+                field: f.into(),
+                value,
+                negate,
+            }));
+            s = &s0[i + "のとき".len()..];
+        }
         // P-BUTTON
         if let Some(rest) = s.strip_prefix('「') {
             if let Some((label, after)) = rest.split_once("」を押すと ") {
@@ -810,6 +876,7 @@ impl Ctx<'_> {
                                 label: label.into(),
                                 action: callee.name.clone(),
                                 args,
+                                when: when.clone(),
                             })
                         } else {
                             Match::Invalid(Diagnostic::error(

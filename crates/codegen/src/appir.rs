@@ -162,6 +162,8 @@ pub enum Component {
         label: String,
         action: String,
         args: Vec<Expr>,
+        /// 表示中のデータの値でボタンを出し分ける条件
+        when: Option<kotonoha_intent::ButtonWhen>,
         /// ラベルを出し分ける実験(変種 = ラベル)
         experiment: Option<ExpRef>,
     },
@@ -354,10 +356,11 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
                         columns: cols,
                     });
                 }
-                IntentKind::ButtonInvoke { label, action, args } => comps.push(Component::Button {
+                IntentKind::ButtonInvoke { label, action, args, when } => comps.push(Component::Button {
                     label: label.clone(),
                     action: action.clone(),
                     args: args.clone(),
+                    when: when.as_deref().cloned(),
                     experiment: inp.ext.label_experiment(&s.name, label).map(|e| ExpRef {
                         name: e.name.clone(),
                         variants: e.variants.clone(),

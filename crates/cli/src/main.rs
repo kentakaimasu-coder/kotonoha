@@ -22,6 +22,8 @@ const USAGE: &str = "使い方: koto [-C <dir>] [--json] <command> [args]
   studio [--port 4000]            画面で作る(データ・画面・動作・役割を画面で足す。日本語で指示。iPhone・Android の各機種での見た目を並べて確認)
   patterns                        画面・約束に書ける文の一覧(宣言した名前で具体的に表示)
   outline                         アプリの構成・検査の結果・書ける文を JSON で出す(Studio などの道具向け)
+  rename <今の名前> <新しい名前>   データ・画面・動作・役割・列挙・項目の名前を、使っている所と初期データ(seed*.json)ごと変える
+                                  (例: koto rename 枠 イベント / koto rename 枠.定員 上限)。誤りが増えるときは変えない
   safety                          生成されるアプリに自動で入る安全対策と、API ごとの公開範囲を表示
   token --sub 名前 [--role 役割 | --admin | --caps 権限,…]
                                   koto dev で動かしているアプリ用の動作確認トークンを作る(curl などで Authorization: Bearer に使う)
@@ -151,6 +153,7 @@ fn run(mut o: Opts) -> i32 {
         "dev" => cmd_dev(&mut o),
         "patterns" => cmd_patterns(&mut o),
         "outline" => cmd_outline(&mut o),
+        "rename" => cmd_rename(&mut o),
         "studio" => cmd_studio(&mut o),
         "safety" => cmd_safety(&mut o),
         "token" => cmd_token(&mut o),
@@ -233,6 +236,11 @@ const TEMPLATES: &[(&str, &str, &str, &str)] = &[
 ];
 
 fn cmd_init(o: &mut Opts) -> Result<i32, String> {
+    // `koto init --help` で「--help」というフォルダを作らない(第 5 回評価)
+    if o.args.iter().any(|a| a == "--help" || a == "-h") {
+        println!("使い方: koto init <フォルダ> [--name 名前] [--template ひな形]\n  ひな形: 予約受付 / 在庫管理 / 問い合わせ / 日報(省略すると最小のひな形)");
+        return Ok(0);
+    }
     let name = take_value(&mut o.args, "--name")?;
     let template = if o.args.iter().any(|a| a == "--template") && o.args.last().map(|a| a == "--template").unwrap_or(false) {
         o.args.pop();
@@ -291,7 +299,7 @@ fn cmd_init(o: &mut Opts) -> Result<i32, String> {
     }
     std::fs::write(dir.join(".gitignore"), ".koto/\nbuild/\n").map_err(|e| e.to_string())?;
     eprintln!("{} にプロジェクトを作成しました", dir.display());
-    eprintln!("次にやること:\n  1. src/app.koto を開いて、データ名や項目を自分の用途に書き換える\n  2. koto -C {} dev   (検査・生成・起動。表示された URL をブラウザで開く)\n  3. 書き方に迷ったら koto -C {} patterns", dir.display(), dir.display());
+    eprintln!("次にやること:\n  1. src/app.koto を開いて、データ名や項目を自分の用途に書き換える\n  2. koto -C {} dev   (検査・生成・起動。表示された URL をブラウザで開く)\n  3. 書き方に迷ったら koto -C {} patterns\n  (名前を変える: koto -C {} rename 枠 イベント。画面で作る: koto -C {} studio)", dir.display(), dir.display(), dir.display(), dir.display());
     Ok(0)
 }
 
@@ -488,10 +496,196 @@ fn cmd_outline(o: &mut Opts) -> Result<i32, String> {
             "screen": kotonoha_intent::example_sentences(&a.env, &a.registry, false),
             "rules": kotonoha_intent::example_sentences(&a.env, &a.registry, true),
         },
-        "types": ["文字列", "整数", "真偽", "日付", "日時", "識別子", "金額<JPY>", "メール", "URL"],
+        "types": ["文字列", "整数", "真偽", "日付", "日時", "識別子", "金額", "メール", "URL"],
         "enums": a.env.enums,
     });
     println!("{}", serde_json::to_string_pretty(&out).unwrap());
+    Ok(0)
+}
+
+/// 項目名として使っている所だけを置き換える(日本語は空白で区切らないので、前後の助詞・記号で区切りを見る)
+fn replace_word(text: &str, from: &str, to: &str) -> (String, usize) {
+    const BEFORE: &str = " \t.(,、「のとはが[<=";
+    const AFTER: &str = " \t:：)],、.」をがのはでにと順ご+-*/=<>!";
+    let mut out = String::with_capacity(text.len());
+    let mut n = 0;
+    for line in text.split_inclusive('\n') {
+        if line.trim_start().starts_with('#') {
+            out.push_str(line);
+            continue;
+        }
+        let mut rest = line;
+        let mut prev: Option<char> = None;
+        while let Some(i) = rest.find(from) {
+            let before = rest[..i].chars().last().or(prev);
+            let after = rest[i + from.len()..].chars().next();
+            let ok_b = before.is_none_or(|c| BEFORE.contains(c));
+            let ok_a = after.is_none_or(|c| c == '\n' || c == '\r' || AFTER.contains(c));
+            out.push_str(&rest[..i]);
+            if ok_b && ok_a {
+                out.push_str(to);
+                n += 1;
+            } else {
+                out.push_str(from);
+            }
+            prev = from.chars().last();
+            rest = &rest[i + from.len()..];
+        }
+        out.push_str(rest);
+    }
+    (out, n)
+}
+
+/// JSON の文字列のうち、キー(直後が `:`)だけを f で置き換える(値や並び順・書式は変えない)
+fn rename_json_keys(text: &str, f: impl Fn(&str) -> Option<String>) -> String {
+    let cs: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < cs.len() {
+        if cs[i] != '"' {
+            out.push(cs[i]);
+            i += 1;
+            continue;
+        }
+        let mut j = i + 1;
+        while j < cs.len() && cs[j] != '"' {
+            j += if cs[j] == '\\' { 2 } else { 1 };
+        }
+        let s: String = cs[i + 1..j.min(cs.len())].iter().collect();
+        let mut k = j + 1;
+        while k < cs.len() && cs[k].is_whitespace() {
+            k += 1;
+        }
+        let is_key = cs.get(k) == Some(&':');
+        match (is_key, if is_key && !s.contains('\\') { f(&s) } else { None }) {
+            (true, Some(n)) => out.push_str(&format!("\"{n}\"")),
+            _ => out.extend(&cs[i..(j + 1).min(cs.len())]),
+        }
+        i = j + 1;
+    }
+    out
+}
+
+/// `koto rename 枠 イベント` / `koto rename 枠.定員 上限`: 名前を、使っている所と初期データごと変える(第 5 回評価:
+/// ひな形の「枠」を自分の言葉に置き換える所を探すのが大変だった)。変えた後に検査し、誤りが増えるなら元に戻す
+fn cmd_rename(o: &mut Opts) -> Result<i32, String> {
+    if o.args.len() != 2 {
+        return Err("使い方: koto rename <今の名前> <新しい名前>(項目は データ.項目。例: koto rename 枠 イベント / koto rename 枠.定員 上限)".into());
+    }
+    let (from, to) = (o.args[0].clone(), o.args[1].clone());
+    let bad = |c: char| c.is_whitespace() || ":：()（）「」\"'`,、。=<>[]{}#.-+*/\\".contains(c);
+    if to.is_empty() || to.chars().any(bad) || to.starts_with(|c: char| c.is_ascii_digit() || ('０'..='９').contains(&c)) {
+        return Err(format!("新しい名前「{to}」は使えません(空白・記号を含まず、数字で始まらない名前にします)"));
+    }
+    let (p, ap) = match load(o) {
+        Ok(x) => x,
+        Err(c) => return Ok(c),
+    };
+    let a = drv::analyze(&p, &ap);
+    let errs_before = a.diags.errors().count();
+    let decl_names: Vec<String> = a
+        .asts
+        .iter()
+        .flat_map(|f| f.items.iter())
+        .filter_map(|it| match &it.decl {
+            Decl::Data(d) => Some(d.name.name.clone()),
+            Decl::Enum(d) => Some(d.name.name.clone()),
+            Decl::Action(d) => Some(d.name.name.clone()),
+            Decl::Screen(d) => Some(d.name.name.clone()),
+            Decl::Role(d) => Some(d.name.name.clone()),
+            Decl::Scenario(d) => Some(d.name.name.clone()),
+            Decl::Function(d) => Some(d.name.name.clone()),
+            _ => None,
+        })
+        .collect();
+    if decl_names.contains(&to) {
+        return Err(format!("「{to}」は既にあります"));
+    }
+    // 何の名前か: 宣言 → 「データ.項目」→ どれか 1 つのデータの項目
+    let (field_of, name): (Option<String>, String) = if decl_names.contains(&from) {
+        (None, from.clone())
+    } else if let Some((dn, f)) = from.split_once('.') {
+        match a.env.data.get(dn) {
+            Some(d) if d.field(f).is_some() => (Some(dn.to_string()), f.to_string()),
+            Some(_) => return Err(format!("データ「{dn}」に項目「{f}」はありません")),
+            None => return Err(format!("データ「{dn}」はありません")),
+        }
+    } else {
+        let owners: Vec<&String> = a.env.data.iter().filter(|(_, d)| d.field(&from).is_some()).map(|(n, _)| n).collect();
+        match owners.as_slice() {
+            [] => return Err(format!("「{from}」という名前のデータ・画面・動作・役割・列挙・項目はありません")),
+            [d] => (Some((*d).clone()), from.clone()),
+            ds => {
+                return Err(format!(
+                    "項目「{from}」は {} にあります。koto rename {}.{from} {to} のように書きます",
+                    ds.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("・"),
+                    ds[0]
+                ))
+            }
+        }
+    };
+    let root = &p.root;
+    let mut saved: Vec<(PathBuf, String)> = Vec::new();
+    let mut count = 0usize;
+    for (rel, content) in p.files.values() {
+        let (new, n) = if field_of.is_some() {
+            replace_word(content, &name, &to)
+        } else {
+            (content.replace(&name, &to), content.matches(name.as_str()).count())
+        };
+        if n > 0 {
+            let path = root.join(rel);
+            saved.push((path.clone(), content.clone()));
+            std::fs::write(&path, new).map_err(|e| format!("{rel} を書けません: {e}"))?;
+            count += n;
+        }
+    }
+    // 初期データ(seed*.json)のキー
+    let mut seeds = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(root) {
+        for e in rd.flatten() {
+            let fname = e.file_name().to_string_lossy().to_string();
+            if fname.starts_with("seed") && fname.ends_with(".json") {
+                seeds.push(e.path());
+            }
+        }
+    }
+    let field_unique = field_of.is_some() && a.env.data.values().filter(|d| d.field(&name).is_some()).count() == 1;
+    for sp in seeds {
+        let Ok(t) = std::fs::read_to_string(&sp) else { continue };
+        // ソースと同じ置き換えを、JSON のキーにだけ行う(データ名は「予約数」のような項目名にも含まれるので部分一致で)
+        let u = if field_of.is_none() {
+            rename_json_keys(&t, |k| k.contains(name.as_str()).then(|| k.replace(name.as_str(), &to)))
+        } else if field_unique {
+            rename_json_keys(&t, |k| (k == name).then(|| to.clone()))
+        } else {
+            t.clone()
+        };
+        if u != t {
+            saved.push((sp.clone(), t));
+            std::fs::write(&sp, u).map_err(|e| format!("{} を書けません: {e}", sp.display()))?;
+        }
+    }
+    // 検査し直して、誤りが増えたら元に戻す
+    let after = drv::load_project(&o.dir).ok().map(|p2| drv::analyze(&p2, &ap));
+    let errs_after = after.as_ref().map(|x| x.diags.errors().count()).unwrap_or(usize::MAX);
+    if errs_after > errs_before {
+        for (path, text) in &saved {
+            let _ = std::fs::write(path, text);
+        }
+        if let Some(x) = &after {
+            for d in x.diags.errors().take(3) {
+                eprintln!("{d}");
+            }
+        }
+        eprintln!("名前を変えると誤りが増えるので、変えずに元に戻しました");
+        return Ok(1);
+    }
+    let what = match &field_of {
+        Some(d) => format!("「{d}」の項目「{name}」"),
+        None => format!("「{name}」"),
+    };
+    println!("{what}を「{to}」に変えました({count} か所。初期データも含めて {} ファイル)", saved.len());
     Ok(0)
 }
 
@@ -791,8 +985,9 @@ fn dev_once(o: &mut Opts, port: u16, no_start: bool, ever_started: &mut bool) ->
     };
     let db = dev.join("data.sqlite");
     let seed = root.join("seed.json");
-    if seed.exists() {
-        // データの形(項目や型)を変えて、既存のデータを自動で移せないときは、消してやり直す方法を案内する
+    // データの形(項目や型)を変えて、開発用のデータを自動で移せないときは、前のデータを脇に置いて作り直す
+    // (開発用のデータは消えてよい。止まって INT001 を見せるより分かりやすい。第 5 回評価)
+    if db.exists() {
         let out = std::process::Command::new("node")
             .args(["--no-warnings", "-e", "import('./src/runtime/db.ts').then(m => import('./src/app.generated.ts').then(a => m.openDb(process.env.KOTONOHA_DB, a.tables))).then(d => d.close()).catch(e => { console.error(String(e?.message ?? e)); process.exit(3); })"])
             .env("KOTONOHA_DB", &db)
@@ -800,12 +995,23 @@ fn dev_once(o: &mut Opts, port: u16, no_start: bool, ever_started: &mut bool) ->
             .output()
             .map_err(|e| format!("node を実行できません: {e}"))?;
         if !out.status.success() {
-            return Err(format!(
-                "開発用データベースを今のデータの形に合わせられません: {}\n  開発中のデータを消してやり直すなら: {} を削除してから koto dev",
-                String::from_utf8_lossy(&out.stderr).trim(),
-                db.display()
-            ));
+            let old = dev.join("data.sqlite.前の形");
+            let _ = std::fs::remove_file(&old);
+            for ext in ["", "-wal", "-shm"] {
+                let from = dev.join(format!("data.sqlite{ext}"));
+                if from.exists() {
+                    std::fs::rename(&from, dev.join(format!("data.sqlite.前の形{ext}"))).map_err(|e| e.to_string())?;
+                }
+            }
+            eprintln!("データの形が変わったので、開発用のデータを作り直しました(初期データ seed.json を入れ直します)。");
+            eprintln!(
+                "  前のデータは {} に残しています。理由: {}",
+                old.display(),
+                String::from_utf8_lossy(&out.stderr).trim()
+            );
         }
+    }
+    if seed.exists() {
         run_cmd(
             std::process::Command::new("node")
                 .args(["--no-warnings", "tools/seed.ts"])

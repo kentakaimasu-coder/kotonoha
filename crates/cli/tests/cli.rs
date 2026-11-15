@@ -615,3 +615,78 @@ fn computed_fields_show_sort_and_check_but_cannot_be_written() {
         assert!(err.contains(want), "{want}: {err}");
     }
 }
+
+#[test]
+fn round5_fixes_optional_fields_conditional_buttons_and_menu() {
+    // koto init --help は使い方を出す(「--help」フォルダを作らない)
+    let (c, out, _) = koto(Path::new("."), &["init", "--help"]);
+    assert_eq!(c, 0);
+    assert!(out.contains("使い方: koto init") && !Path::new("--help").exists());
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("round5_tpl");
+    let _ = std::fs::remove_dir_all(&root);
+    let (c, _, err) = koto(Path::new("."), &["init", root.to_str().unwrap(), "--template", "予約受付"]);
+    assert_eq!(c, 0, "{err}");
+    let app = root.join("src/app.koto");
+    let s = std::fs::read_to_string(&app)
+        .unwrap()
+        // 空でもよい項目は「(任意)」でも書ける
+        .replace("    予約日時: 日時\n", "    予約日時: 日時\n    メモ: 文字列(任意)\n")
+        // 条件付きのボタン
+        .replace(
+            "    「1名で予約」を押すと 予約する(枠.ID, 1)",
+            "    枠の予約数が0のとき「1名で予約」を押すと 予約する(枠.ID, 1)",
+        );
+    std::fs::write(&app, &s).unwrap();
+    let (c, _, err) = koto(&root, &["test"]);
+    assert_eq!(c, 0, "{err}");
+    let out = root.join("out-web");
+    let (c, _, err) = koto(&root, &["build", "--target", "web", "--out", out.to_str().unwrap()]);
+    assert_eq!(c, 0, "{err}");
+    let screens = std::fs::read_to_string(out.join("src/screens.generated.ts")).unwrap();
+    assert!(screens.contains("String(r.body?.[\"予約数\"]) === \"0\""), "条件付きのボタン");
+    // 操作だけの画面(管理)は使える人にだけメニューに出す
+    assert!(screens.lines().any(|l| l.contains("\"管理\": {") && l.contains("needs:")), "{screens}");
+    // 条件の誤りは分かる言葉で
+    std::fs::write(&app, s.replace("枠の予約数が0のとき", "枠の色が赤のとき")).unwrap();
+    let (c, _, err) = koto(&root, &["check"]);
+    assert_ne!(c, 0);
+    assert!(err.contains("条件の「枠の色」がありません"), "{err}");
+}
+
+#[test]
+fn rename_changes_names_with_their_uses_and_seed_and_refuses_when_errors_grow() {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("rename_tpl");
+    let _ = std::fs::remove_dir_all(&root);
+    let (c, _, err) = koto(Path::new("."), &["init", root.to_str().unwrap(), "--template", "予約受付"]);
+    assert_eq!(c, 0, "{err}");
+    // データの名前: 使っている所(枠ID・枠一覧・権限・確かめる)と初期データのキーごと
+    let (c, out, err) = koto(&root, &["rename", "枠", "イベント"]);
+    assert_eq!(c, 0, "{err}");
+    assert!(out.contains("「枠」を「イベント」に変えました"), "{out}");
+    let src = std::fs::read_to_string(root.join("src/app.koto")).unwrap();
+    assert!(src.contains("データ イベント:") && src.contains("イベントID: 識別子") && src.contains("画面 イベント一覧:") && !src.contains('枠'));
+    // 項目の名前: 区切りを見て、その項目だけ(「定員不正」は変えない)
+    let (c, _, err) = koto(&root, &["rename", "イベント.定員", "上限"]);
+    assert_eq!(c, 0, "{err}");
+    let src = std::fs::read_to_string(root.join("src/app.koto")).unwrap();
+    assert!(src.contains("    上限: 整数") && src.contains("イベント.上限 - イベント.予約数") && src.contains("定員不正"));
+    // 「予約」を変えると「予約数」なども変わり、初期データのキーもそろう
+    let (c, _, err) = koto(&root, &["rename", "予約", "申込"]);
+    assert_eq!(c, 0, "{err}");
+    let seed = std::fs::read_to_string(root.join("seed.json")).unwrap();
+    assert!(
+        seed.contains("\"イベント\"") && seed.contains("\"申込数\"") && seed.contains("\"上限\"") && !seed.contains("予約"),
+        "{seed}"
+    );
+    let (c, _, err) = koto(&root, &["test"]);
+    assert_eq!(c, 0, "{err}");
+    // 既にある名前・誤りが増える変更は断る
+    let (c, _, err) = koto(&root, &["rename", "申込", "イベント"]);
+    assert_ne!(c, 0);
+    assert!(err.contains("既にあります"), "{err}");
+    let before = std::fs::read_to_string(root.join("src/app.koto")).unwrap();
+    let (c, _, err) = koto(&root, &["rename", "イベント.上限", "名前"]);
+    assert_ne!(c, 0, "{err}");
+    assert!(err.contains("元に戻しました"), "{err}");
+    assert_eq!(std::fs::read_to_string(root.join("src/app.koto")).unwrap(), before, "元に戻す");
+}

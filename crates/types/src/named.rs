@@ -47,21 +47,18 @@ fn expr(env: &Env, e: &mut Expr, diags: &mut Vec<Diagnostic>) {
                 return;
             }
             let mut given: Vec<Option<Expr>> = vec![None; ps.len()];
-            let mut ok = true;
             for a in std::mem::take(args) {
                 let ExprKind::Named { name, value } = a.kind else { unreachable!() };
                 match ps.iter().position(|(n, _)| *n == name.name) {
                     Some(i) if given[i].is_none() => given[i] = Some(*value),
                     Some(_) => {
                         diags.push(Diagnostic::error(Code::SYN001, name.span, format!("引数 `{}` が 2 回あります", name.name)));
-                        ok = false;
                     }
                     None => {
                         diags.push(
                             Diagnostic::error(Code::REF001, name.span, format!("`{}` に引数 `{}` はありません", callee.name, name.name))
                                 .hint(format!("引数: {}", ps.iter().map(|(n, t)| format!("{n}({t})")).collect::<Vec<_>>().join(", "))),
                         );
-                        ok = false;
                     }
                 }
             }
@@ -84,11 +81,18 @@ fn expr(env: &Env, e: &mut Expr, diags: &mut Vec<Diagnostic>) {
                     e.span,
                     format!("`{}` の引数 {} がありません(省けるのは 選択<…> の項目だけ)", callee.name, missing.join(", ")),
                 ));
-                ok = false;
             }
-            if ok {
-                *args = given.into_iter().map(|x| x.unwrap()).collect();
-            }
+            // 誤りがあっても、渡した引数は宣言の順に残し、足りない所は「報告済み」の印にする
+            // (空のまま残すと「0 個渡されています」という的外れな誤りが続いて出た。第 5 回評価)
+            *args = given
+                .into_iter()
+                .map(|x| {
+                    x.unwrap_or(Expr {
+                        kind: ExprKind::Missing,
+                        span: e.span,
+                    })
+                })
+                .collect();
         }
         ExprKind::Named { value, .. } => expr(env, value, diags),
         ExprKind::Field(x, _) => expr(env, x, diags),

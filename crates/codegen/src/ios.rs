@@ -207,11 +207,13 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         cells.join("; Spacer(); ")
                     ));
                 }
+                // 条件付きのボタン(when)はモバイルでは常に出す(押せない状態なら backend が理由を返す。K-39)
                 Component::Button {
                     label,
                     action,
                     args,
                     experiment,
+                    ..
                 } => {
                     let Some(a) = ir.actions.iter().find(|x| &x.name == action) else { continue };
                     let fields: Vec<String> = a

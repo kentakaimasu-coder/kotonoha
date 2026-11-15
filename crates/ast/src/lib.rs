@@ -382,6 +382,8 @@ pub enum ExprKind {
         rhs: Box<Expr>,
     },
     List(Vec<Expr>),
+    /// 名前付き引数の並べ替えで足りなかった引数(誤りは報告済み。型検査は何も言わない)
+    Missing,
     /// 呼び出しの名前付き引数 `項目名: 値`(ADR-0134)。型検査の前に宣言順へ並べ替えて取り除く
     Named {
         name: Ident,

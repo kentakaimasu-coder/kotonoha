@@ -752,6 +752,10 @@ pub fn resolve_type(t: &TypeExpr, env: &Env, data_names: &BTreeSet<String>, diag
                     }
                 }
                 "金額" => {
+                    // `金額` だけなら日本円(`金額<JPY>` の略記。第 5 回評価: <JPY> の意味が分からない)
+                    if args.is_empty() {
+                        return Type::Money("JPY".into());
+                    }
                     if !arity(1, diags) {
                         return Type::Error;
                     }
