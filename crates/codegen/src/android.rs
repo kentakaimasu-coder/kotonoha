@@ -186,7 +186,11 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                     } else {
                         format!(
                             ", mapOf({})",
-                            query.iter().map(|(k, v)| format!("{} to {}", kstr(k), kstr(v))).collect::<Vec<_>>().join(", ")
+                            query
+                                .iter()
+                                .map(|(k, v)| format!("{} to {}", kstr(k), if v == "$current" { "itemId".to_string() } else { kstr(v) }))
+                                .collect::<Vec<_>>()
+                                .join(", ")
                         )
                     };
                     loads.push(format!(

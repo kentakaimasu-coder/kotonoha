@@ -166,7 +166,11 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                     if query.is_empty() {
                         loads.push(format!("{var} = try await api.get(\"api\", \"data\", {})", swift_str(data)));
                     } else {
-                        let q: Vec<String> = query.iter().map(|(k, v)| format!("{}: {}", swift_str(k), swift_str(v))).collect();
+                        // "$current" = 開いている詳細の ID(「この枠」)
+                        let q: Vec<String> = query
+                            .iter()
+                            .map(|(k, v)| format!("{}: {}", swift_str(k), if v == "$current" { "itemID".to_string() } else { swift_str(v) }))
+                            .collect();
                         loads.push(format!(
                             "{var} = try await api.get(\"api\", \"data\", {}, query: [{}])",
                             swift_str(data),

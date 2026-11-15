@@ -81,7 +81,10 @@ test("日本語の指示(第 5 回の改善): 動作のひな形・消す・列�
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
   assert.match(src(), /件\.定員 = 件\.定員 \+ 1/);
   // 登録できるようにしたい
+  // 確認つきの登録(予約する)が既にあるときは、確認の無い登録を作らずに理由を出す(第 8 回評価)
   j = await (await api("/api/instruct", { text: "予約を登録できるようにしたい", screen: "管理" })).json();
+  assert.match(j.error ?? "", /もう動作「予約する」で登録しています/);
+  j = await (await api("/api/instruct", { text: "もう 1 つ 予約を登録できるようにしたい", screen: "管理" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
   assert.match(src(), /動作 予約を追加\(/);
   assert.match(src(), /予約を追加のフォームを表示/);

@@ -1119,7 +1119,8 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     return actionTemplate(o, text, act, dn, () => [`件 = ${dn}を取得(${dn}ID)`, `件.${fn} = 件.${fn} ${dir === "増やす" ? "+" : "-"} ${n || 1}`, `${dn}ID を返す`]);
   }
   // 「受け付ける」で問い合わせを登録する / 配車を登録できるようにする
-  const reg = cmd(/^「(.+?)」で(.+?)を(?:登録|追加)(?:する)?$/.exec(text)) ?? cmd(/^(.+?)を(?:登録|追加)(?:できるように(?:する|したい)?|したい)$/.exec(text));
+  const regText = text.replace(/^(?:もう\s*1\s*つ|もうひとつ|別に)[、\s]*/, "");
+  const reg = cmd(/^「(.+?)」で(.+?)を(?:登録|追加)(?:する)?$/.exec(regText)) ?? cmd(/^(.+?)を(?:登録|追加)(?:できるように(?:する|したい)?|したい)$/.exec(regText));
   // 「注文できるようにしたい」: データ名 + できるように → 「注文する」(第 5 回評価)
   const can = !reg ? cmd(/^(.+?)(?:が|を)?できるように(?:する|したい|して)?$/.exec(text)) : null;
   if ((reg && decl(o, "data", (reg[2] ?? reg[1]).trim())) || (can && decl(o, "data", can[1].trim()))) {
@@ -1500,6 +1501,23 @@ function changed(before: any, done: string): any {
 }
 /** データ D を登録する動作(とフォーム)。本人・登録日時・状況は自動で入れ、ほかは入力にする */
 function registration(o: any, ctx: { screen?: string }, text: string, D: any, act: string, only?: string[]): any {
+  // 同じデータを、確認(満席・人数など)つきで登録している動作が既にあるときは、もう 1 つ作らない
+  // (確認の無い登録の動作ができ、定員を超えて予約できた。第 8 回評価)。「もう 1 つ」と書けば作る
+  // (動作の名前と項目をはっきり書いて作るときは、そのとおりに作る)
+  if (!only && !/もう\s*1\s*つ|もうひとつ|別に/.test(text)) {
+    const guarded = (o.decls ?? []).filter((a: any) => {
+      if (a.kind !== "action") return false;
+      const body = lines(a.file).slice(a.line, a.end).join("\n");
+      return body.includes(`${D.name}を登録(`) && /を確認|失敗\(/.test(body);
+    });
+    if (guarded.length > 0 && !guarded.some((a: any) => a.name === act)) {
+      const g = guarded[0].name;
+      throw new Error(
+        `「${D.name}」は、もう動作「${g}」で登録しています(満席などの確認つき)。新しい登録の動作を作ると、その確認を通らずに登録できてしまいます。` +
+          `項目を足すときは「${D.name}に「メモ」を追加」、入力欄を足すときは「動作「${g}」に「メモ」を追加」と書きます(どうしても別に作るときは「もう 1 つ ${D.name}を登録できるようにしたい」)`,
+      );
+    }
+  }
   const params: { name: string; type: string }[] = [];
   const args: string[] = [];
   for (const f of D.fields.filter((x: any) => x.name !== "ID")) {

@@ -1495,6 +1495,22 @@ impl Ctx<'_> {
             }
             s.input = provided.first().map(|p| p.0.clone());
             for i in &s.intents {
+                // 「予約のうち枠IDがこの枠のもの」: 「この枠」は、この画面で表示している枠(詳細の画面だけ)
+                // (文字どおりの「この枠」で絞り込み、いつも空の一覧になった。第 8 回評価)
+                if let IntentKind::ListData { filters, .. } = &i.kind {
+                    for f in filters {
+                        if let Some(target) = f.value.as_deref().and_then(|v| v.strip_prefix("この")) {
+                            if s.input.as_deref() != Some(target) {
+                                self.diags.push(
+                                    Diagnostic::error(Code::REF001, i.span, format!("画面 `{}` で「この{target}」がどれか決まりません", s.name)).hint(format!(
+                                        "「この{target}」は {target} の詳細の画面(別の画面から `{target}を選ぶと {} へ` で開く画面)で使えます",
+                                        s.name
+                                    )),
+                                );
+                            }
+                        }
+                    }
+                }
                 if let IntentKind::ShowFields { data, .. } = &i.kind {
                     if s.input.as_deref() != Some(data.as_str()) {
                         self.diags.push(
@@ -1612,6 +1628,12 @@ pub fn example_sentences(env: &Env, reg: &Registry, contract: bool) -> Vec<Strin
         for s in &env.screens {
             out.push(format!("{d}を選ぶと {s} へ"));
         }
+        // 詳細の画面で、開いているデータに結びつく一覧(予約のうち枠IDがこの枠のもの)
+        for (f, _) in &info.fields {
+            if let Some(parent) = f.strip_suffix("ID").filter(|p| env.data.contains_key(*p)) {
+                out.push(format!("{d}のうち{f}がこの{parent}のものを一覧表示"));
+            }
+        }
     }
     for k in reg.entries.keys() {
         out.push(format!("{k}を表示"));
@@ -1619,7 +1641,24 @@ pub fn example_sentences(env: &Env, reg: &Registry, contract: bool) -> Vec<Strin
     }
     for (a, sig) in &env.actions {
         out.push(format!("{a}のフォームを表示"));
-        let args: Vec<String> = sig.params.iter().map(|(n, _)| n.clone()).collect();
+        // 画面に書ける形の引数にする(引数名のままだと誤りになった。第 8 回評価):
+        // 「データ名ID」は詳細で表示しているデータの ID、ほかは型に合った値
+        let args: Vec<String> = sig
+            .params
+            .iter()
+            .map(|(n, t)| match t {
+                _ if n.strip_suffix("ID").is_some_and(|d| env.data.contains_key(d)) => format!("{}.ID", n.strip_suffix("ID").unwrap()),
+                Type::Int | Type::Money(_) | Type::Decimal => "1".into(),
+                Type::Bool => "真".into(),
+                Type::Enum(e) => env
+                    .enums
+                    .get(e)
+                    .and_then(|v| v.first())
+                    .map(|v| format!("\"{v}\""))
+                    .unwrap_or_else(|| "\"\"".into()),
+                _ => "\"\"".into(),
+            })
+            .collect();
         out.push(format!("「{a}」を押すと {a}({})", args.join(", ")));
     }
     for (n, x) in &env.externals {

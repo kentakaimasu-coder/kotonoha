@@ -86,7 +86,9 @@ export function enc(s: string): string {
 export function loaderUrl(l: Loader, id: string | null): string {
   let p = "/" + l.segments.map(enc).join("/");
   if (l.withId) p += "/" + enc(id ?? "");
-  const qs = l.query ? new URLSearchParams(l.query).toString() : "";
+  // 「この{データ}」で絞り込んだ一覧は、開いている詳細の ID で絞る
+  const query = l.query ? Object.fromEntries(Object.entries(l.query).map(([k, v]) => [k, v === "$current" ? (id ?? "") : v])) : null;
+  const qs = query ? new URLSearchParams(query).toString() : "";
   return qs ? `${p}?${qs}` : p;
 }
 

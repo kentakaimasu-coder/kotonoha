@@ -338,7 +338,14 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
                         data: data.clone(),
                         fields: display_fields(env, data),
                         link_to: nav.get(data).cloned(),
-                        query: kotonoha_intent::list_query(order, filters),
+                        // 「この{表示しているデータ}」は、開いている詳細の ID(画面側で入れ替える)
+                        query: kotonoha_intent::list_query(order, filters)
+                            .into_iter()
+                            .map(|(k, v)| match (&s.input, v.strip_prefix("この")) {
+                                (Some(inp), Some(t)) if t == inp => (k, "$current".to_string()),
+                                _ => (k, v),
+                            })
+                            .collect(),
                         caption: kotonoha_intent::list_caption(data, order, filters),
                     });
                 }
