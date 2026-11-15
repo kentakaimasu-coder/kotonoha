@@ -130,7 +130,7 @@ function guessType(name: string, o: any): string {
   if (n === "ID" || (ref && (o.decls ?? []).some((d: any) => d.kind === "data" && d.name === ref))) return "識別子";
   if (/日時$|時刻$/.test(n)) return "日時";
   if (/日$|日付$|期限$/.test(n)) return "日付";
-  if (/(料金|金額|価格|単価|値段|家賃|代金|料$|費$|額$)/.test(n)) return "金額";
+  if (/(料金|金額|価格|単価|値段|家賃|代金|月謝|謝礼|会費|料$|費$|額$)/.test(n)) return "金額";
   if (/^(.{1,4}中|.+済み?|.+の有無|.+可否|有効|公開)$/.test(n) && !/(期間|時間|日時|日)$/.test(n)) return "真偽";
   if (/(納期|期日|締切|締め切り|予定日|誕生日)$/.test(n)) return "日付";
   // (電話番号・営業時間は文字のまま)
@@ -859,6 +859,41 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       const at = apply({ op: "add_line", kind: "screen", name: sc.name, text: line });
       return checked(at, `画面「${sc.name}」を ${roles.join("・")} だけにしました(ほかの人のメニューに出ません)`, o, text);
     }
+  }
+  // ボタンを足す: 「2名で予約」ボタンを足す(第 9 回評価: 読めず、専門の言葉の説明が出た)
+  //   似たボタン(「1名で予約」)があれば、その行をまねて数を変える。動作の名前と同じなら、その動作を呼ぶ
+  if ((m = cmd(/^「(.+?)」(?:の)?ボタンを(?:足す|付ける|つける|追加(?:する)?|作る)$/.exec(text) ?? /^(?:画面に)?ボタン「(.+?)」を(?:足す|付ける|つける|追加(?:する)?|作る)$/.exec(text)))) {
+    const label = m[1].trim();
+    const screens = (o.decls ?? []).filter((d: any) => d.kind === "screen");
+    const cands = (ctx.screen ? screens.filter((d: any) => d.name === ctx.screen) : []).concat(screens);
+    const num = /(\d+)/.exec(label)?.[1];
+    for (const sc of cands) {
+      const ls = lines(sc.file);
+      for (let k = sc.line; k < sc.end; k++) {
+        const mm = /^(\s+)(.*?)「(.+?)」を押すと\s*(.+?)\((.*)\)\s*$/.exec(ls[k] ?? "");
+        if (!mm) continue;
+        const oldNum = /(\d+)/.exec(mm[3])?.[1];
+        // 数だけ違うボタン(1名で予約 → 2名で予約)
+        if (num && oldNum && mm[3].replace(oldNum, num) === label) {
+          const args = mm[5].split(",").map((x) => x.trim());
+          const ai = args.findIndex((x) => x === oldNum);
+          if (ai >= 0) args[ai] = num;
+          const line = `${mm[2]}「${label}」を押すと ${mm[4]}(${args.join(", ")})`;
+          if ((sc.lines ?? []).some((l: any) => l.text.trim() === line.trim())) throw new Error(`画面「${sc.name}」には、もう「${label}」のボタンがあります`);
+          insertAfter(sc.file, k + 1, [mm[1] + line]);
+          return checked({ file: sc.file, line: k + 2 }, `画面「${sc.name}」に「${label}」のボタンを足しました(「${mm[3]}」をまねて ${num} にしました)`, o, text);
+        }
+      }
+    }
+    const act = decl(o, "action", label);
+    if (act) {
+      const sc = (ctx.screen && decl(o, "screen", ctx.screen)) || null;
+      if (!sc) return { ok: false, need: "screen", screens: screens.map((d: any) => d.name), message: "どの画面にボタンを足しますか? 左の一覧で画面を選んでから、もう一度送ってください" };
+      const args = (act.params ?? []).map((p: any) => (p.name.endsWith("ID") && decl(o, "data", p.name.slice(0, -2)) ? `${p.name.slice(0, -2)}.ID` : /^(整数|金額)/.test(p.type) ? "1" : '""'));
+      const at = apply({ op: "add_line", kind: "screen", name: sc.name, text: `「${label}」を押すと ${label}(${args.join(", ")})` });
+      return checked(at, `画面「${sc.name}」に「${label}」のボタンを足しました`, o, text);
+    }
+    throw new Error(`「${label}」に似たボタンも、同じ名前の動作もありません。先に動作を作ります(例: 「${label}」で…を…にする)`);
   }
   // アプリの名前: アプリの名前を「料理教室」にする(画面のいちばん上に出る)
   if ((m = cmd(/^アプリ(?:の名前)?を「?(.+?)」?に(?:する|変える)$/.exec(text)))) {

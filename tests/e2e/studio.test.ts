@@ -503,6 +503,13 @@ test("第 9 回評価の途中の修正: 取り消せるようにしたい・項
     assert.equal(j.result.ok, true, JSON.stringify(j.result));
   }
   assert.match(src(), /データ 連絡:\n    ID: 識別子\n    内容: 文字列\n    連絡者: 識別子\n    最大積載: 整数\n    電話番号: 文字列\n    金額欄: 金額\n/);
+  // 「2名で予約」ボタンを足す: 「1名で予約」の行をまねて数を変える
+  j = await (await api("/api/instruct", { text: "「2名で予約」ボタンを足す" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /「1名で予約」を押すと 予約する\(([^)]*)\)\n    「2名で予約」を押すと 予約する\(/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  j = await (await api("/api/instruct", { text: "「2名で予約」ボタンを足す" })).json();
+  assert.match(j.error ?? "", /もう「2名で予約」のボタンがあります/);
   // 同じ画面の行は 2 つにしない
   j = await (await api("/api/op", { op: "add_line", kind: "screen", name: "レッスン一覧", text: "レッスンを選ぶと レッスン詳細 へ" })).json();
   assert.match(j.error ?? "", /もう「レッスンを選ぶと レッスン詳細 へ」があります/);
