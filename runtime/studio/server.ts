@@ -424,6 +424,25 @@ function roleLessCallers(act: string): string[] {
   }
   return [...out];
 }
+/** 項目を足したら、そのデータの詳細を出している画面の「Dの A と B を表示」にも足す
+ *  (足した項目が画面に出ず、表示の行を足すと同じ内容が 2 回出た。第 8 回評価) */
+function showOnDetailScreens(dn: string, fn: string): void {
+  const o = outline();
+  const re = new RegExp(`^(\\s+)${reEsc(dn)}の(.+)を表示\\s*$`);
+  for (const sc of (o.decls ?? []).filter((d: any) => d.kind === "screen")) {
+    const ls = lines(sc.file);
+    let touched = false;
+    for (let k = sc.line; k < sc.end; k++) {
+      const mm = re.exec(ls[k] ?? "");
+      if (!mm || /フォーム/.test(mm[2])) continue;
+      const parts = mm[2].split("と").map((x) => x.trim());
+      if (parts.includes(fn)) continue;
+      ls[k] = `${mm[1]}${dn}の${[...parts, fn].join("と")}を表示`;
+      touched = true;
+    }
+    if (touched) write(sc.file, ls.join("\n"));
+  }
+}
 /** 確かめるの呼び出しに入れる、型に合った仮の値 */
 function sampleValue(o: any, type: string): string {
   return /^(整数|金額)/.test(type) ? "0" : type === "真偽" ? "偽" : type === "日時" ? "2026-12-01 10:00" : type === "日付" ? "2026-12-01" : o.enums?.[type] ? `"${o.enums[type][0]}"` : '""';
@@ -439,7 +458,8 @@ function extendRegistrations(dn: string, fn: string, type: string): string[] {
     // ボタンが位置で呼んでいる動作は、引数を足すとボタンが壊れるので触らない
     const called = srcFiles(o).some((f) => read(f).includes(`を押すと ${a.name}(`));
     if (called || new RegExp(`[(,]\\s*${reEsc(fn)}\\s*:`).test(al[a.line - 1])) continue;
-    al[idx] = al[idx].replace(`${dn}を登録(`, `${dn}を登録(${fn}: ${fn}, `).replace(/, \)/, ")");
+    // 足した項目は登録の最後に足す(先頭に入って読みにくかった。第 8 回評価)
+    al[idx] = addParam(al[idx], `${fn}: ${fn}`, al[idx].indexOf(`${dn}を登録(`));
     al[a.line - 1] = addParam(al[a.line - 1], `${fn}: ${type}`);
     write(a.file, al.join("\n"));
     out.push(a.name);
@@ -508,6 +528,7 @@ function apply(op: Op): { file: string; line: number } | null {
         extendRegistrations(d.name, name, t);
         fillSeed(o, d.name, name, t);
       }
+      showOnDetailScreens(d.name, name);
       return at;
     }
     case "add_enum": {
@@ -1188,8 +1209,8 @@ function dropScenarioArg(act: string, idx: number, replace?: (v: string) => stri
   }
 }
 /** 動作の見出しの引数の終わり(対応する「)」)に引数を足す(「文字列(任意)」の中に差し込んで壊した。第 7 回評価) */
-function addParam(head: string, param: string): string {
-  const open = head.indexOf("(");
+function addParam(head: string, param: string, from = 0): string {
+  const open = head.indexOf("(", from);
   if (open < 0) return head;
   let depth = 0;
   for (let i = open; i < head.length; i++) {
@@ -1258,6 +1279,26 @@ function deleteField(o: any, D: any, fn: string): any {
     }
     if (hit) write(a.file, al.join("\n"));
     if (dropIdx >= 0) dropScenarioArg(a.name, dropIdx);
+  }
+  // 詳細の表示「Dの A と B を表示」からも外す(項目が 1 つだけの行は、その画面の最後の行でなければ消す)
+  const o2 = outline();
+  const re = new RegExp(`^(\\s+)${reEsc(D.name)}の(.+)を表示\\s*$`);
+  for (const sc of (o2.decls ?? []).filter((d: any) => d.kind === "screen")) {
+    const sl = lines(sc.file);
+    let touched = false;
+    for (let k = sc.end - 1; k >= sc.line; k--) {
+      const mm = re.exec(sl[k] ?? "");
+      if (!mm || /フォーム/.test(mm[2])) continue;
+      const parts = mm[2].split("と").map((x) => x.trim());
+      if (!parts.includes(fn)) continue;
+      const rest = parts.filter((x) => x !== fn);
+      const others = sl.slice(sc.line, sc.end).filter((l, j) => j + sc.line !== k && l.trim() && !l.trim().startsWith("#")).length;
+      if (rest.length) sl[k] = `${mm[1]}${D.name}の${rest.join("と")}を表示`;
+      else if (others > 0) sl.splice(k, 1);
+      else continue;
+      touched = true;
+    }
+    if (touched) write(sc.file, sl.join("\n"));
   }
   return changed(o, `「${D.name}」の項目「${fn}」を消しました`);
 }

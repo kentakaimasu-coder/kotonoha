@@ -249,16 +249,26 @@ function lineList(d, opts = {}) {
     const text = ls[n - 1] ?? "";
     if (!text.trim() || text.trim().startsWith("#")) continue;
     const bad = diagsAt(d.file, n).filter((x) => x.severity === "error");
-    box.append(
-      el(
+    // その場で直す(足して消すしかなく、同じ表示が 2 回出た。第 8 回評価)
+    const edit = () => {
+      const input = el("input", { type: "text", value: text.trim(), "aria-label": "直した文" });
+      const msg = el("div", { class: "msg", role: "status" });
+      row.replaceChildren(
+        el("form", { class: "row", onsubmit: async (e) => { e.preventDefault(); if (input.value.trim() && input.value.trim() !== text.trim()) await op({ op: "replace_line", file: d.file, line: n, old: text, text: input.value }, msg); else renderAll(); } }, input, el("button", { type: "submit" }, "直す"), el("button", { type: "button", class: "ghost", onclick: () => renderAll() }, "やめる")),
+        msg,
+      );
+      input.focus();
+    };
+    const row = el(
         "div",
         { class: "line" + (bad.length ? " bad" : "") },
         el("code", {}, text.trim(), ...bad.map((b) => el("span", { class: "why", text: b.message_ja + (b.hints?.length ? "(" + b.hints[0] + ")" : "") }))),
+        opts.removable === false ? null : el("button", { type: "button", class: "small ghost", "aria-label": "この行を直す", title: "この行を書き直す", onclick: edit }, "直す"),
         opts.removable === false ? null : el("button", { type: "button", class: "small ghost", "aria-label": "この行を上へ", title: "上へ", onclick: () => op({ op: "move_line", file: d.file, line: n, old: text, dir: "up" }) }, "↑"),
         opts.removable === false ? null : el("button", { type: "button", class: "small ghost", "aria-label": "この行を下へ", title: "下へ", onclick: () => op({ op: "move_line", file: d.file, line: n, old: text, dir: "down" }) }, "↓"),
         opts.removable === false ? null : el("button", { type: "button", class: "small", "aria-label": "この行を消す", onclick: () => op({ op: "remove_line", file: d.file, line: n, old: text }) }, "消す"),
-      ),
-    );
+      );
+    box.append(row);
   }
   return box;
 }

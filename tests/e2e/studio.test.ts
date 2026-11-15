@@ -391,6 +391,16 @@ test("集計を画面のフォームで作る(記号を書かない)・項目の
   await page.click(`button[aria-label="会場を上へ"]`);
   for (let i = 0; i < 50 && order().indexOf("会場") === k; i++) await page.waitForTimeout(100);
   assert.equal(order().indexOf("会場"), k - 1);
+  // 足した項目は詳細の表示にも入り、登録の最後に足される
+  assert.match(src(), /    レッスンの名前と開始日時と上限と予約数と[^\n]*会場[^\n]*を表示\n/);
+  assert.match(src(), /レッスンを登録\(名前: 名前, [^)]*予約数: 0, 料金: 料金, 講師: 講師, 会場: 会場, 天気: 天気\)/);
+  // 画面の行をその場で直す
+  await page.click('#tree button:text-is("レッスン一覧")');
+  await page.locator('button[aria-label="この行を直す"]').first().click();
+  await page.fill('input[aria-label="直した文"]', "レッスンを開始日時の新しい順に一覧表示");
+  await page.click('#editor form button:text-is("直す")');
+  for (let i = 0; i < 50 && !src().includes("    レッスンを開始日時の新しい順に一覧表示"); i++) await page.waitForTimeout(100);
+  assert.match(src(), /画面 レッスン一覧:\n    レッスンを開始日時の新しい順に一覧表示\n/);
   assert.deepEqual(errors, []);
   await ctx.close();
 });
