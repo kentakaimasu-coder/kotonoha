@@ -592,6 +592,35 @@ fn rename_text(text: &str, from: &str, to: &str, field: bool) -> (String, usize)
 /// 変える所: そのデータの宣言の中、動作の中で `v = データを取得(…)` とした v の `v.項目`、`データを登録(項目: …)` の項目名、
 /// そのデータの名前を含む画面・約束・確かめるの文
 fn rename_field_text(text: &str, data: &str, from: &str, to: &str) -> (String, usize) {
+    // そのデータを登録する動作で、項目と同じ名前の引数(フォームの欄)も変える(第 7 回評価)
+    let mut full: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    {
+        let mut cur: Option<(String, bool, bool)> = None; // (動作名, 引数にある, 登録している)
+        let mut flush = |c: &mut Option<(String, bool, bool)>| {
+            if let Some((n, p, r)) = c.take() {
+                if p && r {
+                    full.insert(n);
+                }
+            }
+        };
+        for line in text.lines() {
+            let t = line.trim_start();
+            if !line.starts_with([' ', '\t']) && !t.is_empty() && !t.starts_with('#') {
+                flush(&mut cur);
+                if let Some(rest) = t.strip_prefix("動作 ") {
+                    let name = rest.split(['(', ':', ' ']).next().unwrap_or("").to_string();
+                    let params = rest.split_once('(').map(|(_, x)| x.split(')').next().unwrap_or("")).unwrap_or("");
+                    let has = params.split(',').any(|p| p.split(':').next().map(str::trim) == Some(from));
+                    cur = Some((name, has, false));
+                }
+            } else if let Some(c) = cur.as_mut() {
+                if line.contains(&format!("{data}を登録(")) {
+                    c.2 = true;
+                }
+            }
+        }
+        flush(&mut cur);
+    }
     let mut out = String::with_capacity(text.len());
     let mut n = 0;
     let mut kind = String::new();
@@ -612,6 +641,7 @@ fn rename_field_text(text: &str, data: &str, from: &str, to: &str) -> (String, u
         }
         let new = match kind.as_str() {
             "データ" if block == data => word(line),
+            "動作" if full.contains(&block) => word(line),
             "データ" | "列挙" | "役割" => (line.to_string(), 0),
             "動作" | "関数" if line.starts_with([' ', '\t']) => {
                 if let Some((v, rhs)) = t.split_once('=') {

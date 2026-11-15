@@ -235,6 +235,13 @@ function renameField(o: any, dn: string, from: string, to: string): void {
     let block = "";
     let vars: string[] = [];
     const word = (l: string) => l.split('"').map((part, i) => (i % 2 === 1 ? part : part.replace(re, to))).join('"');
+    // そのデータを登録する動作で、項目と同じ名前の引数(フォームの欄)も変える(欄の見出しが古い名前のままだった。第 7 回評価)
+    const fullActs = new Set(
+      (o.decls ?? [])
+        .filter((a: any) => a.kind === "action" && a.file === f && (a.params ?? []).some((p: any) => p.name === from))
+        .filter((a: any) => t.split("\n").slice(a.line - 1, a.end).join("\n").includes(`${dn}を登録(`))
+        .map((a: any) => a.name),
+    );
     const u = t
       .split("\n")
       .map((l) => {
@@ -246,6 +253,7 @@ function renameField(o: any, dn: string, from: string, to: string): void {
         if (!tt || tt.startsWith("#")) return l;
         if (kind === "データ") return block === dn ? word(l) : l;
         if (kind === "列挙" || kind === "役割") return l;
+        if (kind === "動作" && fullActs.has(block)) return word(l);
         if (kind === "動作" || kind === "関数") {
           if (!/^\s/.test(l)) return l;
           const mv = new RegExp(`^\\s*(\\S+)\\s*=\\s*${reEsc(dn)}を取得\\(`).exec(l);
