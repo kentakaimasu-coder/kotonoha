@@ -5,7 +5,7 @@
 // - 127.0.0.1 だけで待ち受け、Host を確かめ、書き込みには起動時に作った合言葉(ヘッダ)を求める(他のサイトから操作させない)
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, realpathSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, realpathSync, readdirSync, appendFileSync } from "node:fs";
 import { join, resolve, sep, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
@@ -20,7 +20,7 @@ const HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`]);
 
 // ---- koto の呼び出し ----
 function koto(args: string[]): { code: number; out: string; err: string } {
-  const r = spawnSync(KOTO, ["-C", PROJECT, ...args], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+  const r = spawnSync(KOTO, ["-C", PROJECT, ...args], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024, env: { ...process.env, KOTONOHA_USAGE_LOG: "" } });
   return { code: r.status ?? 1, out: r.stdout ?? "", err: r.stderr ?? "" };
 }
 function outline(): any {
@@ -31,6 +31,24 @@ function outline(): any {
     return { ok: false, decls: [], diagnostics: [{ severity: "error", code: "STUDIO", message_ja: r.err.trim() || "読み込めませんでした", file: "", span: { line: 0 }, hints: [] }], files: [], patterns: { screen: [], rules: [] }, types: [], enums: {} };
   }
 }
+
+// ---- 操作の記録(評価用。KOTONOHA_USAGE_LOG があるときだけ) ----
+const USAGE = process.env.KOTONOHA_USAGE_LOG ?? "";
+function usage(v: Record<string, unknown>): void {
+  if (!USAGE) return;
+  try {
+    appendFileSync(USAGE, JSON.stringify({ kind: "studio", t: Math.floor(Date.now() / 1000), ...v }) + "\n");
+  } catch {}
+}
+/** プロジェクトがまだ無い(「新しいアプリを作る」から始める) */
+const isHome = () => !existsSync(join(PROJECT, "kotonoha.json"));
+const TEMPLATES: { name: string; desc: string }[] = (() => {
+  try {
+    return JSON.parse(process.env.KOTONOHA_TEMPLATES ?? "[]");
+  } catch {
+    return [];
+  }
+})();
 
 // ---- ソースの読み書き(プロジェクトの中の .koto だけ) ----
 function srcPath(file: string): string {
@@ -410,6 +428,7 @@ function extendRegistrations(dn: string, fn: string, type: string): string[] {
 
 // ---- 操作 ----
 type Op = Record<string, any>;
+let optionalNote = "";
 function apply(op: Op): { file: string; line: number } | null {
   const o = outline();
   switch (op.op) {
@@ -425,7 +444,21 @@ function apply(op: Op): { file: string; line: number } | null {
       if (!d) throw new Error(`データ「${op.data}」がありません`);
       const name = okName(op.name, "項目の名前");
       if (d.fields.some((f: any) => f.name === name)) throw new Error(`「${op.data}」に項目「${name}」は既にあります`);
-      const t = okType(op.type, o, name);
+      let t = okType(op.type, o, name);
+      // ボタンで呼んでいる登録の動作は引数を増やせない(ボタンに値が無い)。その項目は空でもよい項目として足す
+      // (足すたびに「ほかの所が誤りになりました」が残った。第 6 回評価)
+      if (!/^選択</.test(t)) {
+        const srcAll = srcFiles(o).map((f) => read(f)).join("\n");
+        const blocked = (o.decls ?? []).some((a: any) => {
+          if (a.kind !== "action") return false;
+          const body = lines(a.file).slice(a.line - 1, a.end).join("\n");
+          return body.includes(`${d.name}を登録(`) && srcAll.includes(`を押すと ${a.name}(`);
+        });
+        if (blocked) {
+          t = `選択<${t}>`;
+          optionalNote = `(ボタンで登録しているので、空でもよい項目にしました)`;
+        }
+      }
       const at = addLine(d, `${name}: ${t}`);
       if (!/^選択</.test(t)) extendRegistrations(d.name, name, t);
       return at;
@@ -771,9 +804,10 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     return checked(at, `「${m[1].trim()}」に計算項目「${m[2].trim()}」を足しました`, o, text);
   }
   if ((m = cmd(/^(.+?)に(?:項目)?「?(.+?)」?(?:[(（](.+?)[)）])?を(?:追加(?:する)?|足す|加える)$/.exec(text))) && decl(o, "data", m[1].trim())) {
+    optionalNote = "";
     const at = apply({ op: "add_field", data: m[1].trim(), name: m[2], type: m[3] ?? "" });
     const f = decl(outline(), "data", m[1].trim())?.fields.find((x: any) => x.name === m![2].trim());
-    return checked(at, `「${m[1]}」に項目「${m[2]}」(${f?.type ?? "?"})を足しました`, o, text);
+    return checked(at, `「${m[1]}」に項目「${m[2]}」(${f?.type ?? "?"})を足しました${optionalNote}`, o, text);
   }
   if ((m = cmd(/^列挙「?(.+?)」?を(?:作る|作って|追加(?:する)?)[(（](.+)[)）]$/.exec(text)))) {
     const at = apply({ op: "add_enum", name: m[1], values: splitList(m[2]) });
@@ -836,6 +870,32 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     const dn = reg ? (reg[2] ?? reg[1]).trim() : can![1].trim();
     const act = reg?.[2] ? reg[1].trim() : can ? `${dn}する` : `${dn}を追加`;
     return registration(o, ctx, text, decl(o, "data", dn), act);
+  }
+  // 見られる人の約束: 同じデータの前の約束(誰でも / ログインした人だけ / 本人だけ)を置き換える
+  // (足すと「約束が矛盾しています」になり、消し間違えて電話番号が誰でも見える状態に戻った。第 6 回評価)
+  {
+    let vis: string | null = null;
+    let dn = "";
+    let mm: RegExpExecArray | null;
+    if ((mm = /^(.+?)は(誰でも閲覧可|ログインした人だけ閲覧可|.+?が本人のものだけ閲覧可)$/.exec(text)) && decl(o, "data", mm[1].trim())) [dn, vis] = [mm[1].trim(), text];
+    else if ((mm = /^(.+?)(?:を|は)(誰でも見られる|ログインした人だけ|本人だけ)(?:が見られる)?(?:ように)?(?:する|にする|に変える)?$/.exec(text)) && decl(o, "data", mm[1].trim())) {
+      dn = mm[1].trim();
+      const D = decl(o, "data", dn);
+      const owner = D.fields.find((f: any) => f.type === "識別子" && !(o.decls ?? []).some((x: any) => x.kind === "data" && `${x.name}ID` === f.name) && f.name !== "ID");
+      if (mm[2] === "本人だけ" && !owner) throw new Error(`「${dn}」に、だれのものかを表す項目(予約者・担当者 など。型は 識別子)がありません。先に「${dn}に「記入者」(識別子)を追加」としてください`);
+      vis = mm[2] === "誰でも見られる" ? `${dn}は誰でも閲覧可` : mm[2] === "ログインした人だけ" ? `${dn}はログインした人だけ閲覧可` : `${dn}は${owner.name}が本人のものだけ閲覧可`;
+    }
+    if (vis) {
+      const R = decl(o, "rules");
+      if (R) {
+        const ls = lines(R.file);
+        const re = new RegExp(`^\\s*${reEsc(dn)}は(誰でも閲覧可|ログインした人だけ閲覧可|.+?が本人のものだけ閲覧可)\\s*$`);
+        const kept = ls.filter((l, k) => !(k >= R.line && k < R.end && re.test(l)));
+        if (kept.length !== ls.length) write(R.file, kept.join("\n"));
+      }
+      const at = apply({ op: "add_rule", text: vis });
+      return checked(at, `約束を「${vis}」にしました(前の見られる人の約束は外しました)`, o, text);
+    }
   }
   // 文: 約束・確かめる・画面
   if (/(閲覧可|重複不可|の順|はいつでも)/.test(text) || text.startsWith("約束")) {
@@ -1067,7 +1127,17 @@ async function body(req: IncomingMessage): Promise<any> {
   }
   return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 }
+function seedState(o: any): any {
+  let seed: any = {};
+  try {
+    seed = JSON.parse(readFileSync(join(PROJECT, "seed.json"), "utf8"));
+  } catch {}
+  return (o.decls ?? [])
+    .filter((d: any) => d.kind === "data")
+    .map((d: any) => ({ data: d.name, fields: d.fields.map((f: any) => ({ name: f.name, type: f.type })), rows: Array.isArray(seed[d.name]) ? seed[d.name] : [] }));
+}
 function state(): any {
+  if (isHome()) return { home: true, folder: PROJECT.split(sep).pop(), templates: TEMPLATES };
   const o = outline();
   const sources: Record<string, string> = {};
   for (const f of o.files ?? []) {
@@ -1090,7 +1160,7 @@ function state(): any {
     if (on) keep.push(l);
   }
   const checks = names.size === 0 ? { lines: [], ok: null } : { lines: keep, ok: keep.some((l) => l.trim().startsWith("✗")) ? false : raw.ok };
-  return { outline: o, sources, previewPort: previewAlive ? previewPort : 0, previewNote: previewAlive ? "" : "表示用のサーバーを起動しています…", checks, canUndo: history.length > 0, theme };
+  return { outline: o, sources, previewPort: previewAlive ? previewPort : 0, previewNote: previewAlive ? "" : stopping ? "アプリは止めてあります(「動かす」で動きます)" : "表示用のサーバーを起動しています…", running: previewAlive, checks, canUndo: history.length > 0, theme, seed: seedState(o), published: existsSync(join(PROJECT, "公開用", "点検の結果.md")) ? readFileSync(join(PROJECT, "公開用", "点検の結果.md"), "utf8") : "" };
 }
 
 const server = createServer(async (req, res) => {
@@ -1111,18 +1181,107 @@ const server = createServer(async (req, res) => {
       group += 1;
       try {
         if (url.pathname === "/api/op") {
+          // ソースを直接直した行数(手で書いた量)を記録する
+          let edited = 0;
+          if (b.op === "save_source") {
+            try {
+              const before = new Map<string, number>();
+              for (const l of read(String(b.file)).split("\n")) before.set(l, (before.get(l) ?? 0) + 1);
+              for (const l of String(b.text ?? "").split("\n")) {
+                const n = before.get(l) ?? 0;
+                if (n > 0) before.set(l, n - 1);
+                else if (l.trim()) edited++;
+              }
+            } catch {}
+          }
           const at = apply(b);
+          usage({ api: "op", op: b.op, ok: true, edited });
           return send(res, 200, { ok: true, at, ...state() });
         }
         if (url.pathname === "/api/instruct") {
           const r = instruct(String(b.text ?? ""), { screen: b.screen, scenario: b.scenario });
+          usage({ api: "instruct", ok: !!r.ok, need: r.need ?? null });
           return send(res, 200, { result: r, ...state() });
         }
         if (url.pathname === "/api/undo") {
           const ok = undo();
+          usage({ api: "undo", ok });
           return send(res, 200, { ok, ...state() });
         }
+        // 新しいアプリを作る(プロジェクトが無いフォルダで開いたとき)
+        if (url.pathname === "/api/create") {
+          if (!isHome()) throw new Error("このフォルダには、もうアプリがあります");
+          const name = String(b.name ?? "").trim();
+          if (!name || /[「」"\n\\]/.test(name) || name.length > 40) throw new Error("アプリの名前を 40 文字までで入れてください(「」は使えません)");
+          const tpl = String(b.template ?? "");
+          if (tpl && !TEMPLATES.some((t) => t.name === tpl)) throw new Error("そのひな形はありません");
+          const r = spawnSync(KOTO, ["init", PROJECT, "--name", name, ...(tpl ? ["--template", tpl] : [])], { encoding: "utf8", env: { ...process.env, KOTONOHA_USAGE_LOG: "" } });
+          usage({ api: "create", template: tpl, ok: r.status === 0 });
+          if (r.status !== 0) throw new Error((r.stderr || r.stdout || "作れませんでした").trim());
+          await startPreview();
+          return send(res, 200, { ok: true, ...state() });
+        }
+        // アプリを動かす・止める
+        if (url.pathname === "/api/app") {
+          if (b.action === "stop") {
+            stopping = true;
+            try {
+              preview?.kill();
+            } catch {}
+            previewAlive = false;
+          } else if (b.action === "start" && !previewAlive) {
+            stopping = false;
+            restarts = 0;
+            await startPreview();
+          }
+          usage({ api: "app", action: b.action });
+          return send(res, 200, { ok: true, ...state() });
+        }
+        // 初期データを表で直す(seed.json。Excel から貼り付けた表も受け取る)
+        if (url.pathname === "/api/seed") {
+          const o = outline();
+          const D = decl(o, "data", String(b.data ?? ""));
+          if (!D) throw new Error(`データ「${b.data}」はありません`);
+          const rows = Array.isArray(b.rows) ? b.rows : [];
+          const types: Record<string, string> = Object.fromEntries(D.fields.map((f: any) => [f.name, f.type]));
+          const clean = rows.map((r: any, i: number) => {
+            const out: any = {};
+            for (const [k, v0] of Object.entries(r ?? {})) {
+              if (!(k in types)) throw new Error(`「${D.name}」に項目「${k}」はありません`);
+              const v = typeof v0 === "string" ? v0.trim() : v0;
+              if (v === "" || v === null || v === undefined) continue;
+              const t = types[k].replace(/^選択<(.+)>$/, "$1");
+              if (/^(整数|金額)/.test(t)) {
+                const n = Number(String(v).replace(/[,¥円]/g, ""));
+                if (!Number.isInteger(n)) throw new Error(`${i + 1} 行目の「${k}」は整数で入れます(入っていた値: ${v})`);
+                out[k] = n;
+              } else if (t === "真偽") out[k] = /^(true|真|はい|○|1)$/.test(String(v));
+              else if (t === "日時" && /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}$/.test(String(v))) out[k] = String(v).replace(" ", "T") + ":00+09:00";
+              else out[k] = String(v);
+            }
+            if (!out.ID) out.ID = `${D.name}${i + 1}`;
+            return out;
+          });
+          let seed: any = {};
+          const sp = join(PROJECT, "seed.json");
+          try {
+            seed = JSON.parse(readFileSync(sp, "utf8"));
+          } catch {}
+          seed[D.name] = clean;
+          if (existsSync(sp)) writeRaw("seed.json", JSON.stringify(seed, null, 2) + "\n");
+          else writeFileSync(sp, JSON.stringify(seed, null, 2) + "\n");
+          usage({ api: "seed", rows: clean.length });
+          return send(res, 200, { ok: true, ...state() });
+        }
+        // 公開の準備
+        if (url.pathname === "/api/publish") {
+          const r = koto(["publish"]);
+          usage({ api: "publish", ok: r.code === 0 });
+          if (r.code !== 0) throw new Error((r.err.split("\n").filter((l) => /エラー|できません|合格/.test(l)).slice(-3).join(" ") || "公開の準備ができませんでした").trim());
+          return send(res, 200, { ok: true, done: r.out.trim(), ...state() });
+        }
       } catch (e) {
+        usage({ api: url.pathname.slice(5), ok: false, error: String((e as Error).message ?? e).slice(0, 200) });
         return send(res, 200, { ok: false, error: String((e as Error).message ?? e), ...state() });
       }
     }
@@ -1156,4 +1315,12 @@ if (parent > 0) {
 if (existsSync(join(PROJECT, "kotonoha.json"))) await startPreview();
 server.listen(PORT, "127.0.0.1", () => {
   console.error(`KOTONOHA Studio: http://127.0.0.1:${PORT}/   (止めるとき: Ctrl+C)`);
+  // ダブルクリックで開いたときは、ブラウザも開く
+  if (process.env.KOTONOHA_OPEN_BROWSER === "1") {
+    const u = `http://127.0.0.1:${PORT}/`;
+    const [cmd, args] = process.platform === "darwin" ? ["open", [u]] : process.platform === "win32" ? ["cmd", ["/c", "start", "", u]] : ["xdg-open", [u]];
+    try {
+      spawn(cmd, args as string[], { stdio: "ignore", detached: true }).unref();
+    } catch {}
+  }
 });

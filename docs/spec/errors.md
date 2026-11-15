@@ -19,6 +19,7 @@
 | LOCK001 | 仕様 | ロック不整合(LOCK_STALE)・ロック欠落 | 5 | lock, driver |
 | SEC001 | 仕様 | 宣言外の効果 | 4 | validator |
 | SEC002 | 仕様 | Capability 不足(未宣言 = デフォルト拒否) | 4 | validator |
+| SEC003 | 警告 | 個人情報らしい項目(電話・住所・メールなど)を持つデータが誰でも閲覧可(第 6 回評価) | 4 | validator |
 | TGT001 | 仕様 | ターゲット未対応(機能・時刻帯) | 6 | codegen, knowledge |
 | GEN001 | 仕様 | 生成失敗(SQL に変換できない式、未決定の格納形式) | 7 | codegen |
 | INT001 | **追加** | 内部障害・入出力障害・未実装コマンド | 7 | driver, cli |

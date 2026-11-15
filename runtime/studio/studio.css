@@ -136,3 +136,18 @@ main { padding: 16px 20px 40px; }
 .statusbar .island { position: absolute; left: 50%; top: 50%; width: 76px; height: 22px; margin: -11px 0 0 -38px; background: #111; border-radius: 14px; }
 .statusbar .hole { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; background: #111; border-radius: 50%; }
 .statusbar .batt { letter-spacing: 1px; }
+
+/* 新しいアプリを作る・動かす・初期データ・公開 */
+.welcome{max-width:720px;margin:32px auto;padding:0 16px}
+.welcome-form{display:grid;gap:10px}
+.welcome-form input[type=text],.welcome-form input:not([type]){font-size:1.1rem;padding:8px}
+.templates{display:grid;gap:8px;border:0;padding:0}
+.tpl{display:grid;grid-template-columns:auto auto 1fr;gap:8px;align-items:center;padding:10px;border:1px solid var(--line,#ccc);border-radius:8px;cursor:pointer}
+.run{display:grid;gap:16px;padding:16px;max-width:1100px}
+.seed-table{overflow-x:auto}
+.seed-table table{border-collapse:collapse}
+.seed-table th,.seed-table td{border:1px solid var(--line,#ccc);padding:2px 4px;text-align:left}
+.seed-table input{width:9em}
+.publish-check{white-space:pre-wrap;max-height:320px;overflow:auto;font-size:.85rem}
+a.button{display:inline-block;padding:6px 12px;border-radius:6px;background:var(--accent,#2563eb);color:#fff;text-decoration:none}
+a.button:not([href]){opacity:.5;pointer-events:none}

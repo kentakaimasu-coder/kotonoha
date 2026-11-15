@@ -307,6 +307,44 @@ pub fn validate(env: &Env, facts: &BTreeMap<String, Facts>, intents: &IntentMode
             }
         }
     }
+    // 個人情報らしい項目を持つデータが誰でも見られるなら知らせる(名前の変更で、ひな形の「誰でも閲覧可」が
+    // 生徒の電話番号に付いたまま気づかなかった。第 6 回評価)
+    const PERSONAL: &[&str] = &[
+        "電話",
+        "住所",
+        "メール",
+        "生年月日",
+        "誕生日",
+        "口座",
+        "カード",
+        "保険証",
+        "病名",
+        "症状",
+        "持病",
+        "アレルギー",
+    ];
+    for d in v.policy.public_read.iter() {
+        let Some(info) = env.data.get(d) else { continue };
+        let hits: Vec<&String> = info
+            .fields
+            .iter()
+            .filter(|(n, t)| PERSONAL.iter().any(|p| n.contains(p)) || matches!(t, kotonoha_types::Type::Email))
+            .map(|(n, _)| n)
+            .collect();
+        if !hits.is_empty() {
+            diags.push(
+                Diagnostic::warning(
+                    Code::SEC003,
+                    public_span[d],
+                    format!(
+                        "{d} は誰でも閲覧可ですが、個人情報らしい項目({})があります。ログインしていない人にも見えます",
+                        hits.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("・")
+                    ),
+                )
+                .hint(format!("意図どおりでなければ「{d}はログインした人だけ閲覧可」にします")),
+            );
+        }
+    }
     (v, diags)
 }
 

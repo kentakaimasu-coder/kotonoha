@@ -190,11 +190,16 @@ test("日本語の指示(第 6 回の改善): 名前を変える・空でもよ�
   assert.match(src(), /動作 レッスンを追加\([^)]*料金: 金額\)/);
   assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
   // ボタンで呼ぶ動作は引数を増やせないので、空でもよい項目にすれば直る
+  // ボタンで登録している動作がある(1名で予約)ので、空でもよい項目として足す(誤りを残さない)
   j = await (await api("/api/instruct", { text: "予約に「要望」を追加" })).json();
-  assert.match(j.result.done, /誤りになりました/);
-  j = await (await api("/api/instruct", { text: "「要望」を空でもよいにする" })).json();
-  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(j.result.done, /空でもよい項目にしました/);
   assert.match(src(), /要望: 選択<文字列>/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // 空でもよい項目にする(登録の動作の引数もそろう)
+  j = await (await api("/api/instruct", { text: "レッスンに「講師」を追加" })).json();
+  j = await (await api("/api/instruct", { text: "「講師」を空でもよいにする" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /講師: 選択<文字列>/);
   assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
   // 動作「X」を作る(項目…): 項目を持つデータの登録になる。本人・日時は自動
   j = await (await api("/api/instruct", { text: "動作「受け付ける」を作る(レッスンID、人数)" })).json();
@@ -242,6 +247,12 @@ test("日本語の指示(第 7 回の改善): 権限・役割・型・項目を�
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
   assert.match(src(), /動作 満員にする\(レッスンID: 識別子\):/);
   assert.doesNotMatch(src(), /満員にするの失敗/);
+  // 見られる人の約束は、前の約束を置き換える(矛盾させない)
+  j = await (await api("/api/instruct", { text: "レッスンをログインした人だけにする" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /レッスンはログインした人だけ閲覧可/);
+  assert.doesNotMatch(src(), /レッスンは誰でも閲覧可/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
   // 読めない文は「どの画面?」と聞かず、言える言い方を示す
   j = await (await api("/api/instruct", { text: "いい感じにして" })).json();
   assert.equal(j.result.ok, false);

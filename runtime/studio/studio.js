@@ -28,13 +28,43 @@ function store(k, v) {
 }
 async function load() {
   S = await (await fetch("/api/state")).json();
+  if (S.home) return renderWelcome();
   renderAll();
 }
+// ---- 新しいアプリを作る(プロジェクトが無いフォルダで開いたとき) ----
+function renderWelcome() {
+  $("welcome").hidden = false;
+  for (const sel of [".ask", "main", ".tabs", ".status"]) document.querySelector(sel).hidden = true;
+  const box = $("welcome-templates");
+  box.replaceChildren(el("legend", { text: "ひな形" }));
+  const opts = [{ name: "", desc: "白紙(データ 1 つと一覧の画面だけ)" }, ...(S.templates ?? [])];
+  opts.forEach((t, i) =>
+    box.append(
+      el("label", { class: "tpl" }, el("input", { type: "radio", name: "tpl", value: t.name, ...(i === 1 ? { checked: "" } : {}) }), el("b", { text: t.name || "白紙" }), el("span", { class: "help", text: t.desc })),
+    ),
+  );
+  if (!$("welcome-name").value) $("welcome-name").value = S.folder ?? "";
+}
+$("welcome-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const tpl = document.querySelector('input[name="tpl"]:checked')?.value ?? "";
+  $("welcome-msg").textContent = "作っています…";
+  const j = await (await fetch("/api/create", { method: "POST", headers: { "Content-Type": "application/json", "X-Studio-Token": TOKEN }, body: JSON.stringify({ name: $("welcome-name").value, template: tpl }) })).json();
+  if (j.error) {
+    $("welcome-msg").textContent = j.error;
+    $("welcome-msg").className = "msg err";
+    return;
+  }
+  $("welcome").hidden = true;
+  for (const sel of [".ask", "main", ".tabs", ".status"]) document.querySelector(sel).hidden = false;
+  S = j;
+  renderAll();
+});
 let notice = null; // 編集の欄に出す直前の結果({kind, text})
 async function post(path, body) {
   const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Studio-Token": TOKEN }, body: JSON.stringify(body) });
   const j = await r.json();
-  if (j.outline) S = j;
+  if (j.outline || j.home) S = j;
   if (j.error) {
     // 失敗したときは編集の欄を描き直さない(書いた内容を残す)。ほかの欄だけ新しくする
     renderSide();
@@ -74,7 +104,96 @@ function renderAll() {
   renderSide();
   renderLook();
   renderSources();
+  renderRun();
 }
+
+// ---- 動かす・初期データ・公開 ----
+let seedSel = store("seed") ?? "";
+let seedRows = null; // 編集中の表(保存するまで)
+function renderRun() {
+  if (!S || S.home) return;
+  $("run-state").textContent = S.running ? "動いています。「アプリを開く」でブラウザの別のタブに出ます(ログインは「名前を入れてすぐ入る」)" : S.previewNote || "止まっています";
+  const a = $("run-open");
+  if (S.previewPort) a.href = `http://127.0.0.1:${S.previewPort}/`;
+  else a.removeAttribute("href");
+  $("run-stop").disabled = !S.running;
+  $("run-start").disabled = !!S.running;
+  const ds = S.seed ?? [];
+  const sel = $("seed-data");
+  if (!ds.some((d) => d.data === seedSel)) seedSel = ds[0]?.data ?? "";
+  sel.replaceChildren(...ds.map((d) => el("option", { value: d.data, ...(d.data === seedSel ? { selected: "" } : {}) }, d.data)));
+  const D = ds.find((d) => d.data === seedSel);
+  if (!D) return $("seed-table").replaceChildren(el("p", { class: "help", text: "データがありません" }));
+  if (!seedRows || seedRows.data !== D.data) seedRows = { data: D.data, rows: D.rows.map((r) => ({ ...r })) };
+  const cols = D.fields.map((f) => f.name);
+  const table = el(
+    "table",
+    {},
+    el("thead", {}, el("tr", {}, ...cols.map((c) => el("th", { text: c })), el("th", { text: "" }))),
+    el(
+      "tbody",
+      {},
+      ...seedRows.rows.map((r, i) =>
+        el(
+          "tr",
+          {},
+          ...cols.map((c) =>
+            el("td", {}, el("input", { value: r[c] === undefined ? "" : String(r[c]), "aria-label": `${i + 1} 行目の${c}`, oninput: (e) => (seedRows.rows[i][c] = e.target.value) })),
+          ),
+          el("td", {}, el("button", { type: "button", class: "small", onclick: () => { seedRows.rows.splice(i, 1); renderRun(); } }, "消す")),
+        ),
+      ),
+    ),
+  );
+  $("seed-table").replaceChildren(table);
+  $("publish-check").textContent = S.published || "";
+}
+$("seed-data").addEventListener("change", (e) => {
+  seedSel = e.target.value;
+  store("seed", seedSel);
+  seedRows = null;
+  renderRun();
+});
+$("seed-add").addEventListener("click", () => {
+  seedRows?.rows.push({});
+  renderRun();
+});
+async function saveSeed() {
+  const j = await post("/api/seed", { data: seedRows.data, rows: seedRows.rows });
+  $("seed-msg").textContent = j.error ? j.error : `✓ 保存しました(${seedRows.rows.length} 行)。動いているアプリに入れ直します`;
+  $("seed-msg").className = "msg " + (j.error ? "err" : "ok");
+  if (!j.error) seedRows = null;
+  renderRun();
+}
+$("seed-save").addEventListener("click", saveSeed);
+$("seed-paste-apply").addEventListener("click", async () => {
+  const pasted = $("seed-paste").value;
+  const lines = pasted.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 2) {
+    $("seed-msg").textContent = "1 行目に項目名、2 行目から値を貼り付けてください";
+    $("seed-msg").className = "msg err";
+    return;
+  }
+  const head = lines[0].split(/\t|,/).map((x) => x.trim());
+  const before = seedRows.rows;
+  seedRows.rows = lines.slice(1).map((l) => Object.fromEntries(l.split(/\t|,/).map((v, i) => [head[i], v.trim()]).filter(([k]) => k)));
+  $("seed-paste").value = "";
+  await saveSeed();
+  // 入れられなかったときは、貼り付けた表と元の行を戻す
+  if ($("seed-msg").className.includes("err")) {
+    if (!$("seed-paste").value) $("seed-paste").value = pasted;
+    if (seedRows) seedRows.rows = before;
+    renderRun();
+  }
+});
+$("run-stop").addEventListener("click", () => post("/api/app", { action: "stop" }));
+$("run-start").addEventListener("click", () => post("/api/app", { action: "start" }));
+$("publish").addEventListener("click", async () => {
+  $("publish-msg").textContent = "作っています…(1 分ほどかかります)";
+  const j = await post("/api/publish", {});
+  $("publish-msg").textContent = j.error ? j.error : `✓ ${j.done}`;
+  $("publish-msg").className = "msg " + (j.error ? "err" : "ok");
+});
 
 function renderTree() {
   const t = $("tree");
@@ -551,9 +670,10 @@ function renderSources() {
 }
 
 // ---- タブ ----
-for (const [tab, panel] of [["tab-build", "panel-build"], ["tab-look", "panel-look"], ["tab-source", "panel-source"]]) {
+const TABS = [["tab-build", "panel-build"], ["tab-look", "panel-look"], ["tab-run", "panel-run"], ["tab-source", "panel-source"]];
+for (const [tab, panel] of TABS) {
   $(tab).addEventListener("click", () => {
-    for (const [t, p] of [["tab-build", "panel-build"], ["tab-look", "panel-look"], ["tab-source", "panel-source"]]) {
+    for (const [t, p] of TABS) {
       $(t).setAttribute("aria-selected", String(t === tab));
       $(p).hidden = p !== panel;
     }
@@ -569,11 +689,13 @@ setInterval(async () => {
   if (document.hidden) return;
   try {
     const j = await (await fetch("/api/state")).json();
-    const changed = JSON.stringify(j.checks) !== JSON.stringify(S?.checks) || j.previewPort !== S?.previewPort;
+    if (j.home) return;
+    const changed = JSON.stringify(j.checks) !== JSON.stringify(S?.checks) || j.previewPort !== S?.previewPort || j.running !== S?.running;
     S = { ...j };
     if (changed) {
       renderSide();
       renderLook();
+      $("run-state").textContent = S.running ? "動いています" : S.previewNote || "止まっています";
     }
   } catch {}
 }, 3000);

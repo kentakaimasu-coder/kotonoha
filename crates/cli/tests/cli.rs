@@ -754,3 +754,55 @@ fn round6_fixes_rename_rules_conditions_screen_roles_and_scenario_roles() {
     assert_ne!(c, 0);
     assert!(err.contains("役割 `店長` は定義されていません"), "{err}");
 }
+
+#[test]
+fn publish_usage_log_launchers_and_personal_info_warning() {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("publish_tpl");
+    let _ = std::fs::remove_dir_all(&root);
+    let (c, _, err) = koto(Path::new("."), &["init", root.to_str().unwrap(), "--template", "予約受付"]);
+    assert_eq!(c, 0, "{err}");
+    // ダブルクリックで Studio を開くファイル
+    assert!(std::fs::read_to_string(root.join("Studio を開く.command")).unwrap().contains("koto studio"));
+    assert!(std::fs::read_to_string(root.join("Studio を開く.bat")).unwrap().contains("koto studio"));
+    // 操作の記録
+    let log = root.join("usage.jsonl");
+    let (c, _, err) = koto_env(&root, &["check"], &[("KOTONOHA_USAGE_LOG", log.to_str().unwrap())]);
+    assert_eq!(c, 0, "{err}");
+    let rec = std::fs::read_to_string(&log).unwrap();
+    assert!(rec.contains("\"cmd\":\"check\"") && rec.contains("\"kind\":\"cli\""), "{rec}");
+    // 公開の準備: 本番用の一式・秘密は新しく作る・点検の結果
+    let (c, out, err) = koto(&root, &["publish"]);
+    assert_eq!(c, 0, "{err}");
+    assert!(out.contains("公開の準備ができました"), "{out}");
+    let pubdir = root.join("公開用");
+    let env = std::fs::read_to_string(pubdir.join(".env")).unwrap();
+    assert!(env.contains("KOTONOHA_ENV=production") && env.contains("KOTONOHA_COOKIE_SECURE=1") && env.contains("KOTONOHA_DEV_LOGIN=0"));
+    assert!(env.lines().any(|l| l.strip_prefix("KOTONOHA_JWT_SECRET=").is_some_and(|v| v.len() >= 64)));
+    for f in [
+        "start.sh",
+        "Dockerfile",
+        "公開の手順.md",
+        "点検の結果.md",
+        "backend/src/main.ts",
+        "web/package.json",
+    ] {
+        assert!(pubdir.join(f).exists(), "{f}");
+    }
+    // 2 回目は秘密を変えない(ログイン中の人を締め出さない)
+    let (c, _, err) = koto(&root, &["publish"]);
+    assert_eq!(c, 0, "{err}");
+    assert_eq!(std::fs::read_to_string(pubdir.join(".env")).unwrap(), env);
+    // 個人情報らしい項目を持つデータが誰でも見られるなら警告(動作は止めない)
+    let app = root.join("src/app.koto");
+    let s = std::fs::read_to_string(&app)
+        .unwrap()
+        .replace("    名前: 文字列\n    開始日時", "    名前: 文字列\n    電話: 文字列(任意)\n    開始日時");
+    std::fs::write(&app, s).unwrap();
+    let (c, _, err) = koto(&root, &["check"]);
+    assert_eq!(c, 0, "{err}");
+    assert!(err.contains("SEC003") && err.contains("個人情報らしい項目(電話)"), "{err}");
+    // 検査に合格していなければ公開の準備はしない
+    std::fs::write(&app, "アプリ「t」\nデータ 枠:\n    ID: 識別子\n    名前: 未知の型\n").unwrap();
+    let (c, _, _) = koto(&root, &["publish"]);
+    assert_ne!(c, 0);
+}

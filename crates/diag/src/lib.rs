@@ -70,6 +70,8 @@ pub enum Code {
     SEC001,
     /// Capability 不足
     SEC002,
+    /// 個人情報らしい項目を持つデータを誰でも見られる(警告)
+    SEC003,
     /// ターゲット未対応
     TGT001,
     /// 生成失敗
@@ -94,6 +96,7 @@ impl Code {
             Code::LOCK001 => "LOCK001",
             Code::SEC001 => "SEC001",
             Code::SEC002 => "SEC002",
+            Code::SEC003 => "SEC003",
             Code::TGT001 => "TGT001",
             Code::GEN001 => "GEN001",
             Code::INT001 => "INT001",
@@ -109,7 +112,7 @@ impl Code {
             Code::SYN001 | Code::SYN002 | Code::TYP001 | Code::TYP002 | Code::TYP003 => 2,
             Code::REF001 | Code::REF002 => 2,
             Code::AMB001 | Code::AMB002 | Code::APP001 => 3,
-            Code::SEC001 | Code::SEC002 => 4,
+            Code::SEC001 | Code::SEC002 | Code::SEC003 => 4,
             Code::LOCK001 => 5,
             Code::TGT001 => 6,
             Code::GEN001 | Code::INT001 => 7,
@@ -132,6 +135,7 @@ impl Code {
         Code::LOCK001,
         Code::SEC001,
         Code::SEC002,
+        Code::SEC003,
         Code::TGT001,
         Code::GEN001,
         Code::INT001,
@@ -156,6 +160,7 @@ impl Code {
             Code::APP001 => "【承認されていない/承認が確認できない】\n承認記録が無い・改ざんされている・成り立たない、または本番ビルドで承認者の署名を確認できません。\n\n直し方: koto approve --sign-key で署名し、koto build --locked --trust <信頼鍵> で確認します。",
             Code::LOCK001 => "【ロックと一致しない】\nソース・知識・データ定義などがロックした時点から変わっています。変更内容を確認し、koto approve --write-lock でロックし直してください。",
             Code::SEC001 => "【宣言外の効果】\n動作が `効果 = [...]` に書いていない効果(書込みなど)を起こしています。宣言を見直すか、処理を直してください。",
+            Code::SEC003 => "【個人情報が誰でも見られる】\n電話・住所・メールなど個人情報らしい項目を持つデータに「誰でも閲覧可」の約束があります。ログインしていない人にも見えます。意図どおりでなければ「…はログインした人だけ閲覧可」か「…が本人のものだけ閲覧可」にしてください(警告なので動作は止めません)。",
             Code::SEC002 => "【権限の宣言が足りない】\n動作が使う権限が `必要 = [...]` にありません(既定ですべて禁止です)。ヒントに書かれた権限を追加してください。",
             Code::TGT001 => "【このターゲットでは作れない】\n選んだ出力先(web / backend / ios / android)が、その機能や型にまだ対応していません。黙って省略はしません。",
             Code::GEN001 => "【生成できない】\nコードを生成できませんでした(SQL に変換できない式、格納方法が決まっていない型など)。",

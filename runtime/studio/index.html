@@ -14,6 +14,7 @@
   <nav class="tabs" role="tablist" aria-label="切り替え">
     <button role="tab" id="tab-build" aria-selected="true" aria-controls="panel-build">作る</button>
     <button role="tab" id="tab-look" aria-selected="false" aria-controls="panel-look">見た目の確認</button>
+    <button role="tab" id="tab-run" aria-selected="false" aria-controls="panel-run">動かす・初期データ・公開</button>
     <button role="tab" id="tab-source" aria-selected="false" aria-controls="panel-source">ソース</button>
   </nav>
   <div class="status">
@@ -21,6 +22,18 @@
     <button id="undo" class="ghost" type="button" disabled>取り消す</button>
   </div>
 </header>
+
+<section id="welcome" class="welcome" hidden aria-labelledby="welcome-title">
+  <h1 id="welcome-title">新しいアプリを作る</h1>
+  <p>アプリの名前を決めて、近いひな形を選んでください。あとから名前・項目・画面は自由に変えられます(黒い画面は使いません)。</p>
+  <form id="welcome-form" class="welcome-form">
+    <label for="welcome-name">アプリの名前</label>
+    <input id="welcome-name" maxlength="40" placeholder="例: 教室予約" required>
+    <fieldset id="welcome-templates" class="templates"><legend>ひな形</legend></fieldset>
+    <button type="submit">このひな形で作る</button>
+    <p id="welcome-msg" class="msg" role="status" aria-live="polite"></p>
+  </form>
+</section>
 
 <section class="ask" aria-labelledby="ask-title">
   <h2 id="ask-title" class="sr">日本語で指示する</h2>
@@ -59,6 +72,32 @@
     </div>
     <p class="look-note">それぞれの機種の画面の大きさで、実際の画面を表示しています(中で操作もできます)。ログインは 1 つの機種で行うと、全部に効きます。iPhone・Android のアプリそのもの(ネイティブ版)は、OS の標準部品で表示されます。</p>
     <div id="devices" class="device-grid"></div>
+  </section>
+
+  <section id="panel-run" role="tabpanel" aria-labelledby="tab-run" class="run" hidden>
+    <div class="card">
+      <h3>アプリを動かす</h3>
+      <p id="run-state" class="help"></p>
+      <div class="row"><a id="run-open" class="button" target="_blank" rel="noopener">アプリを開く</a> <button type="button" id="run-stop" class="ghost">止める</button> <button type="button" id="run-start">動かす</button></div>
+    </div>
+    <div class="card">
+      <h3>初期データ(試すときに最初から入っているデータ)</h3>
+      <p class="help">表を直して「保存する」と、動いているアプリに入れ直します。Excel の表をコピーして下の欄に貼り付けても入れられます(1 行目が項目名)。</p>
+      <label>データ <select id="seed-data"></select></label>
+      <div id="seed-table" class="seed-table"></div>
+      <div class="row"><button type="button" id="seed-add" class="ghost">行を足す</button> <button type="button" id="seed-save">保存する</button></div>
+      <label for="seed-paste">Excel から貼り付け</label>
+      <textarea id="seed-paste" rows="3" placeholder="名前	定員&#10;午前の回	5"></textarea>
+      <div class="row"><button type="button" id="seed-paste-apply" class="ghost">貼り付けた表を入れる</button></div>
+      <p id="seed-msg" class="msg" role="status" aria-live="polite"></p>
+    </div>
+    <div class="card">
+      <h3>公開の準備</h3>
+      <p class="help">本番用の一式(画面と API・設定のひな形・起動の手順)と、だれが何を見られるかの点検の結果を作ります。インターネットに置く場所とログインの仕組みは、外部のサービスを使います(手順の紙を作ります)。</p>
+      <div class="row"><button type="button" id="publish">公開の準備をする</button></div>
+      <p id="publish-msg" class="msg" role="status" aria-live="polite"></p>
+      <pre id="publish-check" class="publish-check"></pre>
+    </div>
   </section>
 
   <section id="panel-source" role="tabpanel" aria-labelledby="tab-source" class="source" hidden>

@@ -22,6 +22,7 @@ const USAGE: &str = "使い方: koto [-C <dir>] [--json] <command> [args]
   studio [--port 4000]            画面で作る(データ・画面・動作・役割を画面で足す。日本語で指示。iPhone・Android の各機種での見た目を並べて確認)
   patterns                        画面・約束に書ける文の一覧(宣言した名前で具体的に表示)
   outline                         アプリの構成・検査の結果・書ける文を JSON で出す(Studio などの道具向け)
+  publish [--out 公開用]          公開の準備: 検査・本番用の一式(backend と画面・設定のひな形・起動の手順・点検の結果)を作る
   rename <今の名前> <新しい名前>   データ・画面・動作・役割・列挙・項目の名前を、使っている所と初期データ(seed*.json)ごと変える
                                   (例: koto rename 枠 イベント / koto rename 枠.定員 上限)。誤りが増えるときは変えない
   safety                          生成されるアプリに自動で入る安全対策と、API ごとの公開範囲を表示
@@ -155,6 +156,7 @@ fn run(mut o: Opts) -> i32 {
         "outline" => cmd_outline(&mut o),
         "rename" => cmd_rename(&mut o),
         "studio" => cmd_studio(&mut o),
+        "publish" => cmd_publish(&mut o),
         "safety" => cmd_safety(&mut o),
         "token" => cmd_token(&mut o),
         "fmt" => cmd_fmt(&mut o),
@@ -185,12 +187,32 @@ fn run(mut o: Opts) -> i32 {
         }
         other => Err(format!("未知のコマンド `{other}` です\n{USAGE}")),
     };
-    match r {
+    let code = match r {
         Ok(c) => c,
         Err(e) => {
             let d = single(Code::INT001, e);
             report(&o, &d, json!({}))
         }
+    };
+    usage_log(json!({"kind": "cli", "cmd": cmd, "code": code}));
+    code
+}
+
+/// 操作の記録(評価用。KOTONOHA_USAGE_LOG にファイルの場所があるときだけ、1 行ずつ JSON で足す)。
+/// 行動の指標(黒い画面のコマンドの回数・誤りの回数)を自己申告でなく記録から取るため(第 6 回の分析)
+fn usage_log(mut v: serde_json::Value) {
+    let Ok(path) = std::env::var("KOTONOHA_USAGE_LOG") else { return };
+    if path.is_empty() {
+        return;
+    }
+    let t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    v["t"] = json!(t);
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        use std::io::Write;
+        let _ = writeln!(f, "{v}");
     }
 }
 
@@ -297,7 +319,18 @@ fn cmd_init(o: &mut Opts) -> Result<i32, String> {
         let v: serde_json::Value = serde_json::from_str(&seed).expect("ひな形の初期データ");
         std::fs::write(&seed_path, serde_json::to_string_pretty(&v).unwrap() + "\n").map_err(|e| e.to_string())?;
     }
-    std::fs::write(dir.join(".gitignore"), ".koto/\nbuild/\n").map_err(|e| e.to_string())?;
+    std::fs::write(dir.join(".gitignore"), ".koto/\nbuild/\n公開用/\n").map_err(|e| e.to_string())?;
+    // ダブルクリックで Studio を開くファイル(黒い画面でコマンドを打たずに済むように。第 6 回の分析)
+    let mac = dir.join("Studio を開く.command");
+    std::fs::write(&mac, "#!/bin/sh\n# ダブルクリックで KOTONOHA Studio を開きます(閉じるときはこの窓を閉じる)\ncd \"$(dirname \"$0\")\"\nKOTONOHA_OPEN_BROWSER=1 exec koto studio\n")
+        .map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&mac, std::fs::Permissions::from_mode(0o755));
+    }
+    std::fs::write(dir.join("Studio を開く.bat"), "@echo off\r\nrem ダブルクリックで KOTONOHA Studio を開きます(閉じるときはこの窓を閉じる)\r\ncd /d \"%~dp0\"\r\nset KOTONOHA_OPEN_BROWSER=1\r\nkoto studio\r\n")
+        .map_err(|e| e.to_string())?;
     eprintln!("{} にプロジェクトを作成しました", dir.display());
     eprintln!("次にやること:\n  1. src/app.koto を開いて、データ名や項目を自分の用途に書き換える\n  2. koto -C {} dev   (検査・生成・起動。表示された URL をブラウザで開く)\n  3. 書き方に迷ったら koto -C {} patterns\n  (名前を変える: koto -C {} rename 枠 イベント。画面で作る: koto -C {} studio)", dir.display(), dir.display(), dir.display(), dir.display());
     Ok(0)
@@ -798,6 +831,116 @@ fn cmd_rename(o: &mut Opts) -> Result<i32, String> {
     Ok(0)
 }
 
+/// `koto publish`: 公開の準備(第 6 回の分析: 「作ったアプリを使ってもらう所まで自分でできない」)。
+/// 検査に合格していれば、本番用の一式を作る: backend と画面(生成物)、設定のひな形(.env。秘密は新しく作る)、
+/// 起動の手順(start.sh / start.bat / Dockerfile)、点検の結果(自動で入る安全対策・公開範囲・警告)。
+/// 置き場所(サーバー・独自の URL)とログインの仕組み(OIDC)は外部のサービスとの契約が要るため、手順として書く
+fn cmd_publish(o: &mut Opts) -> Result<i32, String> {
+    let out_name = take_value(&mut o.args, "--out")?.unwrap_or_else(|| "公開用".into());
+    no_extra(&o.args)?;
+    let (p, ap) = match load(o) {
+        Ok(x) => x,
+        Err(c) => return Ok(c),
+    };
+    let a = drv::analyze(&p, &ap);
+    if !a.ok() {
+        report(o, &a.diags, json!({}));
+        return Err("検査に合格していないので、公開の準備はできません。上の誤りを直してください".into());
+    }
+    let out = p.root.join(&out_name);
+    std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    for t in ["backend", "web"] {
+        let st = std::process::Command::new(&exe)
+            .args(["-C"])
+            .arg(&p.root)
+            .args(["build", "--target", t, "--out"])
+            .arg(out.join(t))
+            .env("KOTONOHA_USAGE_LOG", "")
+            .status()
+            .map_err(|e| e.to_string())?;
+        if !st.success() {
+            return Err(format!("{t} の生成に失敗しました"));
+        }
+    }
+    // 設定のひな形: 既にあれば上書きしない(秘密を変えるとログイン中の人が締め出される)
+    let env_path = out.join(".env");
+    if !env_path.exists() {
+        let secret = std::process::Command::new("node")
+            .args(["-e", "process.stdout.write(require('crypto').randomBytes(48).toString('hex'))"])
+            .output()
+            .map_err(|e| format!("node を実行できません: {e}"))?;
+        let secret = String::from_utf8_lossy(&secret.stdout).to_string();
+        if secret.len() < 64 {
+            return Err("秘密の値を作れませんでした".into());
+        }
+        let env = format!(
+            "# 本番の設定(このファイルは人に見せない・Git に入れない)\nKOTONOHA_ENV=production\nKOTONOHA_JWT_SECRET={secret}\nKOTONOHA_DB=./data/data.sqlite\nPORT=8080\n# HTTPS で公開する(置き場所のサービスが HTTPS にする)。開発用のログインは使わない\nKOTONOHA_COOKIE_SECURE=1\nKOTONOHA_DEV_LOGIN=0\n# ログイン(OIDC)。会社・お店で使っているログインの仕組み(Google Workspace・Microsoft Entra・Auth0 など)の値を入れる\nKOTONOHA_OIDC_ISSUER=\nKOTONOHA_OIDC_CLIENT_ID=\nKOTONOHA_OIDC_CLIENT_SECRET=\nKOTONOHA_OIDC_REDIRECT_URI=https://あなたのドメイン/login/callback\n"
+        );
+        std::fs::write(&env_path, env).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(out.join(".gitignore"), ".env\ndata/\nnode_modules/\n").map_err(|e| e.to_string())?;
+    let start_sh = "#!/bin/sh\n# 本番の起動(Node.js 22.18 以上)。.env の値を読み込んで、画面(PORT)と API(PORT+1)を動かす\nset -e\ncd \"$(dirname \"$0\")\"\nset -a; . ./.env; set +a\nif [ -z \"$KOTONOHA_OIDC_ISSUER\" ]; then echo \"ログインの仕組み(.env の KOTONOHA_OIDC_…)がまだです。公開の手順.md の 1 を見てください\" >&2; exit 1; fi\nmkdir -p data\nAPI_PORT=$((PORT + 1))\n(cd web && npm install --no-audit --no-fund && npm run build)\n(cd backend && PORT=$API_PORT KOTONOHA_DB=\"../$KOTONOHA_DB\" exec node --no-warnings src/main.ts) &\ncd web && KOTONOHA_BACKEND_URL=http://127.0.0.1:$API_PORT exec node --no-warnings src/server-main.ts\n";
+    std::fs::write(out.join("start.sh"), start_sh).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(out.join("start.sh"), std::fs::Permissions::from_mode(0o755));
+    }
+    std::fs::write(
+        out.join("Dockerfile"),
+        "# コンテナで動かすとき(Render・Fly.io・社内の Docker など)\nFROM node:22-slim\nWORKDIR /app\nCOPY . .\nRUN cd web && npm install --no-audit --no-fund && npm run build\nENV PORT=8080\nEXPOSE 8080\nCMD [\"sh\", \"start.sh\"]\n",
+    )
+    .map_err(|e| e.to_string())?;
+    // 点検の結果(自動で入る安全対策・公開範囲・警告)
+    let safety = std::process::Command::new(&exe)
+        .arg("-C")
+        .arg(&p.root)
+        .arg("safety")
+        .env("KOTONOHA_USAGE_LOG", "")
+        .output()
+        .map_err(|e| e.to_string())?;
+    let app_name = a.env.app_name.clone().unwrap_or_else(|| "アプリ".into());
+    let warns: Vec<String> = a.diags.items.iter().map(|d| format!("- ⚠ {}", d.message_ja)).collect();
+    let check = format!(
+        "# 公開前の点検({})\n\n## 注意(警告)\n{}\n\n## 自動で入っている安全対策と、API ごとの公開範囲\n```\n{}{}```\n",
+        app_name,
+        if warns.is_empty() { "- なし".to_string() } else { warns.join("\n") },
+        String::from_utf8_lossy(&safety.stdout),
+        String::from_utf8_lossy(&safety.stderr)
+    );
+    std::fs::write(out.join("点検の結果.md"), check).map_err(|e| e.to_string())?;
+    std::fs::write(out.join("公開の手順.md"), PUBLISH_GUIDE.replace("{app}", &app_name)).map_err(|e| e.to_string())?;
+    println!("公開の準備ができました: {}", out.display());
+    println!("  1. 点検の結果.md で、だれが何を見られるかと注意を確かめる");
+    println!("  2. 公開の手順.md のとおりに、置き場所とログインの仕組みを用意する(ここは外部のサービスとの契約が要ります)");
+    Ok(0)
+}
+
+const PUBLISH_GUIDE: &str = "# 「{app}」を公開する手順
+
+この一式は `koto publish` が作りました。KOTONOHA が用意するのは、本番用の画面と API・安全な既定の設定・点検の結果までです。
+**置き場所(インターネットから開けるサーバー)と、ログインの仕組み(OIDC)は、外部のサービスを使います**(契約・費用はそのサービスの条件によります)。
+
+## 1. ログインの仕組みを決める
+本番では「名前を入れてすぐ入る」(開発用ログイン)は使えません。次のどれかで、利用者を登録します。
+- 会社・学校: Google Workspace / Microsoft Entra ID
+- お店・小さな団体: Auth0 / Firebase Authentication などの無料枠
+登録すると「発行者(issuer)」「クライアント ID」「クライアントの秘密」がもらえます。`.env` の `KOTONOHA_OIDC_…` に入れます。
+戻り先の URL には `https://あなたのドメイン/login/callback` を登録します。
+
+## 2. 置き場所を決めて動かす
+- **コンテナを置けるサービス**(Render・Fly.io・Google Cloud Run など): このフォルダを Git に入れて、`Dockerfile` で動かします。`.env` の値は、そのサービスの「環境変数」の画面に入れます(`.env` ファイルは上げません)
+- **自分のサーバー・社内のパソコン**: Node.js 22.18 以上を入れて、`sh start.sh` で動かします。インターネットに出すときは HTTPS にします
+- データは `data/data.sqlite` に入ります。**毎日コピーを取ってください**(バックアップ)。人数が多いときは PostgreSQL も使えます(`KOTONOHA_PG_URL`)
+
+## 3. 使い始める前の確認
+- `点検の結果.md` の「だれが何を見られるか」が思ったとおりか
+- 注意(⚠)が残っていないか
+- 試しに、役割ごとの人でログインして、見えてはいけないものが見えないか
+- 初期データ(seed.json)は本番には入りません。最初のデータは画面から入れます
+";
+
 const STUDIO_FILES: &[(&str, &str)] = &[
     ("server.ts", include_str!("../../../runtime/studio/server.ts")),
     ("index.html", include_str!("../../../runtime/studio/index.html")),
@@ -813,13 +956,10 @@ fn cmd_studio(o: &mut Opts) -> Result<i32, String> {
         .transpose()?
         .unwrap_or(4000);
     no_extra(&o.args)?;
+    std::fs::create_dir_all(&o.dir).map_err(|e| format!("{} を作れません: {e}", o.dir.display()))?;
     let root = o.dir.canonicalize().map_err(|e| format!("{} を開けません: {e}", o.dir.display()))?;
-    if !root.join(drv::PROJECT_FILE).exists() {
-        return Err(format!(
-            "{} に kotonoha.json がありません。先に `koto init 名前 --template 予約受付` などで作ってから `koto -C 名前 studio` を実行します",
-            root.display()
-        ));
-    }
+    // プロジェクトが無いフォルダで開くと、Studio の画面で「新しいアプリを作る」(ひな形を選ぶ)から始める
+    // (黒い画面で koto init を打たずに済むように。第 6 回の分析)
     let dir = root.join(".koto").join("studio");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     for (name, content) in STUDIO_FILES {
@@ -833,6 +973,10 @@ fn cmd_studio(o: &mut Opts) -> Result<i32, String> {
         .args(["--no-warnings", "server.ts"])
         .env("KOTO_BIN", exe)
         .env("KOTO_PROJECT", &root)
+        .env(
+            "KOTONOHA_TEMPLATES",
+            serde_json::to_string(&TEMPLATES.iter().map(|(n, d, _, _)| json!({"name": n, "desc": d})).collect::<Vec<_>>()).unwrap(),
+        )
         .env("PORT", port.to_string())
         .env("KOTONOHA_EXIT_WITH_PARENT", std::process::id().to_string())
         .current_dir(&dir)
