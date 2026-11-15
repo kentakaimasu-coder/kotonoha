@@ -519,8 +519,9 @@ function showOnDetailScreens(dn: string, fn: string): void {
   }
 }
 /** 確かめるの呼び出しに入れる、型に合った仮の値 */
-function sampleValue(o: any, type: string): string {
-  return /^(整数|金額)/.test(type) ? "0" : type === "真偽" ? "偽" : type === "日時" ? "2026-12-01 10:00" : type === "日付" ? "2026-12-01" : o.enums?.[type] ? `"${o.enums[type][0]}"` : '""';
+function sampleValue(o: any, type: string, name = ""): string {
+  // 何の値か分かるように、文字は「…の例」、数は 1(0 だと「> 0 を確認」で止まる)。第 10 回評価: "" や 0 の意味が分からなかった
+  return /^(整数|金額)/.test(type) ? "1" : type === "真偽" ? "偽" : type === "日時" ? "2026-12-01 10:00" : type === "日付" ? "2026-12-01" : o.enums?.[type] ? `"${o.enums[type][0]}"` : type === "メール" ? '"taro@example.com"' : type === "URL" ? '"https://example.com/"' : name ? `"${name}の例"` : '""';
 }
 /** 項目を足したとき、そのデータを名前付きで登録している動作に引数を足す(足さないと「引数がありません」で止まった。第 5 回評価) */
 function extendRegistrations(dn: string, fn: string, type: string): string[] {
@@ -548,7 +549,7 @@ function extendRegistrations(dn: string, fn: string, type: string): string[] {
     write(a.file, al.join("\n"));
     out.push(a.name);
     // 確かめるの中の呼び出し(位置で渡している)にも、型に合った値を足す
-    const sample = sampleValue(o, type);
+    const sample = sampleValue(o, type, fn);
     for (const f of srcFiles(o)) {
       const t = read(f);
       const u = t
@@ -740,7 +741,7 @@ function apply(op: Op): { file: string; line: number } | null {
         if (D && D.fields.some((f: any) => f.name === name) && !new RegExp(`[(,]\\s*${reEsc(name)}\\s*:`).test(al[k])) al[k] = addParam(al[k], `${name}: ${name}`, al[k].indexOf(`${mm![1]}を登録(`));
       }
       write(a.file, al.join("\n"));
-      appendCallArg(a.name, sampleValue(o, t));
+      appendCallArg(a.name, sampleValue(o, t, name));
       return { file: a.file, line: a.line };
     }
     case "move_param": {

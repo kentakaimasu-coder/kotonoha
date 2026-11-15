@@ -354,7 +354,7 @@ test("日本語の指示(第 7 回評価の残り): 全件閲覧の言い方・�
   assert.match(src(), /予約を予約日時の新しい順に一覧表示/);
   // 型を列挙にすると、確かめるの "" も列挙の値になる
   j = await (await api("/api/instruct", { text: "レッスンに「天気」を追加" })).json();
-  assert.match(src(), /レッスンを追加\("確かめる回"[^)]*""\)/);
+  assert.match(src(), /レッスンを追加\("確かめる回"[^)]*"天気の例"\)/);
   j = await (await api("/api/instruct", { text: "列挙「天気の種類」を作る(晴れ、曇り、雨)" })).json();
   j = await (await api("/api/instruct", { text: "レッスンの「天気」を「天気の種類」にする" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
@@ -428,8 +428,8 @@ test("第 8 回評価の途中の修正: 動作の引数の順番(フォーム�
   j = await (await api("/api/instruct", { text: "動作「予約する」に「目的」を追加" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
   assert.match(src(), /動作 予約する\([^)]*目的: 文字列\)/);
-  assert.match(src(), /「1名で予約」を押すと 予約する\(レッスン\.ID, 1, ""\)/);
-  assert.match(src(), /花子\(利用者\)が 予約する\(回, 1, ""\) → 成功/);
+  assert.match(src(), /「1名で予約」を押すと 予約する\(レッスン\.ID, 1, "目的の例"\)/);
+  assert.match(src(), /花子\(利用者\)が 予約する\(回, 1, "目的の例"\) → 成功/);
   assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
   // 型を変えると、初期データの値も新しい型に合わせる
   j = await (await api("/api/instruct", { text: "レッスンに「部屋番号」を追加" })).json();
