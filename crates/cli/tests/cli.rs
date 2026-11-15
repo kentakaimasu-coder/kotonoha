@@ -825,3 +825,23 @@ fn round7_scenario_label_on_action_without_result_is_explained() {
         "{out}{err}"
     );
 }
+
+#[test]
+fn round9_row_button_on_list_screen_is_explained() {
+    // 一覧の画面に「枠.ID」を使うボタンを書くと、行ごとのボタンは置けない・詳細の画面に置く、と分かる言葉で出す(第 9 回評価)
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("round9_rowbtn");
+    let _ = std::fs::remove_dir_all(&root);
+    let (c, _, err) = koto(Path::new("."), &["init", root.to_str().unwrap(), "--template", "予約受付"]);
+    assert_eq!(c, 0, "{err}");
+    let app = root.join("src/app.koto");
+    let s = std::fs::read_to_string(&app).unwrap().replace(
+        "    枠を選ぶと 枠詳細 へ\n",
+        "    枠を選ぶと 枠詳細 へ\n    「1名で予約」を押すと 予約する(枠.ID, 1)\n",
+    );
+    std::fs::write(&app, s).unwrap();
+    let (c, out, err) = koto(&root, &["check"]);
+    assert_ne!(c, 0);
+    let all = format!("{out}{err}");
+    assert!(all.contains("一覧の行ごとのボタンは置けません") && all.contains("詳細の画面"), "{all}");
+    assert!(!all.contains("型名です"), "{all}");
+}

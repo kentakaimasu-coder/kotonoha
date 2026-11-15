@@ -1552,6 +1552,29 @@ impl Ctx<'_> {
                         continue;
                     }
                     for (a, (_, pt)) in args.iter().zip(&sig.params) {
+                        // 一覧の画面で「貸出.ID」のように行のデータを使ったとき: 行ごとのボタンは置けないことを伝える
+                        // (「`貸出` は型名です」の意味が分からなかった。第 9 回評価)
+                        fn root(e: &kotonoha_ast::Expr) -> Option<&str> {
+                            match &e.kind {
+                                kotonoha_ast::ExprKind::Ident(n) => Some(n.as_str()),
+                                kotonoha_ast::ExprKind::Field(b, _) => root(b),
+                                _ => None,
+                            }
+                        }
+                        let head = root(a).unwrap_or("").to_string();
+                        if self.env.data.contains_key(&head) && s.input.as_deref() != Some(head.as_str()) {
+                            self.diags.push(
+                                Diagnostic::error(
+                                    Code::REF001,
+                                    a.span,
+                                    format!("画面 `{}` では、どの {head} のボタンかが決まりません(一覧の行ごとのボタンは置けません)", s.name),
+                                )
+                                .hint(format!(
+                                    "{head} の詳細の画面(一覧に `{head}を選ぶと 詳細の画面 へ` を書いて開く画面)にボタンを置きます"
+                                )),
+                            );
+                            continue;
+                        }
                         let (t, facts, ds) = check_expr_in(self.env, &vars, a, Some(pt));
                         self.diags.extend(ds);
                         if !facts.adapter_calls.is_empty() || !facts.action_calls.is_empty() {

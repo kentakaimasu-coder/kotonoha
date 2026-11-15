@@ -155,7 +155,7 @@ function renderRun() {
           "tr",
           {},
           ...cols.map((c) =>
-            el("td", {}, el("input", { value: r[c] === undefined ? "" : String(r[c]), "aria-label": `${i + 1} 行目の${c}`, oninput: (e) => { seedRows.rows[i][c] = e.target.value; seedRows.dirty = true; } })),
+            el("td", {}, el("input", { value: r[c] === undefined ? "" : r[c] === true ? "はい" : r[c] === false ? "いいえ" : String(r[c]), "aria-label": `${i + 1} 行目の${c}`, oninput: (e) => { seedRows.rows[i][c] = e.target.value; seedRows.dirty = true; } })),
           ),
           el("td", {}, el("button", { type: "button", class: "small", onclick: () => { seedRows.rows.splice(i, 1); seedRows.dirty = true; renderRun(); } }, "この行を消す")),
         ),

@@ -2024,7 +2024,7 @@ const server = createServer(async (req, res) => {
                 const n = Number(String(v).replace(/[,¥円]/g, ""));
                 if (!Number.isInteger(n)) throw new Error(`${i + 1} 行目の「${k}」は整数で入れます(入っていた値: ${v})`);
                 out[k] = n;
-              } else if (t === "真偽") out[k] = /^(true|真|はい|○|1)$/.test(String(v));
+              } else if (t === "真偽") out[k] = v === true || /^(true|真|はい|○|1|済|有)$/.test(String(v));
               else if (t === "日時" || t === "日付") {
                 // Excel の書き方(2026/11/15 11:05・2026年11月15日)も受け取る(「タイムゾーン付きの ISO 8601」と出て分からなかった。第 8 回評価)
                 const sv = String(v);
