@@ -471,8 +471,10 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         loaders.push(json!({"key": key, "segments": ["api", "analyses", analysis], "withId": false}));
                     }
                     let fs: Vec<Value> = columns.iter().map(|(n, t)| field_desc(ir, n, t)).collect();
+                    // 「現場ID」のような列は、そのデータの名前で出す(ID のまま g1 と出た。第 8 回評価)
+                    let refs = refs_js(ir, columns, &mut loaders);
                     body.push(format!(
-                        "h(DataList, {{ key: {ci}, r: p.data[{}], fields: {}, tz: p.tz, caption: {} }})",
+                        "h(DataList, {{ key: {ci}, r: p.data[{}], fields: {}, tz: p.tz, caption: {}{refs} }})",
                         js_str(&key),
                         serde_json::to_string(&fs).unwrap(),
                         js_str(analysis)

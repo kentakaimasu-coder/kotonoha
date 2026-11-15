@@ -1162,8 +1162,15 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   }
   // 文: 約束・確かめる・画面
   if (/(閲覧可|重複不可|の順|はいつでも)/.test(text) || text.startsWith("約束")) {
-    const at = apply({ op: "add_rule", text: text.replace(/^約束[::]?\s*/, "") });
-    return checked(at, "約束に入れました", o, text);
+    const rule = text.replace(/^約束[::]?\s*/, "");
+    const at = apply({ op: "add_rule", text: rule });
+    // 同じデータの「重複不可」が前からあるときは知らせる(古い約束が残り、同じ日に 2 件書けなかった。第 8 回評価)
+    const ud = /^(.+?)は.+の組で重複不可|^(.+?)は.+?が重複不可/.exec(rule);
+    const dn = (ud?.[1] ?? ud?.[2])?.trim();
+    const olds = dn
+      ? (o.decls ?? []).filter((d: any) => d.kind === "rules").flatMap((d: any) => d.lines.map((l: any) => l.text.trim())).filter((t: string) => t.startsWith(`${dn}は`) && /重複不可$/.test(t) && t !== rule)
+      : [];
+    return checked(at, olds.length ? `約束に入れました。前からある「${olds.join("」「")}」も効いています(いらなければ、左の「約束」で消します)` : "約束に入れました", o, text);
   }
   if (/(→|->)/.test(text)) {
     const sc = (ctx.scenario && decl(o, "scenario", ctx.scenario)) || decl(o, "scenario");
