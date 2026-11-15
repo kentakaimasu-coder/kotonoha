@@ -10,12 +10,57 @@ use std::collections::{BTreeMap, BTreeSet};
 pub struct DataInfo {
     pub name: String,
     pub fields: Vec<(String, Type)>,
+    /// 計算項目(名前・型・SQL の式)。保存しない(ADR-0136)
+    pub computed: Vec<(String, Type, String)>,
     pub span: Span,
 }
 
 impl DataInfo {
+    /// 保存する項目
     pub fn field(&self, name: &str) -> Option<&Type> {
         self.fields.iter().find(|(n, _)| n == name).map(|(_, t)| t)
+    }
+    /// 表示・並べ替えに使える項目(保存する項目と計算項目)
+    pub fn shown(&self, name: &str) -> Option<&Type> {
+        self.field(name).or_else(|| self.computed.iter().find(|(n, _, _)| n == name).map(|(_, t, _)| t))
+    }
+}
+
+/// 計算項目の式を SQL にする: 同じデータの整数・金額の項目、整数、+ - * と括弧だけ(ADR-0136)
+fn computed_sql(e: &kotonoha_ast::Expr, fields: &[(String, Type)]) -> Result<(Type, String), String> {
+    use kotonoha_ast::{BinOp, ExprKind, UnaryOp};
+    match &e.kind {
+        ExprKind::Int(v) => Ok((Type::Int, v.to_string())),
+        ExprKind::Ident(n) => match fields.iter().find(|(f, _)| f == n).map(|(_, t)| t) {
+            Some(Type::Int) => Ok((Type::Int, format!("\"{}\"", n.replace('"', "\"\"")))),
+            Some(t @ Type::Money(_)) => Ok((t.clone(), format!("\"{}\"", n.replace('"', "\"\"")))),
+            Some(Type::Option(_)) => Err(format!("`{n}` は空でもよい項目なので計算に使えません")),
+            Some(t) => Err(format!("`{n}` は {t} なので計算に使えません(整数・金額の項目だけ)")),
+            None => Err(format!("項目 `{n}` はありません(計算に使えるのは同じデータの整数・金額の項目)")),
+        },
+        ExprKind::Unary { op: UnaryOp::Neg, expr } => {
+            let (t, s) = computed_sql(expr, fields)?;
+            Ok((t, format!("(-{s})")))
+        }
+        ExprKind::Binary { op, lhs, rhs } => {
+            let (lt, l) = computed_sql(lhs, fields)?;
+            let (rt, r) = computed_sql(rhs, fields)?;
+            let sym = match op {
+                BinOp::Add => "+",
+                BinOp::Sub => "-",
+                BinOp::Mul => "*",
+                _ => return Err("計算に使えるのは + - * だけです".into()),
+            };
+            let t = match (op, &lt, &rt) {
+                (_, Type::Int, Type::Int) => Type::Int,
+                (BinOp::Add | BinOp::Sub, Type::Money(a), Type::Money(b)) if a == b => lt.clone(),
+                (BinOp::Mul, Type::Money(_), Type::Int) => lt.clone(),
+                (BinOp::Mul, Type::Int, Type::Money(_)) => rt.clone(),
+                _ => return Err(format!("{lt} と {rt} はこの計算ができません")),
+            };
+            Ok((t, format!("({l} {sym} {r})")))
+        }
+        _ => Err("計算に使えるのは、整数・金額の項目、整数、+ - * と括弧だけです".into()),
     }
 }
 
@@ -233,11 +278,26 @@ pub fn collect_env(files: &[&SourceFile]) -> (Env, Vec<Diagnostic>) {
                     let t = resolve_type(&f.ty, &env, &data_names, &mut diags);
                     fields.push((f.name.name.clone(), t));
                 }
+                let mut computed = Vec::new();
+                for c in &dd.computed {
+                    if fields.iter().any(|(n, _)| *n == c.name.name) || !seen.insert(c.name.name.clone()) {
+                        diags.push(Diagnostic::error(Code::REF002, c.name.span, format!("項目 `{}` が重複しています", c.name.name)));
+                        continue;
+                    }
+                    match computed_sql(&c.expr, &fields) {
+                        Ok((t, sql)) => computed.push((c.name.name.clone(), t, sql)),
+                        Err(m) => diags.push(
+                            Diagnostic::error(Code::TYP001, c.span, format!("計算項目 `{}`: {m}", c.name.name))
+                                .hint("例: 残席 = 定員 - 予約数 / 合計 = 単価 * 数量"),
+                        ),
+                    }
+                }
                 env.data.insert(
                     dd.name.name.clone(),
                     DataInfo {
                         name: dd.name.name.clone(),
                         fields,
+                        computed,
                         span: dd.span,
                     },
                 );

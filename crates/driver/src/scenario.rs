@@ -267,7 +267,7 @@ impl Ctx<'_> {
                         return None;
                     };
                     let f = f.trim();
-                    let Some(t) = info.field(f).cloned() else {
+                    let Some(t) = info.shown(f).cloned() else {
                         self.diags
                             .push(Diagnostic::error(Code::REF001, span, format!("データ `{d}` にフィールド `{f}` はありません")));
                         return None;
@@ -276,7 +276,12 @@ impl Ctx<'_> {
                         Ok(val) => {
                             let id = unquote(id.trim()).unwrap_or(id.trim());
                             let id = if self.labels.contains(id) { json!({"$ref": id}) } else { json!(id) };
-                            Some(json!({"kind": "field", "text": text, "data": d, "id": id, "field": f, "value": val}))
+                            let mut v = json!({"kind": "field", "text": text, "data": d, "id": id, "field": f, "value": val});
+                            // 計算項目はデータベースの列ではないので、式で読む(ADR-0136)
+                            if let Some((_, _, sql)) = info.computed.iter().find(|(n, _, _)| n == f) {
+                                v["sql"] = json!(sql);
+                            }
+                            Some(v)
                         }
                         Err(e) => {
                             self.diags.push(Diagnostic::error(Code::TYP001, span, e));

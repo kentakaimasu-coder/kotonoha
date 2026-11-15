@@ -21,6 +21,8 @@ use std::collections::{BTreeMap, BTreeSet};
 pub struct Entity {
     pub name: String,
     pub fields: Vec<(String, Type)>,
+    /// 計算項目(名前・型・SQL の式。ADR-0136)
+    pub computed: Vec<(String, Type, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -279,7 +281,14 @@ pub struct IrInput<'a> {
 fn display_fields(env: &Env, d: &str) -> Vec<(String, Type)> {
     env.data
         .get(d)
-        .map(|x| x.fields.iter().filter(|(n, _)| n != "ID").cloned().collect())
+        .map(|x| {
+            x.fields
+                .iter()
+                .filter(|(n, _)| n != "ID")
+                .cloned()
+                .chain(x.computed.iter().map(|(n, t, _)| (n.clone(), t.clone())))
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -333,7 +342,7 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
                     let info = &env.data[data];
                     comps.push(Component::Detail {
                         data: data.clone(),
-                        fields: fields.iter().map(|f| (f.clone(), info.field(f).cloned().unwrap_or(Type::Error))).collect(),
+                        fields: fields.iter().map(|f| (f.clone(), info.shown(f).cloned().unwrap_or(Type::Error))).collect(),
                     });
                 }
                 IntentKind::ShowKnowledge { knowledge, spec, .. } => {
@@ -392,6 +401,12 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
                             None => Type::Error,
                         };
                         columns.push((format!("{f}の合計"), t));
+                    }
+                    // 単位が「データ名ID」なら、そのデータの名前で表示できるよう一覧 API を用意する
+                    if let Some(x) = by.strip_suffix("ID").filter(|x| env.data.contains_key(*x)) {
+                        if bucket.is_none() {
+                            list_data.insert(x.to_string());
+                        }
                     }
                     let caption = kotonoha_intent::aggregate_caption(data, by, *bucket, filters);
                     let spec = AggIr {
@@ -632,6 +647,7 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
             .map(|d| Entity {
                 name: d.name.clone(),
                 fields: d.fields.clone(),
+                computed: d.computed.clone(),
             })
             .collect(),
         enums: env.enums.clone(),

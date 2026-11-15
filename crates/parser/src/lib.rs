@@ -177,13 +177,42 @@ impl<'a> Parser<'a> {
                 let name = ts.ident()?;
                 ts.expect_block_colon()?;
                 let mut fields = Vec::new();
+                let mut computed = Vec::new();
                 for c in self.flat_children(line)? {
+                    // `名前 = 式` は計算項目(ADR-0136)、`名前: 型` は保存する項目
+                    let t = match tokenize(c) {
+                        Ok(t) => t,
+                        Err(d) => {
+                            self.diags.push(d);
+                            continue;
+                        }
+                    };
+                    if matches!(t.get(1).map(|x| &x.kind), Some(TokenKind::Sym(Sym::Assign))) {
+                        let mut cs = TokStream::new(&t, c.span);
+                        let r = (|| -> PResult<ComputedField> {
+                            let name = cs.ident()?;
+                            cs.expect_sym(Sym::Assign)?;
+                            let expr = cs.expr()?;
+                            cs.expect_end()?;
+                            Ok(ComputedField { name, expr, span: c.span })
+                        })();
+                        match r {
+                            Ok(f) => computed.push(f),
+                            Err(d) => self.diags.push(d),
+                        }
+                        continue;
+                    }
                     match field_line(c) {
                         Ok(f) => fields.push(f),
                         Err(d) => self.diags.push(d),
                     }
                 }
-                Ok(Decl::Data(DataDecl { name, fields, span: line.span }))
+                Ok(Decl::Data(DataDecl {
+                    name,
+                    fields,
+                    computed,
+                    span: line.span,
+                }))
             }
             Some(TokenKind::Keyword(Keyword::Adapter)) => {
                 let name = ts.ident()?;

@@ -392,6 +392,15 @@ impl<'e> Checker<'e> {
             return;
         };
         let Some(ft) = self.env.data.get(dname).and_then(|d| d.field(&field.name)).cloned() else {
+            if self.env.data.get(dname).is_some_and(|d| d.shown(&field.name).is_some()) {
+                let d = self.err(
+                    Code::TYP002,
+                    field.span,
+                    format!("`{}` は計算項目なので書き換えられません(元の項目を書き換えると変わります)", field.name),
+                );
+                self.diags.push(d);
+                return;
+            }
             let d = self.err(Code::REF001, field.span, format!("データ `{dname}` にフィールド `{}` はありません", field.name));
             self.diags.push(d);
             return;
@@ -497,7 +506,8 @@ impl<'e> Checker<'e> {
             ExprKind::Field(base, f) => {
                 let bt = self.expr(base, None);
                 let t = match &bt {
-                    Type::Data(dn) => match self.env.data.get(dn).and_then(|d| d.field(&f.name)) {
+                    // 計算項目も読める(書き換えはできない。ADR-0136)
+                    Type::Data(dn) => match self.env.data.get(dn).and_then(|d| d.shown(&f.name)) {
                         Some(t) => t.clone(),
                         None => {
                             let d = self.err(Code::REF001, f.span, format!("データ `{dn}` にフィールド `{}` はありません", f.name));

@@ -564,3 +564,54 @@ fn scenarios_can_name_created_rows_and_use_them_later() {
         "{err}"
     );
 }
+
+#[test]
+fn computed_fields_show_sort_and_check_but_cannot_be_written() {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("computed_tpl");
+    let _ = std::fs::remove_dir_all(&root);
+    let (c, _, err) = koto(Path::new("."), &["init", root.to_str().unwrap(), "--template", "予約受付"]);
+    assert_eq!(c, 0, "{err}");
+    let app = root.join("src/app.koto");
+    let s = std::fs::read_to_string(&app)
+        .unwrap()
+        .replace("    予約数: 整数\n", "    予約数: 整数\n    残席 = 定員 - 予約数\n")
+        .replace("    枠.定員 - 枠.予約数 >= 人数 を確認", "    枠.残席 >= 人数 を確認")
+        .replace("    枠を一覧表示\n", "    枠を残席の多い順に一覧表示\n")
+        .replace("    枠の名前と開始日時と定員と予約数を表示", "    枠の名前と開始日時と残席を表示")
+        .replace("    枠(s2)の予約数は 2", "    枠(s2)の予約数は 2\n    枠(s2)の残席は 0\n    枠(s1)の残席は 5");
+    std::fs::write(&app, &s).unwrap();
+    let (c, _, err) = koto(&root, &["test"]);
+    assert_eq!(c, 0, "{err}");
+    assert!(
+        err.contains("✓ 枠(s2)の残席は 0") && err.contains("✓ 花子(利用者)が 予約する(s2, 1) → 失敗(\"満席\")"),
+        "{err}"
+    );
+    // 集計の単位が「データ名ID」なら、画面ではそのデータの名前で出す
+    let agg = s.replace("    枠を追加のフォームを表示", "    枠を追加のフォームを表示\n    予約を枠IDごとに集計");
+    std::fs::write(&app, &agg).unwrap();
+    let out = root.join("out-web");
+    let (c, _, err) = koto(&root, &["build", "--target", "web", "--out", out.to_str().unwrap()]);
+    assert_eq!(c, 0, "{err}");
+    let screens = std::fs::read_to_string(out.join("src/screens.generated.ts")).unwrap();
+    assert!(
+        screens.contains("\"枠ID\": { r: p.data[\"list:枠\"], label: \"名前\""),
+        "集計の枠ID を枠の名前で表示する"
+    );
+    // 書き換えはできない・使えない式は理由を出す
+    for (bad, want) in [
+        (
+            s.replace("    枠.予約数 = 枠.予約数 + 人数", "    枠.残席 = 0"),
+            "計算項目なので書き換えられません",
+        ),
+        (s.replace("    残席 = 定員 - 予約数", "    残席 = 定員 - 名前"), "文字列 なので計算に使えません"),
+        (
+            s.replace("    枠を残席の多い順に一覧表示\n", "    枠のうち残席が0のものを一覧表示\n"),
+            "フィールド `残席` はありません",
+        ),
+    ] {
+        std::fs::write(&app, &bad).unwrap();
+        let (c, _, err) = koto(&root, &["check"]);
+        assert_ne!(c, 0);
+        assert!(err.contains(want), "{want}: {err}");
+    }
+}

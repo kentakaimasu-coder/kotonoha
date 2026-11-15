@@ -183,13 +183,25 @@ const EDITORS = {
         el("div", { class: "line" + (bad.length ? " bad" : "") }, el("code", {}, `${f.name}: ${f.type}`, ...bad.map((b) => el("span", { class: "why", text: b.message_ja }))), f.name === "ID" ? el("span", { class: "help", text: "自動で決まります" }) : el("button", { type: "button", class: "small", onclick: () => op({ op: "remove_line", file: d.file, line: f.line, old: ls[f.line - 1] }) }, "消す")),
       );
     }
+    for (const c of d.computed ?? []) {
+      const bad = diagsAt(d.file, c.line).filter((x) => x.severity === "error");
+      rows.append(
+        el("div", { class: "line" + (bad.length ? " bad" : "") }, el("code", {}, `${c.name} = ${c.expr}`, el("span", { class: "help", text: "(計算項目)" }), ...bad.map((b) => el("span", { class: "why", text: b.message_ja }))), el("button", { type: "button", class: "small", onclick: () => op({ op: "remove_line", file: d.file, line: c.line, old: ls[c.line - 1] }) }, "消す")),
+      );
+    }
     const box = el("div", { class: "rows" });
     const add = fieldRows(box, [["", "文字列"]]);
     const msg = el("div", { class: "msg", role: "status" });
+    const cname = el("input", { type: "text", placeholder: "名前(例: 残席)", "aria-label": "計算項目の名前" });
+    const cexpr = el("input", { type: "text", placeholder: "式(例: 定員 - 予約数)", "aria-label": "計算の式" });
+    const cmsg = el("div", { class: "msg", role: "status" });
     return [
       el("h2", { text: `データ「${d.name}」` }),
-      el("p", { class: "sub", text: "覚えておく項目の一覧です。ID は自動で付きます。" }),
+      el("p", { class: "sub", text: "覚えておく項目の一覧です。ID は自動で付きます。計算項目は読むときに計算します(保存しません)。" }),
       rows,
+      el("h3", { text: "計算項目を足す(残席 = 定員 - 予約数 など)" }),
+      el("form", { class: "row", onsubmit: async (e) => { e.preventDefault(); const j = await op({ op: "add_line", kind: "data", name: d.name, text: `${cname.value.trim()} = ${cexpr.value.trim()}` }, cmsg); if (!j.error) { cname.value = ""; cexpr.value = ""; } } }, cname, el("span", { text: "=" }), cexpr, el("button", { type: "submit" }, "足す")),
+      cmsg,
       el("h3", { text: "項目を足す" }),
       box,
       el("div", { class: "row" }, el("button", { type: "button", class: "ghost", onclick: () => add() }, "もう 1 つ"), el("button", { type: "button", onclick: async () => { for (const r of [...box.children]) { const v = r.read(); if (v.name.trim()) await op({ op: "add_field", data: d.name, ...v }, msg); } } }, "足す")),

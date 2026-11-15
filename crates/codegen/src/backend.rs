@@ -204,7 +204,25 @@ pub fn generate(ir: &AppIr, vag: &serde_json::Value) -> Result<Vec<GeneratedFile
             .collect();
         ents.insert(e.name.clone(), serde_json::Value::Array(fs));
     }
-    let schema = json!({"entities": ents, "enums": ir.enums});
+    // 計算項目: 読むときに SELECT に足す式(保存しない。ADR-0136)
+    let mut comp = serde_json::Map::new();
+    for e in &ir.entities {
+        if !e.computed.is_empty() {
+            comp.insert(
+                e.name.clone(),
+                json!(e
+                    .computed
+                    .iter()
+                    .map(|(n, t, sql)| json!({"name": n, "type": wire_type(t).unwrap_or(serde_json::Value::Null), "sql": sql}))
+                    .collect::<Vec<_>>()),
+            );
+        }
+    }
+    let schema = if comp.is_empty() {
+        json!({"entities": ents, "enums": ir.enums})
+    } else {
+        json!({"entities": ents, "enums": ir.enums, "computed": comp})
+    };
     g.push_str(&format!(
         "export const schema: rt.Schema = {} as any;\n\n",
         serde_json::to_string_pretty(&schema).unwrap()

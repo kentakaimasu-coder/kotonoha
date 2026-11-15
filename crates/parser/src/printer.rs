@@ -45,6 +45,9 @@ fn print_decl(d: &Decl, out: &mut String) {
             for f in &dd.fields {
                 out.push_str(&format!("{}{}: {}\n", ind(1), f.name.name, type_str(&f.ty)));
             }
+            for c in &dd.computed {
+                out.push_str(&format!("{}{} = {}\n", ind(1), c.name.name, expr_str(&c.expr)));
+            }
         }
         Decl::Adapter(a) => {
             out.push_str(&format!("アダプタ {}({}) -> {}:\n", a.name.name, params_str(&a.params), type_str(&a.ret)));

@@ -458,10 +458,17 @@ export function fromSql(v: unknown, w: Wire): unknown {
   return v;
 }
 
+/** 計算項目を SELECT に足す(`, ("定員" - "予約数") AS "残席"`) */
+function computedCols(ctx: Ctx, table: string): string {
+  return (ctx.schema.computed?.[table] ?? []).map((c) => `, ${c.sql} AS ${q(c.name)}`).join("");
+}
+
 export function decodeRow(ctx: Ctx, table: string, row: Row): Row {
   const fields = ctx.schema.entities[table];
   const e: Row = {};
   for (const f of fields) e[f.name] = fromSql(row[f.name], f.type);
+  // 計算項目は読み取り専用(保存の比較対象の original には入れない)
+  for (const c of ctx.schema.computed?.[table] ?? []) if (c.name in row) e[c.name] = fromSql(row[c.name], c.type);
   Object.defineProperty(e, META, { value: { table, original: { ...e } } satisfies EntityMeta, enumerable: false });
   return e;
 }
@@ -540,7 +547,7 @@ function ownerCond(ctx: Ctx, table: string): { sql: string; params: unknown[] } 
 // ---- データアダプタ(操作種別ごと) ----
 export async function adGet(ctx: Ctx, table: string, id: unknown, optional: boolean): Promise<Row | null> {
   const oc = ownerCond(ctx, table);
-  const rows = await ctx.conn.all(`SELECT * FROM ${q(table)} WHERE "ID" = ?${oc.sql}`, [id, ...oc.params]);
+  const rows = await ctx.conn.all(`SELECT *${computedCols(ctx, table)} FROM ${q(table)} WHERE "ID" = ?${oc.sql}`, [id, ...oc.params]);
   if (rows.length === 0) {
     if (optional) return null;
     // 本人限定のデータは、他の人の分があることも知らせない(同じ 404)。ただし理由の候補は書く(ペルソナ評価の要望)
@@ -643,15 +650,17 @@ export function listView(ctx: Ctx, table: string, query: URLSearchParams = new U
   let order = `"ID"`;
   const o = query.get("order");
   if (o !== null) {
-    const f = fieldOf(o);
-    order = `${q(f.name)} ${query.get("desc") === "1" ? "DESC" : "ASC"}, "ID"`;
+    // 並べ替えは計算項目でもできる(SELECT の別名で並べる)
+    const c = (ctx.schema.computed?.[table] ?? []).find((x) => x.name === o);
+    const f = c ? { name: c.name } : fieldOf(o);
+    order = `${c ? c.sql : q(f.name)} ${query.get("desc") === "1" ? "DESC" : "ASC"}, "ID"`;
   }
   return { sql, params, order };
 }
 
 export async function adList(ctx: Ctx, table: string, page: { limit: number; offset: number } = { limit: 1_000_000, offset: 0 }, view: ListView = listView(ctx, table)): Promise<Row[]> {
   const where = view.sql ? ` WHERE 1 = 1${view.sql}` : "";
-  const rows = await ctx.conn.all(`SELECT * FROM ${q(table)}${where} ORDER BY ${view.order} LIMIT ? OFFSET ?`, [...view.params, BigInt(page.limit), BigInt(page.offset)]);
+  const rows = await ctx.conn.all(`SELECT *${computedCols(ctx, table)} FROM ${q(table)}${where} ORDER BY ${view.order} LIMIT ? OFFSET ?`, [...view.params, BigInt(page.limit), BigInt(page.offset)]);
   return rows.map((r) => decodeRow(ctx, table, r));
 }
 

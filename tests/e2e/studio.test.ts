@@ -60,6 +60,13 @@ test("日本語の指示: データを作る・項目を足す・画面と約束
   j = await (await api("/api/undo", {})).json();
   assert.equal(j.ok, true);
   assert.doesNotMatch(src(), /教室は誰でも閲覧可/);
+  // 計算項目(ADR-0136)
+  j = await (await api("/api/instruct", { text: "枠に「残席 = 定員 - 予約数」を追加" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /    残席 = 定員 - 予約数/);
+  assert.deepEqual(j.outline.decls.find((d: any) => d.kind === "data" && d.name === "枠").computed.map((c: any) => c.name), ["残席"]);
+  j = await (await api("/api/instruct", { text: "枠に「だめ = 名前 - 1」を追加" })).json();
+  assert.equal(j.result.ok, false, "文字列の項目は計算に使えないので入れない");
 });
 
 test("画面の操作: 役割を作る・権限を選ぶ・行を消す。名前と型を確かめる", async () => {

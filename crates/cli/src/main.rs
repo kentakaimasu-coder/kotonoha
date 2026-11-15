@@ -451,7 +451,9 @@ fn cmd_outline(o: &mut Opts) -> Result<i32, String> {
                 Decl::App(d) => json!({"kind": "app", "name": d.name}),
                 Decl::Enum(d) => json!({"kind": "enum", "name": d.name.name, "values": d.variants.iter().map(|v| v.name.clone()).collect::<Vec<_>>()}),
                 Decl::Data(d) => {
-                    json!({"kind": "data", "name": d.name.name, "fields": d.fields.iter().map(|f| json!({"name": f.name.name, "type": kotonoha_parser::printer::type_str(&f.ty), "line": f.span.line})).collect::<Vec<_>>()})
+                    json!({"kind": "data", "name": d.name.name,
+                        "fields": d.fields.iter().map(|f| json!({"name": f.name.name, "type": kotonoha_parser::printer::type_str(&f.ty), "line": f.span.line})).collect::<Vec<_>>(),
+                        "computed": d.computed.iter().map(|c| json!({"name": c.name.name, "expr": kotonoha_parser::printer::expr_str(&c.expr), "line": c.span.line})).collect::<Vec<_>>()})
                 }
                 Decl::Action(d) => {
                     json!({"kind": "action", "name": d.name.name, "params": d.params.iter().map(|p| json!({"name": p.name.name, "type": kotonoha_parser::printer::type_str(&p.ty)})).collect::<Vec<_>>()})

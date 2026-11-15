@@ -943,12 +943,12 @@ impl Ctx<'_> {
             if let Some((d, fields_text)) = self.split_data_prefix(x) {
                 let info = &self.env.data[d];
                 let parts: Vec<&str> = fields_text.split('と').collect();
-                let fields: Vec<String> = if parts.iter().all(|p| info.field(p).is_some()) {
+                let fields: Vec<String> = if parts.iter().all(|p| info.shown(p).is_some()) {
                     parts.iter().map(|p| p.to_string()).collect()
-                } else if info.field(fields_text).is_some() {
+                } else if info.shown(fields_text).is_some() {
                     vec![fields_text.to_string()]
                 } else {
-                    let unknown: Vec<&str> = parts.iter().copied().filter(|p| info.field(p).is_none()).collect();
+                    let unknown: Vec<&str> = parts.iter().copied().filter(|p| info.shown(p).is_none()).collect();
                     return Match::Invalid(
                         Diagnostic::error(
                             Code::REF001,
@@ -997,7 +997,7 @@ impl Ctx<'_> {
             return Some(Match::NoMatch(vec![format!("「{d}」はデータとして定義されていません。どのデータの一覧ですか")]));
         };
         let field = |f: &str| -> Result<Type, Match> {
-            info.field(f).cloned().ok_or_else(|| {
+            info.shown(f).cloned().ok_or_else(|| {
                 Match::Invalid(
                     Diagnostic::error(Code::REF001, span, format!("データ `{d}` にフィールド `{f}` はありません")).hint(format!(
                         "フィールド: {}",

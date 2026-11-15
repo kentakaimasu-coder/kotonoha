@@ -156,6 +156,8 @@ export type Wire =
 export interface Schema {
   entities: Record<string, { name: string; type: Wire }[]>;
   enums: Record<string, string[]>;
+  /** 計算項目(読むときに SELECT に足す式。保存しない。ADR-0136) */
+  computed?: Record<string, { name: string; type: Wire; sql: string }[]>;
 }
 
 const SAFE = BigInt(Number.MAX_SAFE_INTEGER);
@@ -194,6 +196,10 @@ export function encode(v: unknown, w: Wire, s: Schema): unknown {
     case "entity": {
       const o: Record<string, unknown> = {};
       for (const f of s.entities[w.name]) o[f.name] = encode((v as Record<string, unknown>)[f.name], f.type, s);
+      for (const c of s.computed?.[w.name] ?? []) {
+        const x = (v as Record<string, unknown>)[c.name];
+        if (x !== undefined) o[c.name] = encode(x, c.type, s);
+      }
       return o;
     }
     case "unit":

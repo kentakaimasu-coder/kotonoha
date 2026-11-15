@@ -110,10 +110,21 @@ pub struct EnumDecl {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DataDecl {
     pub name: Ident,
     pub fields: Vec<Field>,
+    /// `残席 = 定員 - 予約数`(計算項目。保存しない。ADR-0136)
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub computed: Vec<ComputedField>,
+    pub span: Span,
+}
+
+/// 計算項目: 同じデータの整数・金額の項目と数で計算する(読むときに計算し、保存しない)
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ComputedField {
+    pub name: Ident,
+    pub expr: Expr,
     pub span: Span,
 }
 

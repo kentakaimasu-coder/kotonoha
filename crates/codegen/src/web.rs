@@ -193,7 +193,8 @@ fn refs_js(ir: &AppIr, fields: &[(String, Type)], loaders: &mut Vec<Value>) -> S
     let mut parts = Vec::new();
     for (n, t) in fields {
         let Some(x) = n.strip_suffix("ID") else { continue };
-        if !matches!(t, Type::Id) || x.is_empty() {
+        // 集計の単位(選択<識別子>)も、そのデータの名前で出す
+        if !matches!(t, Type::Id) && !matches!(t, Type::Option(i) if matches!(i.as_ref(), Type::Id)) || x.is_empty() {
             continue;
         }
         let Some(ent) = ir.entities.iter().find(|e| e.name == x) else { continue };

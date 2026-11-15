@@ -81,7 +81,7 @@ for (const sc of scenarios) {
         const d = await openDb(db, tables);
         try {
           const id = resolve(st.id);
-          const rows: any[] = await d.conn.all(`SELECT ${q(st.field)} AS v FROM ${q(st.data)} WHERE "ID" = ?`, [id]);
+          const rows: any[] = await d.conn.all(`SELECT ${st.sql ?? q(st.field)} AS v FROM ${q(st.data)} WHERE "ID" = ?`, [id]);
           if (rows.length === 0) got = `${st.data}「${typeof st.id === "string" ? st.id : st.id.$ref}」がありません`;
           else {
             let v: unknown = rows[0].v;

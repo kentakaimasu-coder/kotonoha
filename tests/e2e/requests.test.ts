@@ -159,3 +159,17 @@ test("分析を集計の文で書く(SQL なし): 列の名前は記録の宣言
     assert.equal(taro.合計時間, taro.日報数 * 3, `${s.name} ${JSON.stringify(taro)}`);
   }
 });
+
+test("計算項目: 一覧と詳細に計算した値が入り、計算した値で並べ替えられる。書き込みには使えない", async () => {
+  for (const s of servers) {
+    const t = tok("計算");
+    for (const [日付, 作業時間] of [["2026-10-01", 2], ["2026-10-02", 5], ["2026-10-03", 1]] as const) {
+      const r = await fetch(`${s.url}/api/actions/${enc("日報を書く")}`, { method: "POST", headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" }, body: JSON.stringify({ 日付, 作業内容: "計算", 作業時間 }) });
+      assert.equal(r.status, 200, s.name);
+    }
+    const rows = await (await fetch(`${s.url}/api/data/${enc("日報")}?order=${enc("作業分")}&desc=1`, { headers: { Authorization: `Bearer ${t}` } })).json();
+    assert.deepEqual(rows.map((r: any) => r.作業分), [300, 120, 60], `${s.name} ${JSON.stringify(rows)}`);
+    const one = await (await fetch(`${s.url}/api/data/${enc("日報")}/${enc(rows[0].ID)}`, { headers: { Authorization: `Bearer ${t}` } })).json();
+    assert.equal(one.作業分, 300, s.name);
+  }
+});

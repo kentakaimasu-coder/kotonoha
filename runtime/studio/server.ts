@@ -262,6 +262,11 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     const at = apply({ op: "add_data", name: m[1], fields: m[2] ? parseFields(m[2]) : [{ name: "名前", type: "文字列" }] });
     return { ok: true, done: `データ「${m[1]}」を作りました`, at };
   }
+  // 計算項目: 「枠に「残席 = 定員 - 予約数」を追加」(ADR-0136)
+  if ((m = cmd(/^(.+?)に(?:計算項目)?「?(.+?)\s*=\s*(.+?)」?を(?:追加(?:する)?|足す|加える)$/.exec(text))) && decl(o, "data", m[1].trim())) {
+    const at = apply({ op: "add_line", kind: "data", name: m[1].trim(), text: `${okName(m[2], "計算項目の名前")} = ${m[3].trim()}` });
+    return checked(at, `「${m[1].trim()}」に計算項目「${m[2].trim()}」を足しました`, o, text);
+  }
   if ((m = cmd(/^(.+?)に(?:項目)?「?(.+?)」?(?:[(（](.+?)[)）])?を(?:追加(?:する)?|足す|加える)$/.exec(text))) && decl(o, "data", m[1].trim())) {
     const at = apply({ op: "add_field", data: m[1].trim(), name: m[2], type: m[3] ?? "文字列" });
     return { ok: true, done: `「${m[1]}」に項目「${m[2]}」を足しました`, at };
