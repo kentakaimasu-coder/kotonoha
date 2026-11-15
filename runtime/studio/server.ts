@@ -65,7 +65,10 @@ let group = 0;
 function read(file: string): string {
   return readFileSync(srcPath(file), "utf8");
 }
+/** 最後にソース・初期データを書き換えた時刻(確かめるの結果が古いかどうかの判断に使う) */
+let wroteTime = 0;
 function write(file: string, text: string): void {
+  wroteTime = Date.now();
   history.push({ file, text: read(file), g: group });
   if (history.length > 300) history.shift();
   writeFileSync(srcPath(file), text.endsWith("\n") ? text : text + "\n");
@@ -79,6 +82,7 @@ function seedFiles(): string[] {
   }
 }
 function writeRaw(file: string, text: string): void {
+  wroteTime = Date.now();
   const p = join(PROJECT, file);
   history.push({ file: p, text: readFileSync(p, "utf8"), g: group, raw: true });
   writeFileSync(p, text);
@@ -156,6 +160,15 @@ function addDecl(o: any, kinds: string[], block: string[]): { file: string; line
   return { file, line: n + 2 };
 }
 function addLine(d: any, text: string): { file: string; line: number } {
+  // 画面の「…を表示」は、ボタン(「…」を押すと)より上に入れる(ボタンの下に入って並べ直した。第 7 回評価)
+  if (d.kind === "screen" && /を表示$/.test(text.trim()) && !/フォーム/.test(text)) {
+    const ls = lines(d.file);
+    for (let k = d.line; k < d.end; k++)
+      if (/^\s+「.+」を押すと/.test(ls[k] ?? "")) {
+        insertAfter(d.file, k, ["    " + text.trim()]);
+        return { file: d.file, line: k + 1 };
+      }
+  }
   insertAfter(d.file, d.end, ["    " + text.trim()]);
   return { file: d.file, line: d.end + 1 };
 }
@@ -393,6 +406,10 @@ function makeOptional(o: any, dn: string | undefined, fn: string): string[] {
   }
   return done;
 }
+/** 確かめるの呼び出しに入れる、型に合った仮の値 */
+function sampleValue(o: any, type: string): string {
+  return /^(整数|金額)/.test(type) ? "0" : type === "真偽" ? "偽" : type === "日時" ? "2026-12-01 10:00" : type === "日付" ? "2026-12-01" : o.enums?.[type] ? `"${o.enums[type][0]}"` : '""';
+}
 /** 項目を足したとき、そのデータを名前付きで登録している動作に引数を足す(足さないと「引数がありません」で止まった。第 5 回評価) */
 function extendRegistrations(dn: string, fn: string, type: string): string[] {
   const o = outline();
@@ -409,7 +426,7 @@ function extendRegistrations(dn: string, fn: string, type: string): string[] {
     write(a.file, al.join("\n"));
     out.push(a.name);
     // 確かめるの中の呼び出し(位置で渡している)にも、型に合った値を足す
-    const sample = /^(整数|金額)/.test(type) ? "0" : type === "真偽" ? "偽" : type === "日時" ? "2026-12-01 10:00" : type === "日付" ? "2026-12-01" : o.enums?.[type] ? `"${o.enums[type][0]}"` : '""';
+    const sample = sampleValue(o, type);
     for (const f of srcFiles(o)) {
       const t = read(f);
       const u = t
@@ -648,9 +665,19 @@ function parseFields(s: string): { name: string; type: string }[] {
   });
 }
 function instruct(text0: string, ctx: { screen?: string; scenario?: string }): any {
-  const text = text0.trim().replace(/[。.]$/, "");
+  let text = text0.trim().replace(/[。.]$/, "");
   if (!text) throw new Error("指示を書いてください");
   const o = outline();
+  // 「注文を新しい順に一覧表示」: 並べる項目が無いときは、日時(無ければ日付)の項目で並べる(第 7 回評価: 例のとおりに書いて誤りになった)
+  {
+    const nm = /^(.+?)(?:のうち(.+?)のもの)?を(新しい|古い)順に一覧表示$/.exec(text);
+    const D = nm && decl(o, "data", nm[1].trim());
+    if (D) {
+      const f = D.fields.find((x: any) => x.type === "日時" && /(登録|作成|注文|予約|受付|申込|投稿|日時)/.test(x.name)) ?? D.fields.find((x: any) => x.type === "日時") ?? D.fields.find((x: any) => x.type === "日付");
+      if (!f) throw new Error(`「${D.name}」には日時・日付の項目が無いので、新しい順に並べられません。「${D.name}に「登録日時」を追加」してから使います`);
+      text = `${nm![1].trim()}${nm![2] ? `のうち${nm![2]}のもの` : ""}を${f.name}の${nm![3]}順に一覧表示`;
+    }
+  }
   // 宣言(分析・データ・動作 など)を何行か貼り付けたときは、そのままソースに入れて検査する
   // (チュートリアルの「分析」の 2 行を貼ると「意図行の中にブロックは書けません」になった。第 7 回評価)
   if (/^(データ|列挙|動作|画面|分析|役割|確かめる|関数) \S/.test(text0.trim()) && text0.trim().includes("\n")) {
@@ -756,6 +783,7 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     }
     if (ds.length === 1 && !typeOk && /にする$/.test(text) && !/^(?:空|任意|省|なくて|無くて|必須)/.test(m[3].trim())) {
       const cur = ds[0].fields.find((f: any) => f.name === fn).type;
+      if (cur === m[3].trim()) return { ok: true, done: `「${ds[0].name}」の「${fn}」は既に ${cur} です` };
       throw new Error(`「${m[3].trim()}」という型はありません(今は ${cur})。選択肢の型にするなら、先に 列挙「${m[3].trim()}」を作る(…) と書きます。項目の名前を変えるときは「${ds[0].name}の「${fn}」を「${m[3].trim()}」に変える」と書きます`);
     }
     if (ds.length === 1 && typeOk) {
@@ -774,6 +802,16 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
         if (h !== al[a.line - 1]) {
           al[a.line - 1] = h;
           write(a.file, al.join("\n"));
+          // 確かめるの呼び出しの値も、新しい型に合う値にする(列挙にしたら "" のままで通らなかった。第 7 回評価)
+          const idx = (a.params ?? []).findIndex((p: any) => p.name === fn);
+          const enumVals: string[] | undefined = o.enums?.[t];
+          if (idx >= 0)
+            dropScenarioArg(a.name, idx, (v) => {
+              if (enumVals) return enumVals.includes(v.replace(/^"|"$/g, "")) ? v : sampleValue(o, t);
+              if (/^(整数|金額)/.test(t)) return /^-?\d+$/.test(v) ? v : "0";
+              if (t === "文字列") return /^".*"$/.test(v) ? v : `"${v.replace(/"/g, "")}"`;
+              return sampleValue(o, t);
+            });
         }
       }
       return changed(o, `「${D.name}」の「${fn}」を ${t} にしました`);
@@ -821,6 +859,10 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       caps = [mm[2]];
     }
     if (!caps.length && (mm = /^(?:役割)?「?(.+?)」?に(.+?)の全員の分を見せる$/.exec(text)) && role(mm[1]) && decl(o, "data", mm[2].trim())) caps = [`全件閲覧.${mm[2].trim()}`];
+    // 全件閲覧を日本語で: 課長に商談の全件閲覧を許可する / 監督は全員の日報を見られる(第 7 回評価: 読めなかった)
+    if (!caps.length && (mm = /^(?:役割)?「?(.+?)」?に「?(.+?)」?の(?:全件閲覧|全件の閲覧|全員分の閲覧|全部の閲覧)(?:の権限)?を?(?:許可|与え|許)(?:する|る|す)?$/.exec(text)) && role(mm[1]) && decl(o, "data", mm[2].trim())) caps = [`全件閲覧.${mm[2].trim()}`];
+    if (!caps.length && (mm = /^(?:役割)?「?(.+?)」?(?:は|が|に)(?:全員|みんな|全部|ほかの人|他の人)(?:の分)?の「?(.+?)」?(?:も)?を?(?:見|閲覧)(?:でき|られ|せ)る(?:ように(?:する|したい))?$/.exec(text)) && role(mm[1]) && decl(o, "data", mm[2].trim())) caps = [`全件閲覧.${mm[2].trim()}`];
+    if (!caps.length && (mm = /^(?:役割)?「?(.+?)」?(?:は|が)「?(.+?)」?を(?:全件|全部|全員分)(?:見|閲覧)(?:でき|られ)る(?:ように(?:する|したい))?$/.exec(text)) && role(mm[1]) && decl(o, "data", mm[2].trim())) caps = [`全件閲覧.${mm[2].trim()}`];
     if (caps.length && mm) {
       const r = role(mm[1]);
       const now: string[] = r.caps ?? [];
@@ -1072,8 +1114,8 @@ function fillSeed(o: any, dn: string, fn: string, t: string): void {
   }
   if (changed) writeRaw("seed.json", JSON.stringify(seed, null, 2) + "\n");
 }
-/** 確かめるの行の「動作名(…)」の呼び出しから、i 番目の値を外す */
-function dropScenarioArg(act: string, idx: number): void {
+/** 確かめるの行の「動作名(…)」の呼び出しから、i 番目の値を外す(replace を渡すと、外さずに置き換える) */
+function dropScenarioArg(act: string, idx: number, replace?: (v: string) => string): void {
   const o = outline();
   for (const f of srcFiles(o)) {
     const t = read(f);
@@ -1103,7 +1145,8 @@ function dropScenarioArg(act: string, idx: number): void {
             }
             parts.push(cur);
             if (idx >= parts.length) return l;
-            parts.splice(idx, 1);
+            if (replace === undefined) parts.splice(idx, 1);
+            else parts[idx] = replace(parts[idx].trim());
             return l.slice(0, start) + parts.map((x) => x.trim()).join(", ") + l.slice(i);
           }
         }
@@ -1286,6 +1329,7 @@ function undo(): boolean {
   if (!last) return false;
   while (history.length && history[history.length - 1].g === last.g) {
     const h = history.pop()!;
+    wroteTime = Date.now();
     writeFileSync(h.raw ? h.file : srcPath(h.file), h.text);
   }
   return true;
@@ -1295,6 +1339,8 @@ function undo(): boolean {
 let previewPort = 0;
 let preview: ChildProcess | null = null;
 let devLog = "";
+/** 確かめるの結果(または誤り)が最後に出た時刻 */
+let checksTime = 0;
 async function freePort(): Promise<number> {
   return new Promise((ok, ng) => {
     const s = netServer();
@@ -1315,7 +1361,9 @@ async function startPreview(): Promise<void> {
     stdio: ["ignore", "pipe", "pipe"],
   });
   const keep = (b: Buffer) => {
-    devLog = (devLog + b.toString("utf8")).slice(-200_000);
+    const chunk = b.toString("utf8");
+    devLog = (devLog + chunk).slice(-200_000);
+    if (/すべて確かめました|\d+ 件が期待と違いました|エラー\[/.test(chunk)) checksTime = Date.now();
   };
   preview.stdout?.on("data", keep);
   preview.stderr?.on("data", keep);
@@ -1411,7 +1459,9 @@ function state(): any {
   // アプリの起動中に試した行(fetch failed)は、失敗ではなく「起動中」と出す(✗ が並んで不安になった。第 7 回評価)
   const starting = keep.some((l) => /fetch failed|ECONNREFUSED/.test(l));
   const shown = starting ? ["アプリを起動し直しています。少し待つと、もう一度試します…"] : keep;
-  const checks = names.size === 0 ? { lines: [], ok: null } : { lines: shown, ok: starting ? null : keep.some((l) => l.trim().startsWith("✗")) ? false : raw.ok };
+  // 直した後、試し直すまでの間は前の結果だと分かるようにする(名前を変えた後に古い名前の結果が残った。第 7 回評価)
+  const stale = previewAlive && o.ok && wroteTime > checksTime && Date.now() - wroteTime < 90_000;
+  const checks = names.size === 0 ? { lines: [], ok: null } : { lines: shown, stale, ok: starting || stale ? null : keep.some((l) => l.trim().startsWith("✗")) ? false : raw.ok };
   // アプリが起動に失敗しているとき(初期データの誤りなど)は、その理由を出す。「動いています」と出していた(第 7 回評価)
   const lastErr = Math.max(devLog.lastIndexOf("エラー["), devLog.lastIndexOf("初期データの誤り"));
   const lastOk = devLog.lastIndexOf("確かめる「") > lastErr ? devLog.lastIndexOf("確かめる「") : devLog.search(/http:\/\/127\.0\.0\.1:\d+\/[^\n]*$/m);

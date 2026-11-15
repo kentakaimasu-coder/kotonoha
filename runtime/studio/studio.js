@@ -95,8 +95,10 @@ function renderAll() {
   $("app-name").textContent = S.outline?.app ?? "";
   const errs = (S.outline?.diagnostics ?? []).filter((d) => d.severity === "error").length;
   const st = $("status");
-  st.textContent = errs === 0 ? "✓ 検査に合格" : `✗ 問題 ${errs} 件`;
-  st.className = "pill " + (errs === 0 ? "ok" : "err");
+  // 確かめるが ✗ のときは、検査に合格でもそう出す(「✓ 検査に合格」のままで迷った。第 7 回評価)
+  const ng = errs === 0 && S.checks?.ok === false ? (S.checks.lines ?? []).filter((l) => l.trim().startsWith("✗")).length : 0;
+  st.textContent = errs > 0 ? `✗ 問題 ${errs} 件` : ng > 0 ? `✓ 検査に合格・確かめる ✗ ${ng} 件` : "✓ 検査に合格";
+  st.className = "pill " + (errs > 0 ? "err" : ng > 0 ? "warn" : "ok");
   $("undo").disabled = !S.canUndo;
   $("ask-target").textContent = sel.kind === "screen" ? `(入れ先: 画面「${sel.name}」)` : sel.kind === "scenario" ? `(入れ先: 確かめる「${sel.name}」)` : "";
   renderTree();
@@ -531,6 +533,7 @@ function renderSide() {
   if (!c.lines.length) ch.append(el("li", { text: S.previewPort ? "試しています…(保存すると自動で試します)" : "まだ試していません" }));
   // 検査に合格していない間は試し直せないので、前の結果だと分かるようにする(第 5 回評価: 古い結果が出続けた)
   else if (S.outline && !S.outline.ok) ch.append(el("li", { class: "ng", text: "検査に合格していないので、これは前に試した結果です。下の「問題」を直すと試し直します" }));
+  else if (c.stale) ch.append(el("li", { class: "head", text: "直したので試し直しています…(下は直す前の結果)" }));
   for (const l of c.lines) {
     const t = l.trim();
     ch.append(el("li", { class: t.startsWith("✓") ? "ok" : t.startsWith("✗") ? "ng" : "head", text: t }));

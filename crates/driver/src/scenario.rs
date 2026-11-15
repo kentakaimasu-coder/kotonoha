@@ -235,6 +235,16 @@ impl Ctx<'_> {
                     }
                 },
             };
+            // 何も返さない動作に名前は付けられない(実行すると 404 になり、原因が分からなかった。第 7 回評価)
+            if let (Some(l), None) = (&saved, &sig.ret) {
+                self.err(
+                    span,
+                    format!(
+                        "動作 `{name}` は何も返さないので、`成功({l})` で名前を付けられません。動作の最後の行を `…を登録(…) を返す` にし、1 行目の終わりに `-> 識別子` を付けます(名前が要らなければ `→ 成功` と書きます)"
+                    ),
+                );
+                return None;
+            }
             let who = self.person(who, span)?;
             if let Some(l) = saved {
                 self.labels.insert(l);

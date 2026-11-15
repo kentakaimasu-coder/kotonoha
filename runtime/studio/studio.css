@@ -45,6 +45,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .pill { font-size: 0.85rem; font-weight: 700; padding: 4px 12px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
 .pill.ok { background: var(--ok-soft); color: var(--ok); }
 .pill.err { background: var(--err-soft); color: var(--err); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
 
 /* 日本語で指示 */
 .ask { padding: 14px 20px 6px; background: var(--surface); border-bottom: 1px solid var(--line); }

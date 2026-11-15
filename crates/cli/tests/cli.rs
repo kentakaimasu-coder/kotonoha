@@ -806,3 +806,22 @@ fn publish_usage_log_launchers_and_personal_info_warning() {
     let (c, _, _) = koto(&root, &["publish"]);
     assert_ne!(c, 0);
 }
+
+#[test]
+fn round7_scenario_label_on_action_without_result_is_explained() {
+    // 何も返さない動作に `→ 成功(名前)` を付けると、実行時の 404 ではなく検査で分かる言葉にする(第 7 回評価)
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("round7_label");
+    let _ = std::fs::remove_dir_all(&root);
+    let (c, _, err) = koto(Path::new("."), &["init", root.to_str().unwrap(), "--template", "予約受付"]);
+    assert_eq!(c, 0, "{err}");
+    let app = root.join("src/app.koto");
+    let s = std::fs::read_to_string(&app).unwrap()
+        + "\n動作 空にする(枠ID: 識別子):\n    枠 = 枠を取得(枠ID)\n    枠.予約数 = 0\n\n確かめる 空にする流れ:\n    受付(受付係)が 枠を追加(\"回\", 2026-12-05 19:00, 2, 0) → 成功(回)\n    受付(受付係)が 空にする(回) → 成功(空)\n";
+    std::fs::write(&app, s).unwrap();
+    let (c, out, err) = koto(&root, &["check"]);
+    assert_ne!(c, 0);
+    assert!(
+        format!("{out}{err}").contains("何も返さないので、`成功(空)` で名前を付けられません"),
+        "{out}{err}"
+    );
+}

@@ -336,3 +336,33 @@ test("日本語の指示(第 8 回の改善): 決まった名前の集計・権�
   assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
   assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
 });
+
+test("日本語の指示(第 7 回評価の残り): 全件閲覧の言い方・新しい順・型を列挙にすると確かめるの値もそろう・表示はボタンの上", async () => {
+  // 全件閲覧を日本語で
+  let j: any = await (await api("/api/instruct", { text: "店長にレッスンの全件閲覧を許可する" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /役割 店長:\n    権限 = \[[^\]]*全件閲覧\.レッスン/);
+  j = await (await api("/api/instruct", { text: "店長は全員の申込を見られる" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /役割 店長:\n    権限 = \[[^\]]*全件閲覧\.申込/);
+  // 「新しい順」だけでも、日時の項目で並べる
+  j = await (await api("/api/instruct", { text: "予約を新しい順に一覧表示", screen: "自分の予約" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /予約を予約日時の新しい順に一覧表示/);
+  // 型を列挙にすると、確かめるの "" も列挙の値になる
+  j = await (await api("/api/instruct", { text: "レッスンに「天気」を追加" })).json();
+  assert.match(src(), /レッスンを追加\("確かめる回"[^)]*""\)/);
+  j = await (await api("/api/instruct", { text: "列挙「天気の種類」を作る(晴れ、曇り、雨)" })).json();
+  j = await (await api("/api/instruct", { text: "レッスンの「天気」を「天気の種類」にする" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /    天気: 天気の種類/);
+  assert.match(src(), /レッスンを追加\("確かめる回"[^)]*"晴れ"\)/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // 同じ型にする指示は、そのままと答える
+  j = await (await api("/api/instruct", { text: "レッスンの「天気」を「天気の種類」にする" })).json();
+  assert.match(j.result.done, /既に 天気の種類/);
+  // 詳細画面の「…を表示」は、ボタンの上に入る
+  j = await (await api("/api/instruct", { text: "レッスンの天気を表示", screen: "レッスン詳細" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /画面 レッスン詳細:\n(    .*\n)*    レッスンの天気を表示\n    「1名で予約」を押すと/);
+});
