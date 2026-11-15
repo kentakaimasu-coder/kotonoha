@@ -113,9 +113,14 @@ let seedRows = null; // 編集中の表(保存するまで)
 /** 動いているか・アプリを開くのリンク(3 秒ごとの読み直しでも更新する。「動いています」なのに押せなかった。第 7 回評価) */
 function renderRunStatus() {
   if (!S || S.home) return;
-  $("run-state").textContent = S.running ? "動いています。「アプリを開く」でブラウザの別のタブに出ます(ログインは「名前を入れてすぐ入る」)" : S.previewNote || "止まっています";
+  $("run-state").textContent = S.devError
+    ? `アプリを起動できません: ${S.devError}`
+    : S.running
+      ? "動いています。「アプリを開く」でブラウザの別のタブに出ます(ログインは「名前を入れてすぐ入る」)"
+      : S.previewNote || "止まっています";
+  $("run-state").className = S.devError ? "msg err" : "help";
   const a = $("run-open");
-  if (S.running && S.previewPort) a.href = `http://127.0.0.1:${S.previewPort}/`;
+  if (S.running && S.previewPort && !S.devError) a.href = `http://127.0.0.1:${S.previewPort}/`;
   else a.removeAttribute("href");
   $("run-stop").disabled = !S.running;
   $("run-start").disabled = !!S.running;
@@ -179,9 +184,17 @@ $("seed-paste-apply").addEventListener("click", async () => {
     $("seed-msg").className = "msg err";
     return;
   }
-  const head = lines[0].split(/\t|,/).map((x) => x.trim());
+  // Excel からの貼り付けはタブ区切り。タブが無いときだけカンマで区切る(「1,200」で列がずれた。第 7 回評価)
+  const sep = lines[0].includes("\t") ? "\t" : ",";
+  const head = lines[0].split(sep).map((x) => x.trim());
+  const bad = lines.slice(1).findIndex((l) => l.split(sep).length !== head.length);
+  if (bad >= 0) {
+    $("seed-msg").textContent = `${bad + 2} 行目の列の数(${lines[bad + 1].split(sep).length})が、1 行目の項目の数(${head.length})と合いません。Excel から表をそのままコピーして貼り付けてください`;
+    $("seed-msg").className = "msg err";
+    return;
+  }
   const before = seedRows.rows;
-  seedRows.rows = lines.slice(1).map((l) => Object.fromEntries(l.split(/\t|,/).map((v, i) => [head[i], v.trim()]).filter(([k]) => k)));
+  seedRows.rows = lines.slice(1).map((l) => Object.fromEntries(l.split(sep).map((v, i) => [head[i], v.trim()]).filter(([k]) => k)));
   $("seed-paste").value = "";
   await saveSeed();
   // 入れられなかったときは、貼り付けた表と元の行を戻す

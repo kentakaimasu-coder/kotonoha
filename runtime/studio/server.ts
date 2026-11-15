@@ -118,7 +118,8 @@ function guessType(name: string, o: any): string {
   if (n === "ID" || (ref && (o.decls ?? []).some((d: any) => d.kind === "data" && d.name === ref))) return "識別子";
   if (/日時$|時刻$/.test(n)) return "日時";
   if (/日$|日付$|期限$/.test(n)) return "日付";
-  if (/(料金|金額|価格|家賃|代金|費$|額$)/.test(n)) return "金額";
+  if (/(料金|金額|価格|単価|家賃|代金|料$|費$|額$)/.test(n)) return "金額";
+  if (/(納期|期日|締切|締め切り|予定日|誕生日)$/.test(n)) return "日付";
   if (/(人数|数$|数量|定員|回数|点数|年齢|順番)/.test(n)) return "整数";
   if (/メール/.test(n)) return "メール";
   if (o.enums && n in o.enums) return n;
@@ -468,7 +469,10 @@ function apply(op: Op): { file: string; line: number } | null {
         }
       }
       const at = addLine(d, `${name}: ${t}`);
-      if (!/^選択</.test(t)) extendRegistrations(d.name, name, t);
+      if (!/^選択</.test(t)) {
+        extendRegistrations(d.name, name, t);
+        fillSeed(o, d.name, name, t);
+      }
       return at;
     }
     case "add_enum": {
@@ -750,6 +754,10 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     } catch {
       typeOk = false;
     }
+    if (ds.length === 1 && !typeOk && /にする$/.test(text) && !/^(?:空|任意|省|なくて|無くて|必須)/.test(m[3].trim())) {
+      const cur = ds[0].fields.find((f: any) => f.name === fn).type;
+      throw new Error(`「${m[3].trim()}」という型はありません(今は ${cur})。選択肢の型にするなら、先に 列挙「${m[3].trim()}」を作る(…) と書きます。項目の名前を変えるときは「${ds[0].name}の「${fn}」を「${m[3].trim()}」に変える」と書きます`);
+    }
     if (ds.length === 1 && typeOk) {
       const D = ds[0];
       const old = D.fields.find((f: any) => f.name === fn).type;
@@ -773,13 +781,13 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   }
   // 名前を変える(第 5 回評価: ひな形の「枠」を自分の言葉にする方法が無かった)
   //   枠の「定員」を「人数」に変える / 「枠」を「レッスン」に変える / 枠の名前をレッスンに変える
-  if ((m = cmd(/^(?:データ)?「?(.+?)」?の(?:項目)?「(.+?)」を「(.+?)」に(?:名前を)?(?:変える|かえる|変更(?:する)?|直す|する)$/.exec(text))) && decl(o, "data", m[1].trim())) {
+  if ((m = cmd(/^(?:データ)?「?(.+?)」?の(?:項目)?「(.+?)」を「(.+?)」に(?:名前を)?(?:変える|かえる|変更(?:する)?|直す)$/.exec(text))) && decl(o, "data", m[1].trim())) {
     renameField(o, m[1].trim(), m[2].trim(), m[3].trim());
     return changed(o, `「${m[1].trim()}」の項目「${m[2].trim()}」を「${m[3].trim()}」に変えました`);
   }
   if (
     (m = cmd(/^(?:データ|画面|動作|役割|列挙|確かめる)?「?(.+?)」?の名前を「?(.+?)」?に(?:変える|かえる|変更(?:する)?|直す|する)$/.exec(text))) ||
-    (m = cmd(/^(?:データ|画面|動作|役割|列挙|確かめる)?「([^「」]+?)」を「([^「」]+?)」に(?:名前を)?(?:変える|かえる|変更(?:する)?|直す|する)$/.exec(text))) ||
+    (m = cmd(/^(?:データ|画面|動作|役割|列挙|確かめる)?「([^「」]+?)」を「([^「」]+?)」に(?:名前を)?(?:変える|かえる|変更(?:する)?|直す)$/.exec(text))) ||
     (m = cmd(/^(?:データ|画面|動作|役割|列挙|確かめる)?「?(.+?)」?を「?(.+?)」?に(?:名前を)?(?:変える|かえる|変更(?:する)?|直す)$/.exec(text)))
   ) {
     const [from, to] = [m[1].trim(), m[2].trim()];
@@ -1043,6 +1051,27 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   const at = apply({ op: "add_line", kind: "screen", name: target.name, text });
   return checked(at, `画面「${target.name}」に入れました${guessed ? "(別の画面に入れたいときは、左の一覧で画面を選んでから送ってください)" : ""}`, o, text);
 }
+/** 必須の項目を足したら、初期データの行に型に合った仮の値を入れる(入れないとアプリが起動できなかった。第 7 回評価) */
+function fillSeed(o: any, dn: string, fn: string, t: string): void {
+  const sp = join(PROJECT, "seed.json");
+  if (!existsSync(sp)) return;
+  let seed: any;
+  try {
+    seed = JSON.parse(readFileSync(sp, "utf8"));
+  } catch {
+    return;
+  }
+  const rows = seed?.[dn];
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+  const v = /^(整数|金額)/.test(t) ? 0 : t === "真偽" ? false : t === "日付" ? today : t === "日時" ? `${today}T09:00:00+09:00` : o.enums?.[t] ? o.enums[t][0] : t === "メール" ? "example@example.com" : t === "URL" ? "https://example.com/" : "未設定";
+  let changed = false;
+  for (const r of rows) if (r && typeof r === "object" && r[fn] === undefined) {
+    r[fn] = v;
+    changed = true;
+  }
+  if (changed) writeRaw("seed.json", JSON.stringify(seed, null, 2) + "\n");
+}
 /** 確かめるの行の「動作名(…)」の呼び出しから、i 番目の値を外す */
 function dropScenarioArg(act: string, idx: number): void {
   const o = outline();
@@ -1280,6 +1309,8 @@ async function startPreview(): Promise<void> {
   // 起こし直すときも同じポートを使う(番号が変わって、開いていたタブがつながらなくなった。第 7 回評価)
   if (!previewPort) previewPort = await freePort();
   preview = spawn(KOTO, ["-C", PROJECT, "dev", "--port", String(previewPort)], {
+    // 止めるときに裏のアプリ(backend・画面)ごと止められるよう、プロセスのまとまりにする(止めても残った。第 7 回評価)
+    detached: process.platform !== "win32",
     env: { ...process.env, KOTONOHA_DEV_FRAME_ANCESTOR: `http://127.0.0.1:${PORT} http://localhost:${PORT}` },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -1297,6 +1328,18 @@ async function startPreview(): Promise<void> {
     restarts += 1;
     setTimeout(() => void startPreview(), Math.min(10_000, 1000 * restarts));
   });
+}
+/** koto dev と、その下で動くアプリ(backend・画面)をまとめて止める */
+function killPreview(): void {
+  if (!preview?.pid) return;
+  try {
+    if (process.platform !== "win32") process.kill(-preview.pid, "SIGTERM");
+    else spawnSync("taskkill", ["/pid", String(preview.pid), "/T", "/F"]);
+  } catch {
+    try {
+      preview.kill();
+    } catch {}
+  }
 }
 let previewAlive = false;
 let restarts = 0;
@@ -1369,7 +1412,13 @@ function state(): any {
   const starting = keep.some((l) => /fetch failed|ECONNREFUSED/.test(l));
   const shown = starting ? ["アプリを起動し直しています。少し待つと、もう一度試します…"] : keep;
   const checks = names.size === 0 ? { lines: [], ok: null } : { lines: shown, ok: starting ? null : keep.some((l) => l.trim().startsWith("✗")) ? false : raw.ok };
-  return { outline: o, sources, previewPort: previewAlive ? previewPort : 0, previewNote: previewAlive ? "" : stopping ? "アプリは止めてあります(「動かす」で動きます)" : "表示用のサーバーを起動しています…", running: previewAlive, checks, canUndo: history.length > 0, theme, seed: seedState(o), published: existsSync(join(PROJECT, "公開用", "点検の結果.md")) ? readFileSync(join(PROJECT, "公開用", "点検の結果.md"), "utf8") : "" };
+  // アプリが起動に失敗しているとき(初期データの誤りなど)は、その理由を出す。「動いています」と出していた(第 7 回評価)
+  const lastErr = Math.max(devLog.lastIndexOf("エラー["), devLog.lastIndexOf("初期データの誤り"));
+  const lastOk = devLog.lastIndexOf("確かめる「") > lastErr ? devLog.lastIndexOf("確かめる「") : devLog.search(/http:\/\/127\.0\.0\.1:\d+\/[^\n]*$/m);
+  const devError = previewAlive && lastErr >= 0 && lastErr > Math.max(lastOk, devLog.lastIndexOf("ソースの変更を"))
+    ? devLog.slice(lastErr).split("\n").filter((l) => l.trim() && !/^\s+at /.test(l)).slice(0, 3).join(" ").slice(0, 400)
+    : "";
+  return { outline: o, sources, devError, previewPort: previewAlive ? previewPort : 0, previewNote: previewAlive ? "" : stopping ? "アプリは止めてあります(「動かす」で動きます)" : "表示用のサーバーを起動しています…", running: previewAlive, checks, canUndo: history.length > 0, theme, seed: seedState(o), published: existsSync(join(PROJECT, "公開用", "点検の結果.md")) ? readFileSync(join(PROJECT, "公開用", "点検の結果.md"), "utf8") : "" };
 }
 
 const server = createServer(async (req, res) => {
@@ -1434,9 +1483,7 @@ const server = createServer(async (req, res) => {
         if (url.pathname === "/api/app") {
           if (b.action === "stop") {
             stopping = true;
-            try {
-              preview?.kill();
-            } catch {}
+            killPreview();
             previewAlive = false;
           } else if (b.action === "start" && !previewAlive) {
             stopping = false;
@@ -1503,9 +1550,7 @@ const server = createServer(async (req, res) => {
 const parent = Number(process.env.KOTONOHA_EXIT_WITH_PARENT ?? 0);
 const stop = () => {
   stopping = true;
-  try {
-    preview?.kill();
-  } catch {}
+  killPreview();
   process.exit(0);
 };
 process.on("SIGINT", stop);

@@ -67,6 +67,10 @@ test("空のフォルダで開くと「新しいアプリを作る」。ひな�
   await page.click("#seed-paste-apply");
   await page.waitForSelector("#seed-msg.err");
   assert.match(await page.textContent("#seed-msg") ?? "", /整数/);
+  // 列の数が合わない行は断る。タブ区切りなら「1,200」のカンマで列がずれない
+  await page.fill("#seed-paste", "名前\t定員\nずれ\t3\t余分");
+  await page.click("#seed-paste-apply");
+  await page.waitForFunction(() => /列の数/.test(document.querySelector("#seed-msg")?.textContent ?? ""));
 
   // アプリを開く(動いていれば URL が入る)
   await page.waitForFunction(() => !!document.querySelector("#run-open")?.getAttribute("href"), null, { timeout: 120000 });

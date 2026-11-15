@@ -82,15 +82,38 @@ if (!file) {
   console.error("使い方: node tools/seed.ts seed.json");
   process.exit(2);
 }
-const data = JSON.parse(readFileSync(file, "utf8"));
+let data: Record<string, unknown>;
+try {
+  data = JSON.parse(readFileSync(file, "utf8"));
+} catch (e) {
+  console.error(`初期データ ${file} を読めません(JSON の形が正しくありません): ${(e as Error).message}`);
+  process.exit(1);
+}
 const db = await openDb(process.env.KOTONOHA_DB ?? "data/app.sqlite", tables);
 let added = 0, total = 0;
+// 誤りは、どのデータの何行目のどの項目かを日本語で 1 行にして出す(第 7 回評価: 分かりにくい英語の例外で止まった)
+const fail = (msg: string): never => {
+  console.error(`初期データの誤り: ${msg}`);
+  process.exit(1);
+};
 await db.transaction(async (c) => {
   for (const [table, rows] of Object.entries(data)) {
     const fields = app.schema.entities[table];
-    if (!fields) throw new Error(`未知のデータ ${table}`);
+    if (!fields) fail(`「${table}」というデータはありません(データの名前を変えたときは、初期データの表も確かめてください)`);
     for (const [i, row] of (rows as Record<string, unknown>[]).entries()) {
-      const vals = fields.map((f) => toSql(decodeInput(row[f.name], f.type, app.schema, `${table}[${i}].${f.name}`), f.type));
+      for (const f of fields) {
+        const optional = typeof f.type === "object" && f.type !== null && (f.type as { kind?: string }).kind === "optional";
+        if (!optional && f.name !== "ID" && (row[f.name] === undefined || row[f.name] === null)) {
+          fail(`「${table}」の ${i + 1} 行目に「${f.name}」がありません(足した項目は、初期データの表で値を入れてください)`);
+        }
+      }
+      const vals = fields.map((f) => {
+        try {
+          return toSql(decodeInput(row[f.name], f.type, app.schema, `${table}[${i}].${f.name}`), f.type);
+        } catch (e) {
+          return fail(`「${table}」の ${i + 1} 行目の「${f.name}」: ${(e as Error).message.replace(/^.*?: /, "")}`);
+        }
+      });
       // 同じ ID が既にあれば飛ばす(何度実行しても同じ結果になる)
       added += await c.run(`INSERT INTO ${q(table)} (${fields.map((f) => q(f.name)).join(", ")}) VALUES (${fields.map(() => "?").join(", ")}) ON CONFLICT DO NOTHING`, vals);
       total += 1;

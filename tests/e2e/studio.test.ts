@@ -225,7 +225,10 @@ test("日本語の指示(第 7 回の改善): 権限・役割・型・項目を�
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
   assert.match(src(), /役割 店長:\n    権限 = \[[^\]]*読取/);
   // 型を変える(登録の動作の引数もそろう)。同じ型なら名前の変更
+  // 「…にする」は型の変更だけ。型でない言葉なら、名前の変え方を案内する(第 7 回評価: 型のつもりが名前が変わった)
   j = await (await api("/api/instruct", { text: "予約の「人数」を「数」にする" })).json();
+  assert.match(j.error ?? "", /「数」という型はありません.*に変える/);
+  j = await (await api("/api/instruct", { text: "予約の「人数」を「数」に変える" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
   assert.match(src(), /    数: 整数/);
   // 項目を消す(登録の行からも外す。「人数」の引数は壊さない)
@@ -263,6 +266,13 @@ test("日本語の指示(第 7 回の改善): 権限・役割・型・項目を�
 test("日本語の指示(第 8 回の改善): 決まった名前の集計・権限の名前をそのまま・項目を消すと確かめるもそろう", async () => {
   let j: any = await (await api("/api/instruct", { text: "レッスンに「会場」を追加" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  // 必須の項目を足すと、初期データの行にも仮の値が入る(入れないとアプリが起動できなかった。第 7 回評価)
+  const seed = JSON.parse(readFileSync(join(dir, "seed.json"), "utf8"));
+  assert.ok(seed["レッスン"].length > 0 && seed["レッスン"].every((r: any) => r.会場 === "未設定"), JSON.stringify(seed));
+  // 名前から型を決める(単価は金額、納期は日付)
+  j = await (await api("/api/instruct", { text: "レッスンに「単価」を追加" })).json();
+  assert.match(src(), /    単価: 金額/);
+  j = await (await api("/api/instruct", { text: "レッスンの単価を消す" })).json();
   // 決まった名前・列の集計(分析)を日本語で
   j = await (await api("/api/instruct", { text: "分析「会場別の状況」を作る(レッスンの予約数を会場ごとに合計、列: 会場・回数・予約数)" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
