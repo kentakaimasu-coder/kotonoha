@@ -547,7 +547,8 @@ export function App(p: { init: Init; screens: Record<string, ScreenDef> }) {
         "nav",
         { "aria-label": "画面" },
         p.init.nav
-          .filter((n) => n === p.init.screen || !p.screens[n]?.needs || p.screens[n].needs!.some((x) => canUse(p.init.caps ?? null, x)))
+          // 操作だけの画面は、ログインしていない人のメニューには出さない(使えないのに「管理」が出た。第 8 回評価)
+          .filter((n) => n === p.init.screen || !p.screens[n]?.needs || ((p.init.caps ?? null) !== null && p.screens[n].needs!.some((x) => canUse(p.init.caps ?? null, x))))
           .filter((n) => n === p.init.screen || !p.screens[n]?.only || (p.init.caps ?? null) === null || p.screens[n].only!.some((rc) => rc.every((c) => p.init.caps!.includes(c))))
           .map((n) => h("a", { key: n, href: screenHref(n), "aria-current": n === p.init.screen ? "page" : undefined }, n)),
       ),

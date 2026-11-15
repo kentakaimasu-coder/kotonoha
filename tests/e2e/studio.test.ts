@@ -451,6 +451,14 @@ test("第 8 回評価の途中の修正: 動作の引数の順番(フォーム�
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
   assert.match(src(), /画面 管理:\n(    .*\n)*    この画面は店長と受付係だけ\n/);
   assert.equal(src().match(/この画面は.*だけ/g)!.length, 1);
+  // 項目を消すと、その値を確かめるだけの行も外れる
+  j = await (await api("/api/instruct", { text: "レッスンに「最低人数」を追加" })).json();
+  j = await (await api("/api/op", { op: "add_line", kind: "action", name: "レッスンを追加", text: '最低人数 > 0 を確認 または 失敗("定員不正")' })).json();
+  assert.match(src(), /最低人数 > 0 を確認/);
+  j = await (await api("/api/instruct", { text: "レッスンの最低人数を消す" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.doesNotMatch(src(), /最低人数/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
   // 初期データの日時は Excel の書き方(2026/11/15 11:05)でも入る
   const rows = seed["レッスン"].map((r: any, i: number) => ({ ...r, 開始日時: i === 0 ? "2026/11/15 11:05" : "2026年12月1日 9:30" }));
   j = await (await api("/api/seed", { data: "レッスン", rows })).json();

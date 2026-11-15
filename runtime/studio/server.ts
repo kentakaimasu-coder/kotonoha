@@ -1435,7 +1435,10 @@ function deleteField(o: any, D: any, fn: string): any {
   const i = ls.findIndex((l, k) => k >= D.line && k < D.end && new RegExp(`^\\s*${reEsc(fn)}\\s*:`).test(l));
   ls.splice(i, 1);
   write(D.file, ls.join("\n"));
-  for (const a of (outline().decls ?? []).filter((x: any) => x.kind === "action")) {
+  for (const an of (outline().decls ?? []).filter((x: any) => x.kind === "action").map((x: any) => x.name)) {
+    // 前の動作の行を消すと位置がずれるので、動作ごとに読み直す
+    const a = (outline().decls ?? []).find((x: any) => x.kind === "action" && x.name === an);
+    if (!a) continue;
     const al = lines(a.file);
     let hit = false;
     for (let k = a.line; k < a.end; k++) {
@@ -1448,7 +1451,17 @@ function deleteField(o: any, D: any, fn: string): any {
     }
     // 引数がもう使われていなければ、引数も消す。確かめるの呼び出しからも、その位置の値を外す
     // (外さないと「引数は 6 個です」で消せなかった。第 7 回評価)
-    const body = al.slice(a.line, a.end).join("\n");
+    // その引数を確かめるだけの行(「作業時間 > 0 を確認 または 失敗(…)」)も、項目と一緒に外す(残った。第 8 回評価)
+    let removed = 0;
+    if (hit) {
+      for (let k = a.end - 1; k >= a.line; k--)
+        // 「作業時間 > 0 を確認 …」のように、その値だけを確かめる行に限る(満席などほかの確認は残す)
+        if (new RegExp(`^\\s*${reEsc(fn)}\\s*(>=|<=|>|<|==|!=|=)\\s*[^\\s]+\\s*を確認`).test(al[k] ?? "")) {
+          al.splice(k, 1);
+          removed++;
+        }
+    }
+    const body = al.slice(a.line, a.end - removed).join("\n");
     let dropIdx = -1;
     if (hit && !new RegExp(`(^|[^\\p{L}\\p{N}_])${reEsc(fn)}([^\\p{L}\\p{N}_]|$)`, "u").test(body)) {
       dropIdx = (a.params ?? []).findIndex((p: any) => p.name === fn);
@@ -1780,7 +1793,7 @@ function state(): any {
   // (最初の URL の行しか見ておらず、確かめるが無いアプリでは直っても「起動できません」が消えなかった。第 8 回評価)
   const lastOk = Math.max(devLog.lastIndexOf("確かめる「"), devLog.lastIndexOf("すべて確かめました"), devLog.lastIndexOf("件が期待と違いました"), devLog.lastIndexOf("web listening on"), devLog.lastIndexOf("  画面:   http://"));
   const devError = devFailure && !previewAlive ? devFailure : previewAlive && lastErr >= 0 && lastErr > Math.max(lastOk, devLog.lastIndexOf("ソースの変更を"))
-    ? devLog.slice(lastErr).split("\n").filter((l) => l.trim() && !/^\s+at /.test(l)).slice(0, 3).join(" ").slice(0, 400)
+    ? devLog.slice(lastErr).split("\n").filter((l) => l.trim() && !/^\s+at /.test(l) && !/koto explain|^エラー \d+ 件、警告|^Node\.js v/.test(l.trim())).slice(0, 3).join(" ").slice(0, 400)
     : "";
   return { outline: o, sources, devError, previewPort: previewAlive ? previewPort : 0, previewNote: previewAlive ? "" : stopping ? "アプリは止めてあります(「動かす」で動きます)" : devFailure ? "アプリを起動できません。直すと起動し直します" : "表示用のサーバーを起動しています…", running: previewAlive, checks, canUndo: history.length > 0, theme, seed: seedState(o), published: existsSync(join(PROJECT, "公開用", "点検の結果.md")) ? readFileSync(join(PROJECT, "公開用", "点検の結果.md"), "utf8") : "" };
 }
