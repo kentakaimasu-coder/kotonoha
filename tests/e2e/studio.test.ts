@@ -302,5 +302,27 @@ test("日本語の指示(第 8 回の改善): 決まった名前の集計・権�
   const k2 = ls2.findIndex((l) => l.trim() === "画面 お知らせ:") + 1;
   j = await (await api("/api/op", { op: "remove_line", file: "src/app.koto", line: k2 + 1, old: ls2[k2] })).json();
   assert.match(j.error ?? "", /最後の 1 行なので消せません/);
+  // 引数に「文字列(任意)」がある動作に項目を足しても、カッコの中に差し込まない
+  j = await (await api("/api/instruct", { text: "データ「申込」を作る(名前: 文字列、要望: 文字列(任意))" })).json();
+  j = await (await api("/api/instruct", { text: "「申し込む」で申込を登録する" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  j = await (await api("/api/instruct", { text: "申込に「人数」を追加" })).json();
+  assert.match(src(), /動作 申し込む\(名前: 文字列, 要望: 選択<文字列>, 人数: 整数\)|動作 申し込む\(名前: 文字列, 要望: 文字列\(任意\), 人数: 整数\)/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // 同じデータの一覧に並び順を足すと、一覧を置き換える(2 つにしない)。画面を選んでいなくても、出している画面が 1 つなら入れる
+  j = await (await api("/api/instruct", { text: "画面「申込一覧」を作る(申込を一覧表示)" })).json();
+  j = await (await api("/api/instruct", { text: "申込を名前順に一覧表示" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /画面 申込一覧:\n    申込を名前順に一覧表示\n/);
+  assert.doesNotMatch(src(), /    申込を一覧表示\n/);
+  // 宣言を何行か貼り付けると、そのままソースに入る
+  j = await (await api("/api/instruct", { text: "分析 申込の数() -> 一覧<記録{名前: 文字列, 件数: 整数, 人数: 整数}>:\n    集計 = \"申込を名前ごとに集計\"" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /分析 申込の数\(\) -> 一覧<記録\{名前: 文字列, 件数: 整数, 人数: 整数\}>:\n    集計 = "申込を名前ごとに集計"/);
+  // 日本語の「…ごとに集計」も、件数と整数の合計の列を作る
+  j = await (await api("/api/instruct", { text: "分析「申込の集計」を作る(申込を名前ごとに集計)" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /分析 申込の集計\(\) -> 一覧<記録\{名前: 文字列, 申込数: 整数, 人数の合計: 整数\}>/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
   assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
 });

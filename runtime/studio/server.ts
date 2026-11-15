@@ -404,7 +404,7 @@ function extendRegistrations(dn: string, fn: string, type: string): string[] {
     const called = srcFiles(o).some((f) => read(f).includes(`を押すと ${a.name}(`));
     if (called || new RegExp(`[(,]\\s*${reEsc(fn)}\\s*:`).test(al[a.line - 1])) continue;
     al[idx] = al[idx].replace(`${dn}を登録(`, `${dn}を登録(${fn}: ${fn}, `).replace(/, \)/, ")");
-    al[a.line - 1] = al[a.line - 1].replace(/\(([^)]*)\)/, (_m, ps: string) => `(${ps.trim() ? ps + ", " : ""}${fn}: ${type})`);
+    al[a.line - 1] = addParam(al[a.line - 1], `${fn}: ${type}`);
     write(a.file, al.join("\n"));
     out.push(a.name);
     // 確かめるの中の呼び出し(位置で渡している)にも、型に合った値を足す
@@ -647,6 +647,15 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   const text = text0.trim().replace(/[。.]$/, "");
   if (!text) throw new Error("指示を書いてください");
   const o = outline();
+  // 宣言(分析・データ・動作 など)を何行か貼り付けたときは、そのままソースに入れて検査する
+  // (チュートリアルの「分析」の 2 行を貼ると「意図行の中にブロックは書けません」になった。第 7 回評価)
+  if (/^(データ|列挙|動作|画面|分析|役割|確かめる|関数) \S/.test(text0.trim()) && text0.trim().includes("\n")) {
+    const block = text0.replace(/\r/g, "").split("\n").map((l) => l.replace(/\s+$/, "")).filter((l, i, a) => l || i < a.length - 1);
+    if (!/:\s*$/.test(block[0])) throw new Error("1 行目は「分析 名前() -> …:」のように「:」で終わります");
+    const body = block.slice(1).map((l) => (l.startsWith("    ") ? l : "    " + l.trim()));
+    const at = addDecl(o, ["action", "data"], [block[0].trim(), ...body]);
+    return checked(at, `ソースに入れました(${block[0].trim().split(/[ (]/)[0]} ${block[0].trim().split(/[ (:]/)[1] ?? ""})`, o, text);
+  }
   const cmd = (m: RegExpExecArray | null) => m;
   let m: RegExpExecArray | null;
   // アプリの名前: アプリの名前を「料理教室」にする(画面のいちばん上に出る)
@@ -679,7 +688,15 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       if (!f) throw new Error(`データ「${dn}」に項目「${fn}」はありません(項目: ${D.fields.map((x: any) => x.name).join("、")})`);
       return f.type.replace(/^選択<(.+)>$/, "$1");
     };
-    const cols: [string, string][] = [[unit, typeOf(unit)], [`${dn}数`, "整数"], ...sums.map((f): [string, string] => [f, /^金額/.test(typeOf(f)) ? "金額" : "整数"])];
+    // 「…ごとに集計」は件数と、整数・金額の項目の合計も出す(画面の集計と同じ。ADR-0128)
+    const autoSums = mm[3]
+      ? []
+      : D.fields.filter((f: any) => f.name !== unit && /^(整数|金額)/.test(f.type)).map((f: any) => f.name);
+    const cols: [string, string][] = [
+      [unit, typeOf(unit)],
+      [`${dn}数`, "整数"],
+      ...[...sums, ...autoSums].map((f): [string, string] => [mm[3] ? f : `${f}の合計`, /^金額/.test(typeOf(f)) ? "金額" : "整数"]),
+    ];
     if (colsPart) {
       const names = splitList(colsPart);
       if (names.length !== cols.length) throw new Error(`列は ${cols.length} 個です(${cols.map((c) => c[0]).join("・")} の順。単位・件数・合計の順に当てはめます)`);
@@ -996,9 +1013,35 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       suggestions: [`${d0}に「メモ」を追加`, `${d0}の「${f0}」を「新しい名前」に変える`, `${d0}を登録できるようにしたい`, `${r0}に${d0}の更新を許可する`, `「${f0}」を空でもよいにする`, `${d0}の「メモ」を消す`],
     };
   }
-  if (!sc) return { ok: false, need: "screen", screens, message: "どの画面に入れますか? 左の一覧で画面を選んでから、もう一度送ってください" };
-  const at = apply({ op: "add_line", kind: "screen", name: sc.name, text });
-  return checked(at, `画面「${sc.name}」に入れました`, o, text);
+  // 画面を選んでいなくても、文のデータを出している画面が 1 つに決まればそこに入れる(先に画面を選ぶと分からなかった。第 7 回評価)
+  let target = sc;
+  let guessed = false;
+  if (!target) {
+    const dn = (o.decls ?? []).filter((d: any) => d.kind === "data").map((d: any) => d.name).sort((a: string, b: string) => b.length - a.length).find((n: string) => text.startsWith(n));
+    const cands = dn ? (o.decls ?? []).filter((d: any) => d.kind === "screen" && (d.lines ?? []).some((l: any) => l.text.startsWith(dn))) : [];
+    if (cands.length === 1) {
+      target = cands[0];
+      guessed = true;
+    }
+  }
+  if (!target) return { ok: false, need: "screen", screens, message: "どの画面に入れますか? 左の一覧で画面を選んでから、もう一度送ってください" };
+  // 同じデータ・同じ絞り込みの一覧があるなら、並び方だけを変える(一覧が 2 つになった。第 7 回評価)
+  const listOf = (t: string) => /^(.+?)(?:のうち(.+?)のもの)?を(?:.+?順に)?一覧表示$/.exec(t);
+  const nl = listOf(text);
+  if (nl) {
+    const old = (target.lines ?? []).find((l: any) => {
+      const ol = listOf(l.text);
+      return ol && ol[1] === nl[1] && (ol[2] ?? "") === (nl[2] ?? "") && l.text !== text;
+    });
+    if (old) {
+      const ls = lines(target.file);
+      ls[old.line - 1] = ls[old.line - 1].replace(old.text, text);
+      write(target.file, ls.join("\n"));
+      return checked({ file: target.file, line: old.line }, `画面「${target.name}」の一覧を「${text}」に変えました(前の一覧と置き換えました)`, o, text);
+    }
+  }
+  const at = apply({ op: "add_line", kind: "screen", name: target.name, text });
+  return checked(at, `画面「${target.name}」に入れました${guessed ? "(別の画面に入れたいときは、左の一覧で画面を選んでから送ってください)" : ""}`, o, text);
 }
 /** 確かめるの行の「動作名(…)」の呼び出しから、i 番目の値を外す */
 function dropScenarioArg(act: string, idx: number): void {
@@ -1040,6 +1083,20 @@ function dropScenarioArg(act: string, idx: number): void {
       .join("\n");
     if (u !== t) write(f, u);
   }
+}
+/** 動作の見出しの引数の終わり(対応する「)」)に引数を足す(「文字列(任意)」の中に差し込んで壊した。第 7 回評価) */
+function addParam(head: string, param: string): string {
+  const open = head.indexOf("(");
+  if (open < 0) return head;
+  let depth = 0;
+  for (let i = open; i < head.length; i++) {
+    if (head[i] === "(") depth++;
+    else if (head[i] === ")" && --depth === 0) {
+      const inner = head.slice(open + 1, i).trim();
+      return head.slice(0, open + 1) + (inner ? inner + ", " : "") + param + head.slice(i);
+    }
+  }
+  return head;
 }
 /** 動作の見出しの行から、名前がちょうど fn の引数を外す(「数」を外すとき「人数」を壊さない) */
 function dropParam(head: string, fn: string): string {
@@ -1115,8 +1172,10 @@ function registration(o: any, ctx: { screen?: string }, text: string, D: any, ac
   const params: { name: string; type: string }[] = [];
   const args: string[] = [];
   for (const f of D.fields.filter((x: any) => x.name !== "ID")) {
+    // 本人を自動で入れるのは、その操作をした人を表す名前の項目だけ(担当者・割当先は入力にする。第 7 回評価)
+    const actor = /(予約|申込|申し込み|記入|送信|作成|登録|注文|依頼|連絡|投稿|報告|記録|受付|出品|回答)者$|^(本人|記入者|送信者|作成者)$/.test(f.name);
     const auto =
-      f.type === "識別子" && !(o.decls ?? []).some((d: any) => d.kind === "data" && `${d.name}ID` === f.name)
+      f.type === "識別子" && actor && !(o.decls ?? []).some((d: any) => d.kind === "data" && `${d.name}ID` === f.name)
         ? "本人"
         : f.type === "日時" && /(登録|作成|受付|申込|予約|記録|連絡|送信|投稿|注文|依頼)日時$/.test(f.name)
           ? "現在日時()"
