@@ -263,7 +263,18 @@ export function DataList(p: { r: LoadResult | undefined; fields: Field[]; tz: st
       rows.map((row, i) =>
         h(
           "tr",
-          { key: row.ID ?? i },
+          {
+            key: row.ID ?? i,
+            // 行のどこを押しても詳細へ(最初の列しか押せなかった。第 9 回評価)。キーボードは最初の列のリンクで
+            onClick: p.link
+              ? (e: { target: unknown }) => {
+                  const t = e.target as { closest?: (s: string) => unknown };
+                  if (t?.closest?.("a")) return;
+                  window.location.href = p.link!(row);
+                }
+              : undefined,
+            style: p.link ? { cursor: "pointer" } : undefined,
+          },
           p.fields.map((f, j) => {
             const v = h(Value, { refs: p.refs, f, v: row[f.name], tz: p.tz });
             // 狭い画面では行をカードにして、各値の前に項目名を出す(data-label)
