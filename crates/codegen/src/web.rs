@@ -192,7 +192,12 @@ fn need_js(ir: &AppIr, action: &str) -> String {
 fn refs_js(ir: &AppIr, fields: &[(String, Type)], loaders: &mut Vec<Value>) -> String {
     let mut parts = Vec::new();
     for (n, t) in fields {
-        let Some(x) = n.strip_suffix("ID") else { continue };
+        // 「現場ID」のほか、集計で列の名前を「現場」に変えた識別子の列も、そのデータの名前で出す(ID の g1 が出た。第 9 回評価)
+        let x = match n.strip_suffix("ID") {
+            Some(x) => x,
+            None if matches!(t, Type::Id) && ir.entities.iter().any(|e| e.name == *n) => n.as_str(),
+            None => continue,
+        };
         // 集計の単位(選択<識別子>)も、そのデータの名前で出す
         if !matches!(t, Type::Id) && !matches!(t, Type::Option(i) if matches!(i.as_ref(), Type::Id)) || x.is_empty() {
             continue;

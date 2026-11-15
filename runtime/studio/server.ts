@@ -750,13 +750,33 @@ function apply(op: Op): { file: string; line: number } | null {
       if (ls[d.end] !== undefined && ls[d.end].trim() === "") n += 1;
       ls.splice(d.line - 1, n);
       write(d.file, ls.join("\n"));
-      // 集計(分析)を消したら、それを出している画面の行も消す
+      // 集計(分析)を消したら、それを出している画面の行も消す。行が無くなった画面は、画面ごと消す
+      // (空の画面が残り「ブロックが空です」になった。第 9 回評価)
       if (op.kind === "analysis") {
         const esc = String(op.name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         for (const f of new Set<string>((o.decls ?? []).map((x: any) => x.file))) {
           const t = read(f);
           const u = t.split("\n").filter((l) => !new RegExp(`^\\s+${esc}を表示\\s*$`).test(l)).join("\n");
           if (u !== t) write(f, u);
+        }
+        // (空の画面は読めないので、文字の並びで探す: 「画面 X:」の下に行が無い、または「この画面は…だけ」しか無い)
+        for (const f of new Set<string>((o.decls ?? []).map((x: any) => x.file))) {
+          const ls = lines(f);
+          let touched = false;
+          for (let k = ls.length - 1; k >= 0; k--) {
+            if (!/^画面\s+\S+\s*:\s*$/.test(ls[k])) continue;
+            let e = k + 1;
+            while (e < ls.length && (/^\s+/.test(ls[e]) || ls[e].trim() === "")) e++;
+            const body = ls.slice(k + 1, e).filter((l) => l.trim() && !l.trim().startsWith("#") && !/^\s+この画面は.+だけ\s*$/.test(l));
+            if (body.length > 0) continue;
+            // 前の空行も 1 つ消す
+            const from = k > 0 && ls[k - 1].trim() === "" ? k - 1 : k;
+            let to = e;
+            while (to > k + 1 && ls[to - 1].trim() === "") to--;
+            ls.splice(from, to - from);
+            touched = true;
+          }
+          if (touched) write(f, ls.join("\n"));
         }
       }
       // 動作を消したら、その動作を呼ぶボタン・フォームの行と、役割の「動作.名前」も消す

@@ -529,6 +529,15 @@ test("第 9 回評価の途中の修正: 取り消せるようにしたい・項
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
   assert.match(src(), /    回数 > 0 を確認 または 失敗\("回数不正"\)\n/);
   assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // 集計だけを出している画面は、集計を消すと画面ごと消える(空の画面を残さない)
+  j = await (await api("/api/instruct", { text: "分析「消す集計」を作る(レッスンを会場ごとに集計)" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  j = await (await api("/api/instruct", { text: "画面「集計だけ」を作る(消す集計を表示)" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  j = await (await api("/api/op", { op: "remove_decl", kind: "analysis", name: "消す集計" })).json();
+  assert.equal(j.ok, true, j.error);
+  assert.doesNotMatch(src(), /画面 集計だけ:|消す集計/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
   // 表を指示の欄に貼ると、初期データの欄を案内する
   j = await (await api("/api/instruct", { text: "名前\t開始日時\n朝\t2026-12-01 10:00" })).json();
   assert.match(j.error ?? "", /これは表のようです/);
