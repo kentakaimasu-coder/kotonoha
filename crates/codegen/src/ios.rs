@@ -97,7 +97,8 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
     }
     for e in &ir.entities {
         m.push_str(&format!("struct {}: Codable, Hashable {{\n", type_name("Entity_", &e.name)));
-        for (n, t) in &e.fields {
+        // 計算項目(ADR-0136)も API の応答に入るので、画面で読めるように持つ
+        for (n, t) in e.fields.iter().map(|(n, t)| (n, t)).chain(e.computed.iter().map(|(n, t, _)| (n, t))) {
             m.push_str(&format!("    let {}: {}\n", bt(n), swift_type(t)));
         }
         m.push_str("}\n\n");

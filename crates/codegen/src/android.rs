@@ -127,7 +127,14 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
         ));
     };
     for e in &ir.entities {
-        record(tn("Entity_", &e.name), &e.fields, &mut m);
+        // 計算項目(ADR-0136)も API の応答に入るので、画面で読めるように持つ
+        let all: Vec<(String, Type)> = e
+            .fields
+            .iter()
+            .cloned()
+            .chain(e.computed.iter().map(|(n, t, _)| (n.clone(), t.clone())))
+            .collect();
+        record(tn("Entity_", &e.name), &all, &mut m);
     }
     for (spec, _) in &ir.queries {
         if let Type::Record(cols) = spec.row_type() {

@@ -31,7 +31,9 @@ fn shop_intents_resolve() {
     let detail = &m.screens[1];
     assert_eq!(detail.input.as_deref(), Some("商品"));
     assert!(matches!(&detail.intents[0].kind, IntentKind::ShowFields { fields, .. } if fields == &["名前", "価格", "在庫"]));
-    assert!(matches!(&detail.intents[1].kind, IntentKind::ButtonInvoke { label, action, args, .. } if label == "購入" && action == "注文する" && args.len() == 2));
+    assert!(
+        matches!(&detail.intents[1].kind, IntentKind::ButtonInvoke { label, action, args, .. } if label == "購入" && action == "注文する" && args.len() == 2)
+    );
     assert_eq!(m.contracts.len(), 3);
     assert!(m
         .contracts
