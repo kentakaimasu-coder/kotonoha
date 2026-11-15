@@ -503,35 +503,113 @@ fn cmd_outline(o: &mut Opts) -> Result<i32, String> {
     Ok(0)
 }
 
-/// 項目名として使っている所だけを置き換える(日本語は空白で区切らないので、前後の助詞・記号で区切りを見る)
-fn replace_word(text: &str, from: &str, to: &str) -> (String, usize) {
+/// 名前の置き換え。注釈(# …)の行は変えない。
+/// - 宣言の名前(field = false): 部分一致で変える(枠ID・枠一覧・枠を追加 も)。ただし直後がひらがな(助詞を除く)なら変えない
+///   (「問い合わせる」が「お迎え連絡る」になった。第 6 回評価)
+/// - 項目の名前(field = true): 前後の助詞・記号で区切りを見る。文字列("…")の中と、列挙の値の行は変えない
+///   (列挙の値「内容が空」だけが変わり、失敗("内容が空") と合わなくなった。第 6 回評価)
+fn rename_text(text: &str, from: &str, to: &str, field: bool) -> (String, usize) {
     const BEFORE: &str = " \t.(,、「のとはが[<=";
     const AFTER: &str = " \t:：)],、.」をがのはでにと順ご+-*/=<>!";
+    const PARTICLES: &str = "をのはがにでとへかもや";
+    let is_hira = |c: char| ('ぁ'..='ゖ').contains(&c);
     let mut out = String::with_capacity(text.len());
     let mut n = 0;
+    let mut in_enum = false;
     for line in text.split_inclusive('\n') {
-        if line.trim_start().starts_with('#') {
+        let t = line.trim_start();
+        if !line.starts_with([' ', '\t']) && !t.is_empty() {
+            in_enum = t.starts_with("列挙 ");
+        }
+        if t.starts_with('#') || (field && in_enum && line.starts_with([' ', '\t'])) {
             out.push_str(line);
             continue;
         }
-        let mut rest = line;
-        let mut prev: Option<char> = None;
-        while let Some(i) = rest.find(from) {
-            let before = rest[..i].chars().last().or(prev);
-            let after = rest[i + from.len()..].chars().next();
-            let ok_b = before.is_none_or(|c| BEFORE.contains(c));
-            let ok_a = after.is_none_or(|c| c == '\n' || c == '\r' || AFTER.contains(c));
-            out.push_str(&rest[..i]);
-            if ok_b && ok_a {
-                out.push_str(to);
-                n += 1;
-            } else {
-                out.push_str(from);
+        let cs: Vec<char> = line.chars().collect();
+        let fs: Vec<char> = from.chars().collect();
+        let mut i = 0;
+        let mut quoted = false;
+        while i < cs.len() {
+            if cs[i] == '"' {
+                quoted = !quoted;
             }
-            prev = from.chars().last();
-            rest = &rest[i + from.len()..];
+            if cs[i..].starts_with(&fs) && !(field && quoted) {
+                let before = if i == 0 { None } else { Some(cs[i - 1]) };
+                let after = cs.get(i + fs.len()).copied();
+                let ok = if field {
+                    before.is_none_or(|c| BEFORE.contains(c)) && after.is_none_or(|c| c == '\n' || c == '\r' || AFTER.contains(c))
+                } else {
+                    after.is_none_or(|c| !is_hira(c) || PARTICLES.contains(c))
+                };
+                if ok {
+                    out.push_str(to);
+                    n += 1;
+                    i += fs.len();
+                    continue;
+                }
+            }
+            out.push(cs[i]);
+            i += 1;
         }
-        out.push_str(rest);
+    }
+    (out, n)
+}
+
+/// 項目の名前を変える。ほかのデータの同じ名前の項目(「名前」など)は変えない(第 6 回評価: 全部変わって誤りになり、戻された)。
+/// 変える所: そのデータの宣言の中、動作の中で `v = データを取得(…)` とした v の `v.項目`、`データを登録(項目: …)` の項目名、
+/// そのデータの名前を含む画面・約束・確かめるの文
+fn rename_field_text(text: &str, data: &str, from: &str, to: &str) -> (String, usize) {
+    let mut out = String::with_capacity(text.len());
+    let mut n = 0;
+    let mut kind = String::new();
+    let mut block = String::new();
+    let mut vars: Vec<String> = Vec::new();
+    let word = |l: &str| rename_text(l, from, to, true);
+    for line in text.split_inclusive('\n') {
+        let t = line.trim_start();
+        if !line.starts_with([' ', '\t']) && !t.is_empty() && !t.starts_with('#') {
+            let mut it = t.splitn(2, ' ');
+            kind = it.next().unwrap_or("").to_string();
+            block = it.next().unwrap_or("").split([':', '(', ' ']).next().unwrap_or("").to_string();
+            vars.clear();
+        }
+        if t.starts_with('#') || t.is_empty() {
+            out.push_str(line);
+            continue;
+        }
+        let new = match kind.as_str() {
+            "データ" if block == data => word(line),
+            "データ" | "列挙" | "役割" => (line.to_string(), 0),
+            "動作" | "関数" if line.starts_with([' ', '\t']) => {
+                if let Some((v, rhs)) = t.split_once('=') {
+                    if rhs.trim_start().starts_with(&format!("{data}を取得(")) {
+                        vars.push(v.trim().to_string());
+                    }
+                }
+                let mut l = line.to_string();
+                let mut k = 0;
+                for v in &vars {
+                    let (x, c) = rename_text(&l, &format!("{v}.{from}"), &format!("{v}.{to}"), true);
+                    l = x;
+                    k += c;
+                }
+                if l.contains(&format!("{data}を登録(")) {
+                    for sep in ["(", ", ", ","] {
+                        for colon in [":", " :"] {
+                            let pat = format!("{sep}{from}{colon}");
+                            k += l.matches(&pat).count();
+                            l = l.replace(&pat, &format!("{sep}{to}{colon}"));
+                        }
+                    }
+                }
+                (l, k)
+            }
+            "動作" | "関数" => (line.to_string(), 0),
+            _ if line.contains(data) => word(line),
+            _ => (line.to_string(), 0),
+        };
+        out.push_str(&new.0);
+        n += new.1;
     }
     (out, n)
 }
@@ -613,7 +691,25 @@ fn cmd_rename(o: &mut Opts) -> Result<i32, String> {
     } else {
         let owners: Vec<&String> = a.env.data.iter().filter(|(_, d)| d.field(&from).is_some()).map(|(n, _)| n).collect();
         match owners.as_slice() {
-            [] => return Err(format!("「{from}」という名前のデータ・画面・動作・役割・列挙・項目はありません")),
+            [] => {
+                // 似た名前(前に変えた名前の残りなど)を示す
+                let near: Vec<&String> = decl_names
+                    .iter()
+                    .filter(|n| {
+                        let common = from.chars().filter(|c| n.contains(*c)).count();
+                        common * 2 >= from.chars().count().max(1)
+                    })
+                    .take(5)
+                    .collect();
+                return Err(format!(
+                    "「{from}」という名前のデータ・画面・動作・役割・列挙・項目はありません{}",
+                    if near.is_empty() {
+                        String::new()
+                    } else {
+                        format!("(似た名前: {})", near.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("、"))
+                    }
+                ));
+            }
             [d] => (Some((*d).clone()), from.clone()),
             ds => {
                 return Err(format!(
@@ -628,10 +724,9 @@ fn cmd_rename(o: &mut Opts) -> Result<i32, String> {
     let mut saved: Vec<(PathBuf, String)> = Vec::new();
     let mut count = 0usize;
     for (rel, content) in p.files.values() {
-        let (new, n) = if field_of.is_some() {
-            replace_word(content, &name, &to)
-        } else {
-            (content.replace(&name, &to), content.matches(name.as_str()).count())
+        let (new, n) = match &field_of {
+            Some(d) => rename_field_text(content, d, &name, &to),
+            None => rename_text(content, &name, &to, false),
         };
         if n > 0 {
             let path = root.join(rel);
@@ -686,6 +781,20 @@ fn cmd_rename(o: &mut Opts) -> Result<i32, String> {
         None => format!("「{name}」"),
     };
     println!("{what}を「{to}」に変えました({count} か所。初期データも含めて {} ファイル)", saved.len());
+    // 一緒に変わったほかの名前(枠ID・枠を追加・枠一覧 など)も示す(次に古い名前で探して迷った。第 6 回評価)
+    if field_of.is_none() {
+        let also: Vec<String> = decl_names
+            .iter()
+            .filter(|n| **n != name)
+            .filter_map(|n| {
+                let (r, _) = rename_text(n, &name, &to, false);
+                (r != *n).then(|| format!("{n} → {r}"))
+            })
+            .collect();
+        if !also.is_empty() {
+            println!("一緒に変わった名前: {}", also.join("、"));
+        }
+    }
     Ok(0)
 }
 
@@ -1011,6 +1120,23 @@ fn dev_once(o: &mut Opts, port: u16, no_start: bool, ever_started: &mut bool) ->
             );
         }
     }
+    // 初期データ(seed.json)を書き換えたら、開発用のデータを作り直す(同じ ID は飛ばすので、ひな形の古いデータが残った。第 6 回評価)
+    let applied = dev.join("seed.applied.json");
+    let seed_now = std::fs::read_to_string(&seed).unwrap_or_default();
+    if db.exists() && applied.exists() && std::fs::read_to_string(&applied).unwrap_or_default() != seed_now {
+        let old = dev.join("data.sqlite.前の初期データ");
+        for ext in ["", "-wal", "-shm"] {
+            let from = dev.join(format!("data.sqlite{ext}"));
+            let _ = std::fs::remove_file(dev.join(format!("data.sqlite.前の初期データ{ext}")));
+            if from.exists() {
+                std::fs::rename(&from, dev.join(format!("data.sqlite.前の初期データ{ext}"))).map_err(|e| e.to_string())?;
+            }
+        }
+        eprintln!(
+            "初期データ(seed.json)が変わったので、開発用のデータを作り直しました(前のデータは {} に残しています)。",
+            old.display()
+        );
+    }
     if seed.exists() {
         run_cmd(
             std::process::Command::new("node")
@@ -1021,6 +1147,7 @@ fn dev_once(o: &mut Opts, port: u16, no_start: bool, ever_started: &mut bool) ->
                 .current_dir(&be),
             "初期データの投入(seed.json)",
         )?;
+        let _ = std::fs::write(&applied, &seed_now);
     }
     // ソースの「確かめる」を、開発用とは別の空のデータベースで試す(結果だけ表示し、失敗しても起動は続ける)
     if be.join("tools/scenarios.ts").exists() {

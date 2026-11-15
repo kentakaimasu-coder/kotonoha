@@ -104,6 +104,9 @@ function guessType(name: string, o: any): string {
   if (/(人数|数$|数量|定員|回数|点数|年齢|順番)/.test(n)) return "整数";
   if (/メール/.test(n)) return "メール";
   if (o.enums && n in o.enums) return n;
+  // 「状態」を足すとき、列挙「予約状態」「状態」があればそれにする(文字列になって登録が誤りになった。第 6 回評価)
+  const en = Object.keys(o.enums ?? {}).filter((e) => e.endsWith(n) || n.endsWith(e));
+  if (en.length === 1) return en[0];
   return "文字列";
 }
 function okType(t: string, o: any, name?: string): string {
@@ -152,10 +155,12 @@ function renameDecl(o: any, from: string, to: string): string {
   if (!d) throw new Error(`「${from}」という名前のデータ・画面・動作・役割・列挙はありません`);
   okName(to, "新しい名前");
   if ((o.decls ?? []).some((x: any) => x.name === to)) throw new Error(`「${to}」は既にあります`);
-  const re = new RegExp(reEsc(from), "g");
+  // 直後がひらがな(助詞を除く)なら変えない(「問い合わせる」→「お迎え連絡る」になった。第 6 回評価)
+  const re = new RegExp(reEsc(from) + "(?!(?![をのはがにでとへかもや])[ぁ-ゖ])", "g");
   for (const f of srcFiles(o)) {
     const t = read(f);
-    const u = t.replace(re, to);
+    // 注釈(# …)の行は変えない
+    const u = t.split("\n").map((l) => (l.trim().startsWith("#") ? l : l.replace(re, to))).join("\n");
     if (u !== t) write(f, u);
   }
   if (d.kind === "data") renameSeed(from, to);
@@ -205,7 +210,36 @@ function renameField(o: any, dn: string, from: string, to: string): void {
   const re = new RegExp(FIELD_BEFORE + reEsc(from) + FIELD_AFTER, "gu");
   for (const f of srcFiles(o)) {
     const t = read(f);
-    const u = t.split("\n").map((l) => (l.trim().startsWith("#") ? l : l.replace(re, to))).join("\n");
+    // ほかのデータの同じ名前の項目(「名前」など)は変えない(全部変わって誤りになり、戻された。第 6 回評価)。
+    // 変える所: そのデータの宣言の中、動作の中で v = データを取得(…) とした v の v.項目、データを登録(項目: …) の項目名、
+    // そのデータの名前を含む画面・約束・確かめるの文。注釈・文字列("…")の中は変えない
+    let kind = "";
+    let block = "";
+    let vars: string[] = [];
+    const word = (l: string) => l.split('"').map((part, i) => (i % 2 === 1 ? part : part.replace(re, to))).join('"');
+    const u = t
+      .split("\n")
+      .map((l) => {
+        const tt = l.trim();
+        if (/^\S/.test(l) && !tt.startsWith("#")) {
+          [kind, block] = [tt.split(" ")[0], (tt.split(" ")[1] ?? "").split(/[:(\s]/)[0]];
+          vars = [];
+        }
+        if (!tt || tt.startsWith("#")) return l;
+        if (kind === "データ") return block === dn ? word(l) : l;
+        if (kind === "列挙" || kind === "役割") return l;
+        if (kind === "動作" || kind === "関数") {
+          if (!/^\s/.test(l)) return l;
+          const mv = new RegExp(`^\\s*(\\S+)\\s*=\\s*${reEsc(dn)}を取得\\(`).exec(l);
+          if (mv) vars.push(mv[1]);
+          let x = l;
+          for (const v of vars) x = x.split(`${v}.${from}`).join(`${v}.${to}`);
+          if (x.includes(`${dn}を登録(`)) x = x.replace(new RegExp(`([(,]\\s*)${reEsc(from)}(\\s*:)`, "g"), `$1${to}$2`);
+          return x;
+        }
+        return l.includes(dn) ? word(l) : l;
+      })
+      .join("\n");
     if (u !== t) write(f, u);
   }
   renameSeed(from, to, dn);
@@ -234,7 +268,9 @@ function removeDataCascade(o: any, name: string): string[] {
   }
   const usedElsewhere = (en: string) => (o.decls ?? []).some((d: any) => !kill.has(d) && d.name !== en && ref(en).test(text(d)));
   for (const d of o.decls ?? []) {
-    if (d.kind === "enum" && !kill.has(d) && [...kill].some((k) => ref(d.name).test(text(k))) && !usedElsewhere(d.name)) kill.add(d);
+    // 消す動作の失敗の種類(-> 結果<…, 列挙>)だけを消す。自分で作った列挙(焼き方など)は残す(第 6 回評価)
+    const failEnum = [...kill].some((k) => k.kind === "action" && new RegExp(`結果<[^>]*,\\s*${reEsc(d.name)}\\s*>`).test(lines(k.file)[k.line - 1] ?? ""));
+    if (d.kind === "enum" && !kill.has(d) && failEnum && !usedElsewhere(d.name)) kill.add(d);
   }
   // ファイルごとに、後ろの行から消す
   const byFile = new Map<string, { from: number; to: number }[]>();
@@ -436,6 +472,15 @@ function apply(op: Op): { file: string; line: number } | null {
       if (body.length === 0) throw new Error("処理を 1 行以上書きます");
       let fail = (op.fail ?? "").trim();
       const block: string[] = [];
+      const failVals = body.some((l: string) => /失敗\(/.test(l));
+      if (!fail && !failVals) {
+        // 失敗しない動作は、使わない失敗の列挙(「できない」)を作らず、結果も返さない形にする(第 6 回評価)
+        const plain = body
+          .map((l: string) => (/^(\S+ID|\S+) を返す$/.test(l) && !/\(/.test(l) ? "" : l.replace(/\s+を返す$/, "")))
+          .filter(Boolean);
+        block.push(`動作 ${name}(${params.join(", ")}):`, ...plain.map((l: string) => "    " + l));
+        return addDecl(o, ["action"], block);
+      }
       if (!fail) {
         // 失敗の種類は、処理に書いた 失敗("…") の値から作る(書いていなければ「できない」)。第 5 回評価
         fail = `${name}の失敗`;
@@ -539,6 +584,80 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   const o = outline();
   const cmd = (m: RegExpExecArray | null) => m;
   let m: RegExpExecArray | null;
+  // アプリの名前: アプリの名前を「料理教室」にする(画面のいちばん上に出る)
+  if ((m = cmd(/^アプリ(?:の名前)?を「?(.+?)」?に(?:する|変える)$/.exec(text)))) {
+    const app = (o.decls ?? []).find((d: any) => d.kind === "app");
+    if (!app) throw new Error("アプリの宣言が見つかりません");
+    const nm = m[1].trim();
+    if (!nm || /[「」\n]/.test(nm)) throw new Error("アプリの名前に「」は使えません");
+    const ls = lines(app.file);
+    ls[app.line - 1] = `アプリ「${nm}」`;
+    write(app.file, ls.join("\n"));
+    return changed(o, `アプリの名前を「${nm}」にしました`);
+  }
+  // 列挙の値の名前を変える: 列挙「状況」の「受付」を「受付中」に変える
+  if ((m = cmd(/^(?:列挙)?「?(.+?)」?の(?:値)?「(.+?)」を「(.+?)」に(?:変える|する|直す)$/.exec(text))) && decl(o, "enum", m[1].trim())) {
+    const E = decl(o, "enum", m[1].trim());
+    const [from, to] = [m[2].trim(), m[3].trim()];
+    if (!(E.values ?? []).includes(from)) throw new Error(`列挙「${E.name}」に「${from}」はありません(値: ${(E.values ?? []).join("、")})`);
+    okName(to, "値");
+    for (const f of srcFiles(o)) {
+      let inE = false;
+      const t = read(f);
+      const u = t
+        .split("\n")
+        .map((l) => {
+          if (/^\S/.test(l)) inE = l.startsWith(`列挙 ${E.name}:`);
+          if (inE && l.trim() === from) return l.replace(from, to);
+          if (l.trim().startsWith("#") || /^\S/.test(l)) return l;
+          // 文字列 "受付"、文の中の「が受付」「受付 →」など
+          return l.split(`"${from}"`).join(`"${to}"`).replace(new RegExp(`(?<=[がはを\\s→、(])${reEsc(from)}(?=$|[\\s→、)のでと])`, "g"), to);
+        })
+        .join("\n");
+      if (u !== t) write(f, u);
+    }
+    for (const f of seedFiles()) {
+      const t = readFileSync(join(PROJECT, f), "utf8");
+      const u = t.split(`"${from}"`).join(`"${to}"`);
+      if (u !== t) writeRaw(f, u);
+    }
+    return changed(o, `列挙「${E.name}」の「${from}」を「${to}」に変えました`);
+  }
+  // 項目の型を変える: 予約の「状態」を「予約状態」にする / 「家賃」の型を金額にする
+  if (
+    (m = cmd(/^(?:(.+?)の)?「(.+?)」の(?:型|種類)を「?(.+?)」?に(?:する|変える)$/.exec(text))) ||
+    (m = cmd(/^(?:([^「」]+?)の)?「?([^「」]+?)」?を(?:列挙)?「?([^「」]+?)」?(?:型)?に(?:する|変える)$/.exec(text)))
+  ) {
+    const [dn, fn] = [m[1]?.trim(), m[2].trim()];
+    const ds = (o.decls ?? []).filter((d: any) => d.kind === "data" && (!dn || d.name === dn) && d.fields.some((f: any) => f.name === fn));
+    let typeOk = true;
+    try {
+      // 今と同じ型なら型の変更ではない(「人数」を「数」にする は名前の変更)
+      typeOk = ds.length === 1 && okType(m[3], o) !== ds[0].fields.find((f: any) => f.name === fn).type;
+    } catch {
+      typeOk = false;
+    }
+    if (ds.length === 1 && typeOk) {
+      const D = ds[0];
+      const old = D.fields.find((f: any) => f.name === fn).type;
+      const t = okType(m[3], o);
+      const ls = lines(D.file);
+      const i = ls.findIndex((l, k) => k >= D.line && k < D.end && new RegExp(`^\\s*${reEsc(fn)}\\s*:`).test(l));
+      ls[i] = ls[i].replace(/:\s*(.+?)\s*$/, `: ${t}`);
+      write(D.file, ls.join("\n"));
+      // その項目を登録する動作の引数の型もそろえる
+      for (const a of (outline().decls ?? []).filter((x: any) => x.kind === "action")) {
+        const al = lines(a.file);
+        if (!al.slice(a.line - 1, a.end).join("\n").includes(`${D.name}を登録(`)) continue;
+        const h = al[a.line - 1].replace(new RegExp(`([(,]\\s*${reEsc(fn)}\\s*:\\s*)${reEsc(old)}(?=\\s*[,)])`), `$1${t}`);
+        if (h !== al[a.line - 1]) {
+          al[a.line - 1] = h;
+          write(a.file, al.join("\n"));
+        }
+      }
+      return changed(o, `「${D.name}」の「${fn}」を ${t} にしました`);
+    }
+  }
   // 名前を変える(第 5 回評価: ひな形の「枠」を自分の言葉にする方法が無かった)
   //   枠の「定員」を「人数」に変える / 「枠」を「レッスン」に変える / 枠の名前をレッスンに変える
   if ((m = cmd(/^(?:データ)?「?(.+?)」?の(?:項目)?「(.+?)」を「(.+?)」に(?:名前を)?(?:変える|かえる|変更(?:する)?|直す|する)$/.exec(text))) && decl(o, "data", m[1].trim())) {
@@ -547,7 +666,7 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   }
   if (
     (m = cmd(/^(?:データ|画面|動作|役割|列挙|確かめる)?「?(.+?)」?の名前を「?(.+?)」?に(?:変える|かえる|変更(?:する)?|直す|する)$/.exec(text))) ||
-    (m = cmd(/^(?:データ|画面|動作|役割|列挙|確かめる)?「(.+?)」を「(.+?)」に(?:名前を)?(?:変える|かえる|変更(?:する)?|直す|する)$/.exec(text))) ||
+    (m = cmd(/^(?:データ|画面|動作|役割|列挙|確かめる)?「([^「」]+?)」を「([^「」]+?)」に(?:名前を)?(?:変える|かえる|変更(?:する)?|直す|する)$/.exec(text))) ||
     (m = cmd(/^(?:データ|画面|動作|役割|列挙|確かめる)?「?(.+?)」?を「?(.+?)」?に(?:名前を)?(?:変える|かえる|変更(?:する)?|直す)$/.exec(text)))
   ) {
     const [from, to] = [m[1].trim(), m[2].trim()];
@@ -563,9 +682,52 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     if (owners.length > 1) throw new Error(`項目「${from}」は ${owners.map((d: any) => d.name).join("・")} にあります。「${owners[0].name}の「${from}」を「${to}」に変える」のように書きます`);
     throw new Error(`「${from}」という名前はありません`);
   }
+  // 権限を与える: 受付係に予約の更新を許可する / 受付係は予約を更新できる / 店長に動作「締める」を許可する(第 6 回評価)
+  {
+    const CAP: Record<string, string> = { 読取: "読取", 閲覧: "読取", 読み取り: "読取", 見る: "読取", 作成: "作成", 登録: "作成", 追加: "作成", 更新: "更新", 変更: "更新", 書き換え: "更新", 削除: "削除", 全件閲覧: "全件閲覧" };
+    const role = (r: string) => decl(o, "role", r.replace(/^役割/, "").replace(/[「」]/g, "").trim());
+    let mm = /^(?:役割)?「?(.+?)」?に(.+?)の(読取|閲覧|読み取り|作成|登録|追加|更新|変更|書き換え|削除)(?:の権限)?を?(?:許可|与え|許)(?:する|る|す)?$/.exec(text);
+    let caps: string[] = [];
+    if (mm && role(mm[1]) && decl(o, "data", mm[2].trim())) caps = [`${mm[2].trim()}.${CAP[mm[3]]}`];
+    if (!caps.length && (mm = /^(?:役割)?「?(.+?)」?(?:は|が)(.+?)を(見|閲覧|作成|登録|追加|更新|変更|削除)(?:でき|られ)る(?:ように(?:する|したい))?$/.exec(text)) && role(mm[1]) && decl(o, "data", mm[2].trim()))
+      caps = [`${mm[2].trim()}.${CAP[mm[3] === "見" ? "見る" : mm[3]]}`];
+    if (!caps.length && (mm = /^(?:役割)?「?(.+?)」?に(?:動作)?「(.+?)」を(?:許可|許)(?:する|す)?$/.exec(text)) && role(mm[1]) && decl(o, "action", mm[2].trim())) caps = [`動作.${mm[2].trim()}`];
+    if (!caps.length && (mm = /^(?:役割)?「?(.+?)」?に(.+?)の全員の分を見せる$/.exec(text)) && role(mm[1]) && decl(o, "data", mm[2].trim())) caps = [`全件閲覧.${mm[2].trim()}`];
+    if (caps.length && mm) {
+      const r = role(mm[1]);
+      const now: string[] = r.caps ?? [];
+      if (caps.every((c) => now.includes(c))) return { ok: true, done: `役割「${r.name}」は既に ${caps.join("・")} を持っています` };
+      apply({ op: "set_role_caps", name: r.name, caps: [...new Set([...now, ...caps])] });
+      return changed(o, `役割「${r.name}」に ${caps.join("・")} を足しました`);
+    }
+  }
+  // 役割を作る: 役割「店長」を作る(予約.読取、予約.更新)。権限を書かなければ、すべてのデータを見られるだけ
+  if ((m = cmd(/^役割「?(.+?)」?を(?:作る|作って|追加(?:する)?)(?:[(（](.+)[)）])?$/.exec(text)))) {
+    const caps = m[2] ? splitList(m[2]) : (o.decls ?? []).filter((d: any) => d.kind === "data").map((d: any) => `${d.name}.読取`);
+    apply({ op: "add_role", name: m[1].trim(), caps });
+    return changed(o, `役割「${m[1].trim()}」を作りました(権限: ${caps.join("、")})。左の「役割」で権限のチェックを変えられます`);
+  }
+  // 項目を消す: 予約の「メモ」を消す(登録の動作の引数・確かめるの値もそろえる)
+  if ((m = cmd(/^(.+?)の(?:項目)?「?(.+?)」?を(?:消す|消して|削除(?:する)?)$/.exec(text))) && decl(o, "data", m[1].trim())) {
+    return deleteField(o, decl(o, "data", m[1].trim()), m[2].trim());
+  }
   // 空でもよい項目にする: 「メモ」を空でもよいにする / 予約の要望を任意にする
-  if ((m = cmd(/^(?:(.+?)の)?「?(.+?)」?(?:を|は)(?:空でもよい|空でも良い|空でもいい|空欄でもよい|空欄可|任意|省ける|省略できる|なくてもよい|無くてもよい|必須でない)(?:項目)?(?:に(?:する|したい|して))?$/.exec(text)))) {
-    const done = makeOptional(o, m[1]?.trim(), m[2].trim());
+  if ((m = cmd(/^(?:(.+?)の)?「?(.+?)」?(?:を|は)(?:空でもよい|空でも良い|空でもいい|空欄でもよい|空欄可|任意|省ける|省略できる|なくてもよい|無くてもよい|必須でない)(?:の)?(?:項目|欄)?(?:に(?:する|したい|して))?$/.exec(text)))) {
+    const fn = m[2].trim();
+    const inData = (o.decls ?? []).some((d: any) => d.kind === "data" && (!m![1] || d.name === m![1].trim()) && d.fields.some((f: any) => f.name === fn));
+    if (!inData) {
+      // データの項目でなく、動作の入力だけのとき(フォームの欄): 動作の引数を 選択<…> にする
+      const acts = (o.decls ?? []).filter((d: any) => d.kind === "action" && (!m![1] || d.name === m![1].trim()) && (d.params ?? []).some((p: any) => p.name === fn && !/^選択</.test(p.type)));
+      if (acts.length === 0) throw new Error(`項目「${fn}」は${m[1] ? `「${m[1].trim()}」に` : "どのデータ・動作にも"}ありません`);
+      for (const a of acts) {
+        const al = lines(a.file);
+        const p = a.params.find((x: any) => x.name === fn);
+        al[a.line - 1] = al[a.line - 1].replace(new RegExp(`([(,]\\s*${reEsc(fn)}\\s*:\\s*)${reEsc(p.type)}(?=\\s*[,)])`), `$1選択<${p.type}>`);
+        write(a.file, al.join("\n"));
+      }
+      return changed(o, `動作 ${acts.map((a: any) => a.name).join("・")} の入力「${fn}」を空でもよい欄にしました`);
+    }
+    const done = makeOptional(o, m[1]?.trim(), fn);
     if (done.length === 0) return { ok: true, done: `「${m[2].trim()}」は既に空でもよい項目です` };
     return changed(o, `${done.join("・")}を空でもよい項目にしました(入力欄の「必須」が外れます)`);
   }
@@ -631,7 +793,13 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   if ((m = cmd(/^(?:データ|画面|動作|役割|列挙|確かめる)?「?(.+?)」?を(?:消す|消して|削除(?:する)?)$/.exec(text)))) {
     const name = m[1].trim();
     const d = (o.decls ?? []).find((x: any) => x.name === name && ["data", "screen", "action", "role", "enum", "scenario"].includes(x.kind));
-    if (!d) throw new Error(`「${name}」という名前のデータ・画面・動作・役割はありません`);
+    if (!d) {
+      // 項目の名前なら項目を消す(「作業時間を消す」が通じなかった。第 6 回評価)
+      const owners = (o.decls ?? []).filter((x: any) => x.kind === "data" && x.fields.some((f: any) => f.name === name));
+      if (owners.length === 1) return deleteField(o, owners[0], name);
+      if (owners.length > 1) throw new Error(`項目「${name}」は ${owners.map((x: any) => x.name).join("・")} にあります。「${owners[0].name}の${name}を消す」のように書きます`);
+      throw new Error(`「${name}」という名前のデータ・画面・動作・役割・項目はありません`);
+    }
     if (d.kind === "data") {
       // データは、使っている動作・画面の行・確かめる・権限もまとめて消す(1 つずつ消すとエラーが 12 件残った。第 5 回評価)
       const removed = removeDataCascade(o, name);
@@ -681,9 +849,76 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   }
   const screens = (o.decls ?? []).filter((d: any) => d.kind === "screen").map((d: any) => d.name);
   const sc = ctx.screen && decl(o, "screen", ctx.screen);
+  // 画面の文らしくなければ「どの画面?」と聞かず、言える言い方を示す(的外れに聞き返された。第 6 回評価)
+  if (!sc && !/(表示|を押すと|を選ぶと|フォーム|集計|合計|一覧)/.test(text)) {
+    const d0 = (o.decls ?? []).find((d: any) => d.kind === "data")?.name ?? "予約";
+    const r0 = (o.decls ?? []).find((d: any) => d.kind === "role")?.name ?? "受付係";
+    const f0 = (o.decls ?? []).find((d: any) => d.kind === "data")?.fields?.find((f: any) => f.name !== "ID")?.name ?? "名前";
+    return {
+      ok: false,
+      errors: [{ code: "STUDIO", message: "この言い方は読めませんでした。下の言い方なら、そのまま操作になります(押すと欄に入ります)", hints: [] }],
+      suggestions: [`${d0}に「メモ」を追加`, `${d0}の「${f0}」を「新しい名前」に変える`, `${d0}を登録できるようにしたい`, `${r0}に${d0}の更新を許可する`, `「${f0}」を空でもよいにする`, `${d0}の「メモ」を消す`],
+    };
+  }
   if (!sc) return { ok: false, need: "screen", screens, message: "どの画面に入れますか? 左の一覧で画面を選んでから、もう一度送ってください" };
   const at = apply({ op: "add_line", kind: "screen", name: sc.name, text });
   return checked(at, `画面「${sc.name}」に入れました`, o, text);
+}
+/** 動作の見出しの行から、名前がちょうど fn の引数を外す(「数」を外すとき「人数」を壊さない) */
+function dropParam(head: string, fn: string): string {
+  const open = head.indexOf("(");
+  if (open < 0) return head;
+  let depth = 0;
+  let close = -1;
+  for (let i = open; i < head.length; i++) {
+    if (head[i] === "(" || head[i] === "<") depth++;
+    else if ((head[i] === ")" || head[i] === ">") && --depth === 0 && head[i] === ")") {
+      close = i;
+      break;
+    }
+  }
+  if (close < 0) return head;
+  const parts: string[] = [];
+  let cur = "";
+  let d = 0;
+  for (const ch of head.slice(open + 1, close)) {
+    if (ch === "<" || ch === "(") d++;
+    if (ch === ">" || ch === ")") d--;
+    if (ch === "," && d === 0) {
+      parts.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  if (cur.trim()) parts.push(cur);
+  const kept = parts.filter((x) => x.split(":")[0].trim() !== fn).map((x) => x.trim());
+  return head.slice(0, open + 1) + kept.join(", ") + head.slice(close);
+}
+/** 項目を消す。登録の動作の項目名と、使われなくなった引数もそろえる */
+function deleteField(o: any, D: any, fn: string): any {
+  if (!D.fields.some((f: any) => f.name === fn)) throw new Error(`「${D.name}」に項目「${fn}」はありません(項目: ${D.fields.map((x: any) => x.name).join("、")})`);
+  const ls = lines(D.file);
+  const i = ls.findIndex((l, k) => k >= D.line && k < D.end && new RegExp(`^\\s*${reEsc(fn)}\\s*:`).test(l));
+  ls.splice(i, 1);
+  write(D.file, ls.join("\n"));
+  for (const a of (outline().decls ?? []).filter((x: any) => x.kind === "action")) {
+    const al = lines(a.file);
+    let hit = false;
+    for (let k = a.line; k < a.end; k++) {
+      if (!al[k]?.includes(`${D.name}を登録(`)) continue;
+      const nl = al[k].replace(new RegExp(`(\\(|,\\s*)${reEsc(fn)}\\s*:\\s*[^,)]+(?:\\(\\))?`), (_x, p1: string) => (p1 === "(" ? "(" : "")).replace("(, ", "(");
+      if (nl !== al[k]) {
+        al[k] = nl;
+        hit = true;
+      }
+    }
+    // 引数がもう使われていなければ、引数も消す
+    const body = al.slice(a.line, a.end).join("\n");
+    if (hit && !new RegExp(`(^|[^\\p{L}\\p{N}_])${reEsc(fn)}([^\\p{L}\\p{N}_]|$)`, "u").test(body)) {
+      al[a.line - 1] = dropParam(al[a.line - 1], fn);
+    }
+    if (hit) write(a.file, al.join("\n"));
+  }
+  return changed(o, `「${D.name}」の項目「${fn}」を消しました`);
 }
 /** 名前の変更などの後: 誤りが増えたら全部戻して理由を返す */
 function changed(before: any, done: string): any {
@@ -844,7 +1079,18 @@ function state(): any {
   try {
     theme = JSON.parse(readFileSync(join(PROJECT, "kotonoha.json"), "utf8")).theme?.color ?? "";
   } catch {}
-  return { outline: o, sources, previewPort: previewAlive ? previewPort : 0, previewNote: previewAlive ? "" : "表示用のサーバーを起動しています…", checks: lastChecks(), canUndo: history.length > 0, theme };
+  // 消した「確かめる」の古い結果は出さない(消した後も ✗ が残った。第 6 回評価)
+  const names = new Set((o.decls ?? []).filter((d: any) => d.kind === "scenario").map((d: any) => d.name));
+  const raw = lastChecks();
+  const keep: string[] = [];
+  let on = true;
+  for (const l of raw.lines) {
+    const h = /^確かめる「(.+?)」/.exec(l.trim());
+    if (h) on = names.has(h[1]);
+    if (on) keep.push(l);
+  }
+  const checks = names.size === 0 ? { lines: [], ok: null } : { lines: keep, ok: keep.some((l) => l.trim().startsWith("✗")) ? false : raw.ok };
+  return { outline: o, sources, previewPort: previewAlive ? previewPort : 0, previewNote: previewAlive ? "" : "表示用のサーバーを起動しています…", checks, canUndo: history.length > 0, theme };
 }
 
 const server = createServer(async (req, res) => {

@@ -108,6 +108,16 @@ pub fn build_vag(inp: &GraphInput, status: Status) -> Value {
                             json!({"ui": "list", "knowledge": knowledge, "limit": spec.limit, "limit_override": limit_override}),
                         )
                     }
+                    IntentKind::ScreenOnly { roles } => (
+                        "visibility",
+                        format!("{}だけ", roles.join("と")),
+                        vec![],
+                        vec![],
+                        vec![],
+                        vec![],
+                        vec![],
+                        json!({"roles": roles}),
+                    ),
                     IntentKind::NavigateOnSelect { data, screen } => {
                         edges.insert((i.id.clone(), format!("screen.{screen}"), "navigates".into()));
                         (

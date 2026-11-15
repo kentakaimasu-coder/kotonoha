@@ -171,7 +171,8 @@ test("日本語の指示(第 6 回の改善): 名前を変える・空でもよ�
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
   assert.match(src(), /データ レッスン:/);
   assert.match(src(), /レッスンID: 識別子/);
-  assert.doesNotMatch(src(), /枠/);
+  // 注釈(# …)は変えない
+  assert.doesNotMatch(src().split("\n").filter((l) => !l.trim().startsWith("#")).join("\n"), /枠/);
   assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
   const seed = readFileSync(join(dir, "seed.json"), "utf8");
   assert.match(seed, /"レッスン"/);
@@ -208,4 +209,42 @@ test("日本語の指示(第 6 回の改善): 名前を変える・空でもよ�
   assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
   j = await (await api("/api/undo", {})).json();
   assert.equal(src(), before);
+});
+
+test("日本語の指示(第 7 回の改善): 権限・役割・型・項目を消す・列挙の値・アプリ名・読めない文の案内", async () => {
+  // 前のテストで「枠」は「レッスン」、「予約」は残っている(取り消したので)
+  let j: any = await (await api("/api/instruct", { text: "受付係に予約の更新を許可する" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /役割 受付係:\n    権限 = \[[^\]]*予約\.更新/);
+  j = await (await api("/api/instruct", { text: "役割「店長」を作る" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /役割 店長:\n    権限 = \[[^\]]*読取/);
+  // 型を変える(登録の動作の引数もそろう)。同じ型なら名前の変更
+  j = await (await api("/api/instruct", { text: "予約の「人数」を「数」にする" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /    数: 整数/);
+  // 項目を消す(登録の行からも外す。「人数」の引数は壊さない)
+  j = await (await api("/api/instruct", { text: "予約の数を消す" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.doesNotMatch(src(), /    数: 整数/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // 列挙の値の名前を変える(失敗("満席") もそろう)
+  j = await (await api("/api/instruct", { text: "列挙「予約失敗」の「満席」を「満員」に変える" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /失敗\("満員"\)/);
+  assert.doesNotMatch(src(), /"満席"/);
+  // アプリの名前
+  j = await (await api("/api/instruct", { text: "アプリの名前を「料理教室」にする" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /アプリ「料理教室」/);
+  // 失敗しない動作は、使わない失敗の列挙を作らない
+  j = await (await api("/api/instruct", { text: "「満員にする」でレッスンの予約数を9にする" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /動作 満員にする\(レッスンID: 識別子\):/);
+  assert.doesNotMatch(src(), /満員にするの失敗/);
+  // 読めない文は「どの画面?」と聞かず、言える言い方を示す
+  j = await (await api("/api/instruct", { text: "いい感じにして" })).json();
+  assert.equal(j.result.ok, false);
+  assert.ok(j.result.suggestions.length >= 3, JSON.stringify(j.result));
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
 });

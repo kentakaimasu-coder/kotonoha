@@ -541,6 +541,13 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
         } else {
             String::new()
         };
+        // この画面は{役割}だけ: その役割の権限をすべて持つ人にだけメニューに出す
+        let needs = if s.only.is_empty() {
+            needs
+        } else {
+            let rs: Vec<&Vec<String>> = s.only.iter().filter_map(|r| ir.roles.get(r)).collect();
+            format!("{needs}, only: {}", serde_json::to_string(&rs).unwrap())
+        };
         defs.push(format!(
             "  {}: {{ name: {}, input: {}, loaders: {}, View: {fname}{needs} }},",
             js_str(&s.name),

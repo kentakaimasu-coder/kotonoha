@@ -17,6 +17,7 @@
 | query | query.analysis | P-ANALYSIS |
 | query | query.aggregate | P-AGGREGATE |
 | navigation | nav.select | P-NAV |
+| visibility | nav.only_roles | P-ONLY `この画面は{役割}だけ`(Web はメニューの出し分け。backend はデータの保護で守る。iOS / Android はメニューに出す。K-40) |
 | action | action.strict | `動作` |
 | validation | policy.public_read / auth_required / owner_read | C-PUBLIC / C-AUTH / C-OWNER |
 | validation | policy.unique / policy.sequence | C-UNIQUE / C-SEQUENCE(backend で強制。クライアントは結果のメッセージを表示するだけ) |

@@ -234,6 +234,8 @@ pub struct ScreenIr {
     pub name: String,
     pub input: Option<String>,
     pub components: Vec<Component>,
+    /// `この画面は{役割}だけ`: メニューに出す役割(空ならだれにでも)
+    pub only: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -477,6 +479,7 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
                     }
                 }),
                 IntentKind::NavigateOnSelect { .. }
+                | IntentKind::ScreenOnly { .. }
                 | IntentKind::PublicRead { .. }
                 | IntentKind::AuthRequired { .. }
                 | IntentKind::OwnerRead { .. }
@@ -488,6 +491,14 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
             name: s.name.clone(),
             input: s.input.clone(),
             components: comps,
+            only: s
+                .intents
+                .iter()
+                .flat_map(|i| match &i.kind {
+                    IntentKind::ScreenOnly { roles } => roles.clone(),
+                    _ => vec![],
+                })
+                .collect(),
         });
     }
 

@@ -48,6 +48,9 @@ pub enum IntentKind {
         #[serde(skip)]
         spec: Box<RankingSpec>,
     },
+    /// P-ONLY `この画面は{役割}(と{役割})*だけ`: メニューに出す人を役割で決める(表示だけ。データの保護は backend。第 6 回評価)
+    #[serde(rename = "screen_only")]
+    ScreenOnly { roles: Vec<String> },
     /// P-NAV `{データ}を選ぶと {画面} へ`
     #[serde(rename = "navigate_on_select")]
     NavigateOnSelect { data: String, screen: String },
@@ -811,8 +814,10 @@ impl Ctx<'_> {
         // P-BUTTON の前の条件: `予約の状態が受取済でないとき「取り消す」を押すと …`
         let mut when = None;
         let mut s = s0;
-        if let Some(i) = s0.find("のとき「") {
+        // 「…が貸出中のとき「」と「…が返却済みでないとき「」の両方(後者は のとき を含まない。第 6 回評価)
+        if let Some(i) = s0.find("とき「") {
             let cond = &s0[..i];
+            let cond = cond.strip_suffix('の').unwrap_or(cond);
             let parsed = cond.split_once('の').and_then(|(d, rest)| {
                 let (f, v) = rest.split_once('が')?;
                 let (v, negate) = match v.strip_suffix("でない") {
@@ -852,7 +857,7 @@ impl Ctx<'_> {
                 value,
                 negate,
             }));
-            s = &s0[i + "のとき".len()..];
+            s = &s0[i + "とき".len()..];
         }
         // P-BUTTON
         if let Some(rest) = s.strip_prefix('「') {
@@ -893,6 +898,26 @@ impl Ctx<'_> {
                     )),
                     Err(d) => Match::Invalid(d),
                 };
+            }
+        }
+        // P-ONLY
+        if let Some(rest) = s.strip_prefix("この画面は") {
+            let rest = rest.trim_end_matches("に表示").trim_end_matches("が使う").trim_end_matches("が使える");
+            if let Some(rs) = rest.strip_suffix("だけ") {
+                let roles: Vec<String> = rs.split(['と', '・', '、']).map(|r| r.trim().to_string()).filter(|r| !r.is_empty()).collect();
+                if let Some(bad) = roles.iter().find(|r| !self.env.roles.contains_key(r.as_str())) {
+                    return Match::Invalid(Diagnostic::error(
+                        Code::REF001,
+                        span,
+                        format!(
+                            "役割 `{bad}` は定義されていません(役割: {})",
+                            self.env.roles.keys().cloned().collect::<Vec<_>>().join(" / ")
+                        ),
+                    ));
+                }
+                if !roles.is_empty() {
+                    return Match::Ok(IntentKind::ScreenOnly { roles });
+                }
             }
         }
         // P-NAV

@@ -74,6 +74,7 @@ pub fn node_feature(node: &Value) -> (String, String) {
         "query" if node["detail"]["aggregate"].is_object() => "query.aggregate".to_string(),
         "query" => "query.ranking".to_string(),
         "navigation" => "nav.select".to_string(),
+        "visibility" => "nav.only_roles".to_string(),
         "action" => "action.strict".to_string(),
         "validation" => format!("policy.{}", node["detail"]["policy"].as_str().unwrap_or("unknown")),
         _ => "unknown".to_string(),
@@ -113,6 +114,9 @@ pub const ALL_FEATURES: &[(&str, &str)] = &[
     ("query", "query.analysis"),
     ("query", "query.aggregate"),
     ("navigation", "nav.select"),
+    // この画面は{役割}だけ: Web はメニューの出し分け。backend はデータの保護(約束・権限)で守るので何もしない。
+    // iOS / Android はメニューに出す(K-40)
+    ("visibility", "nav.only_roles"),
     ("action", "action.strict"),
     ("validation", "policy.public_read"),
     ("validation", "policy.auth_required"),

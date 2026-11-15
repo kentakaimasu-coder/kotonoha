@@ -62,6 +62,8 @@ export interface ScreenDef {
   View: (p: ScreenProps) => React.ReactElement;
   /** 操作だけの画面: どれか 1 つでも使える人にだけメニューに出す(認可は backend) */
   needs?: Need[];
+  /** この画面は{役割}だけ: 役割ごとの権限。どれかの役割の権限をすべて持つ人にだけメニューに出す */
+  only?: string[][];
 }
 
 export interface Init {
@@ -544,6 +546,7 @@ export function App(p: { init: Init; screens: Record<string, ScreenDef> }) {
         { "aria-label": "画面" },
         p.init.nav
           .filter((n) => n === p.init.screen || !p.screens[n]?.needs || p.screens[n].needs!.some((x) => canUse(p.init.caps ?? null, x)))
+          .filter((n) => n === p.init.screen || !p.screens[n]?.only || (p.init.caps ?? null) === null || p.screens[n].only!.some((rc) => rc.every((c) => p.init.caps!.includes(c))))
           .map((n) => h("a", { key: n, href: screenHref(n), "aria-current": n === p.init.screen ? "page" : undefined }, n)),
       ),
       h("a", { className: p.init.loggedIn ? "login on" : "login", href: "/login" }, p.init.loggedIn ? "ログイン中" : "ログイン"),

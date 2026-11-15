@@ -396,21 +396,21 @@ fn scenarios_run_in_koto_test_and_report_in_japanese() {
     let (c, _, err) = koto(&root, &["test"]);
     assert_eq!(c, 0, "{err}");
     assert!(
-        err.contains("✓ 花子(利用者)が 予約する(s2, 1) → 成功") && err.contains("すべて確かめました"),
+        err.contains("✓ 花子(利用者)が 予約する(回, 1) → 成功") && err.contains("すべて確かめました"),
         "{err}"
     );
     // 期待と違う確かめるは ✗ と実際の値を出し、終了コード 1
     let src = std::fs::read_to_string(root.join("src/app.koto"))
         .unwrap()
-        .replace("枠(s2)の予約数は 2", "枠(s2)の予約数は 5");
+        .replace("枠(回)の予約数は 2", "枠(回)の予約数は 5");
     std::fs::write(root.join("src/app.koto"), src).unwrap();
     let (c, _, err) = koto(&root, &["test"]);
     assert_eq!(c, 1);
-    assert!(err.contains("✗ 枠(s2)の予約数は 5  (実際は: 2)"), "{err}");
+    assert!(err.contains("✗ 枠(回)の予約数は 5  (実際は: 2)"), "{err}");
     // 書き方の誤りは koto check で分かる
     let src = std::fs::read_to_string(root.join("src/app.koto"))
         .unwrap()
-        .replace("枠(s2)の予約数は 5", "花子(店長)が 予約する(s1, 1) → 成功");
+        .replace("枠(回)の予約数は 5", "花子(店長)が 予約する(s1, 1) → 成功");
     std::fs::write(root.join("src/app.koto"), src).unwrap();
     let (c, _, err) = koto(&root, &["check"]);
     assert_ne!(c, 0);
@@ -578,12 +578,12 @@ fn computed_fields_show_sort_and_check_but_cannot_be_written() {
         .replace("    枠.定員 - 枠.予約数 >= 人数 を確認", "    枠.残席 >= 人数 を確認")
         .replace("    枠を一覧表示\n", "    枠を残席の多い順に一覧表示\n")
         .replace("    枠の名前と開始日時と定員と予約数を表示", "    枠の名前と開始日時と残席を表示")
-        .replace("    枠(s2)の予約数は 2", "    枠(s2)の予約数は 2\n    枠(s2)の残席は 0\n    枠(s1)の残席は 5");
+        .replace("    枠(回)の予約数は 2", "    枠(回)の予約数は 2\n    枠(回)の残席は 0\n    枠(s1)の残席は 5");
     std::fs::write(&app, &s).unwrap();
     let (c, _, err) = koto(&root, &["test"]);
     assert_eq!(c, 0, "{err}");
     assert!(
-        err.contains("✓ 枠(s2)の残席は 0") && err.contains("✓ 花子(利用者)が 予約する(s2, 1) → 失敗(\"満席\")"),
+        err.contains("✓ 枠(回)の残席は 0") && err.contains("✓ 花子(利用者)が 予約する(回, 1) → 失敗(\"満席\")"),
         "{err}"
     );
     // 集計の単位が「データ名ID」なら、画面ではそのデータの名前で出す
@@ -664,7 +664,9 @@ fn rename_changes_names_with_their_uses_and_seed_and_refuses_when_errors_grow() 
     assert_eq!(c, 0, "{err}");
     assert!(out.contains("「枠」を「イベント」に変えました"), "{out}");
     let src = std::fs::read_to_string(root.join("src/app.koto")).unwrap();
-    assert!(src.contains("データ イベント:") && src.contains("イベントID: 識別子") && src.contains("画面 イベント一覧:") && !src.contains('枠'));
+    let code: String = src.lines().filter(|l| !l.trim_start().starts_with('#')).collect::<Vec<_>>().join("\n");
+    assert!(code.contains("データ イベント:") && code.contains("イベントID: 識別子") && code.contains("画面 イベント一覧:") && !code.contains('枠'));
+    assert!(out.contains("一緒に変わった名前: 枠を追加 → イベントを追加"), "{out}");
     // 項目の名前: 区切りを見て、その項目だけ(「定員不正」は変えない)
     let (c, _, err) = koto(&root, &["rename", "イベント.定員", "上限"]);
     assert_eq!(c, 0, "{err}");
@@ -689,4 +691,66 @@ fn rename_changes_names_with_their_uses_and_seed_and_refuses_when_errors_grow() 
     assert_ne!(c, 0, "{err}");
     assert!(err.contains("元に戻しました"), "{err}");
     assert_eq!(std::fs::read_to_string(root.join("src/app.koto")).unwrap(), before, "元に戻す");
+}
+
+#[test]
+fn round6_fixes_rename_rules_conditions_screen_roles_and_scenario_roles() {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("round6_inq");
+    let _ = std::fs::remove_dir_all(&root);
+    let (c, _, err) = koto(Path::new("."), &["init", root.to_str().unwrap(), "--template", "問い合わせ"]);
+    assert_eq!(c, 0, "{err}");
+    let app = root.join("src/app.koto");
+    let before = std::fs::read_to_string(&app).unwrap();
+    // 名前の変更: 注釈は変えない・「問い合わせる」(動作)は「お迎え連絡る」にしない・一緒に変わった名前を示す
+    let (c, out, err) = koto(&root, &["rename", "問い合わせ", "お迎え連絡"]);
+    assert_eq!(c, 0, "{err}");
+    let src = std::fs::read_to_string(&app).unwrap();
+    assert!(src.contains("動作 問い合わせる(") && !src.contains("お迎え連絡る"), "{src}");
+    assert!(src.contains("データ お迎え連絡:"));
+    let comments = |s: &str| s.lines().filter(|l| l.trim_start().starts_with('#')).map(String::from).collect::<Vec<_>>();
+    assert_eq!(comments(&src), comments(&before), "注釈は変えない");
+    assert!(out.contains("「問い合わせ」を「お迎え連絡」に変えました"), "{out}");
+    // 前の名前で探すと、似た名前を示す
+    let (c, _, err) = koto(&root, &["rename", "問い合わせ一覧", "連絡一覧"]);
+    assert_ne!(c, 0);
+    assert!(err.contains("似た名前"), "{err}");
+    // 項目の名前の変更は、列挙の値・文字列の中を変えない(列挙の値「内容が空」と 失敗("内容が空") がずれない)
+    let (c, _, err) = koto(&root, &["rename", "お迎え連絡.内容", "メモ"]);
+    assert_eq!(c, 0, "{err}");
+    let src = std::fs::read_to_string(&app).unwrap();
+    assert!(src.contains("    メモ: 文字列"), "{src}");
+    // 条件付きボタン: 「…でないとき」(のとき を含まない)と、画面を役割だけに出す・確かめるの人の役割を覚える
+    let root2 = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("round6_res");
+    let _ = std::fs::remove_dir_all(&root2);
+    let (c, _, err) = koto(Path::new("."), &["init", root2.to_str().unwrap(), "--template", "予約受付"]);
+    assert_eq!(c, 0, "{err}");
+    let app2 = root2.join("src/app.koto");
+    let s = std::fs::read_to_string(&app2)
+        .unwrap()
+        .replace(
+            "    「1名で予約」を押すと 予約する(枠.ID, 1)",
+            "    枠の予約数が2でないとき「1名で予約」を押すと 予約する(枠.ID, 1)",
+        )
+        .replace("画面 管理:\n", "画面 管理:\n    この画面は受付係だけ\n")
+        .replace(
+            "    花子から 予約が 1件見える",
+            "    花子から 予約が 1件見える\n    受付(受付係)が 枠を追加(\"朝の回\", 2026-12-06 09:00, 3) → 成功\n    受付から 予約が 2件見える",
+        );
+    std::fs::write(&app2, &s).unwrap();
+    let (c, _, err) = koto(&root2, &["test"]);
+    assert_eq!(c, 0, "{err}");
+    let out = root2.join("out-web");
+    let (c, _, err) = koto(&root2, &["build", "--target", "web", "--out", out.to_str().unwrap()]);
+    assert_eq!(c, 0, "{err}");
+    let screens = std::fs::read_to_string(out.join("src/screens.generated.ts")).unwrap();
+    assert!(
+        screens.contains("!== true") || screens.contains("!== negate") || screens.contains("=== \"2\")"),
+        "{screens}"
+    );
+    assert!(screens.lines().any(|l| l.contains("\"管理\": {") && l.contains("only: [[")), "{screens}");
+    // 知らない役割は分かる言葉で
+    std::fs::write(&app2, s.replace("この画面は受付係だけ", "この画面は店長だけ")).unwrap();
+    let (c, _, err) = koto(&root2, &["check"]);
+    assert_ne!(c, 0);
+    assert!(err.contains("役割 `店長` は定義されていません"), "{err}");
 }

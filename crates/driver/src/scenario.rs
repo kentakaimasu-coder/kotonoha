@@ -119,6 +119,9 @@ struct Ctx<'a> {
     diags: Vec<Diagnostic>,
     /// この「確かめる」の中で `→ 成功(名前)` と名付けた結果
     labels: std::collections::BTreeSet<String>,
+    /// この「確かめる」の中で `花子(利用者)` と書いた人の役割。後の行で `花子` とだけ書いても同じ役割にする
+    /// (「坂本から 配車が 4件見える」が役割なしの人として数えられ 0 件になった。第 6 回評価)
+    roles_of: std::collections::BTreeMap<String, String>,
 }
 
 impl Ctx<'_> {
@@ -148,7 +151,11 @@ impl Ctx<'_> {
                     )));
                 return None;
             }
+            self.roles_of.insert(name.trim().to_string(), role.to_string());
             return Some(json!({"label": who, "sub": name.trim(), "role": role}));
+        }
+        if let Some(role) = self.roles_of.get(who) {
+            return Some(json!({"label": who, "sub": who, "role": role}));
         }
         Some(json!({"label": who, "sub": who}))
     }
@@ -302,6 +309,7 @@ pub fn compile(asts: &[SourceFile], env: &Env) -> (Value, Vec<Diagnostic>) {
         env,
         diags: Vec::new(),
         labels: Default::default(),
+        roles_of: Default::default(),
     };
     let mut out = Vec::new();
     for f in asts {
