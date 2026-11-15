@@ -5,7 +5,7 @@
 // - 127.0.0.1 だけで待ち受け、Host を確かめ、書き込みには起動時に作った合言葉(ヘッダ)を求める(他のサイトから操作させない)
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, realpathSync, readdirSync, appendFileSync, renameSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, realpathSync, readdirSync, appendFileSync, renameSync, utimesSync } from "node:fs";
 import { join, resolve, sep, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
@@ -912,6 +912,17 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       return checked(at, `画面「${sc.name}」に「${label}」のボタンを足しました`, o, text);
     }
     throw new Error(`「${label}」に似たボタンも、同じ名前の動作もありません。先に動作を作ります(例: 「${label}」で…を…にする)`);
+  }
+  // 入力の確認: 「注文する」で数量が0以下なら「数量不正」で止める(第 9 回評価: 読めず、ソースで書いた)
+  if ((m = cmd(/^(?:動作)?(?:「(.+?)」で)?(.+?)が(-?\d+)(以下|未満|以上|より大きい|より小さい|を超える|を超えた)(?:なら|のとき|ときは)、?「?(.+?)」?(?:で|として|と出して)?(?:止める|失敗|失敗にする|断る|エラー)$/.exec(text)))) {
+    const [, act0, fld, n, cmp, val] = m.map((x) => x?.trim());
+    const acts = (o.decls ?? []).filter((d: any) => d.kind === "action" && (act0 ? d.name === act0 : (d.params ?? []).some((p: any) => p.name === fld)));
+    if (acts.length === 0) throw new Error(act0 ? `動作「${act0}」が無いか、「${fld}」を受け取りません` : `「${fld}」を受け取る動作がありません`);
+    if (acts.length > 1) throw new Error(`「${fld}」を受け取る動作が ${acts.map((a: any) => a.name).join("・")} の ${acts.length} つあります。「「${acts[0].name}」で${fld}が${n}${cmp}なら「${val}」で止める」のように書きます`);
+    // 止める条件の反対が、通ってよい条件
+    const okCond = ({ 以下: ">", 未満: ">=", 以上: "<", より大きい: "<=", より小さい: ">=", を超える: "<=", を超えた: "<=" } as Record<string, string>)[cmp];
+    const at = apply({ op: "add_line", kind: "action", name: acts[0].name, text: `${fld} ${okCond} ${n} を確認 または 失敗("${val}")` });
+    return checked(at, `動作「${acts[0].name}」で、${fld}が${n}${cmp}なら「${val}」で止めるようにしました`, o, text);
   }
   // アプリの名前: アプリの名前を「料理教室」にする(画面のいちばん上に出る)
   if ((m = cmd(/^アプリ(?:の名前)?を「?(.+?)」?に(?:する|変える)$/.exec(text)))) {
@@ -1835,6 +1846,7 @@ let preview: ChildProcess | null = null;
 let devLog = "";
 /** 確かめるの結果(または誤り)が最後に出た時刻 */
 let checksTime = 0;
+let lastRetrigger = 0;
 async function freePort(): Promise<number> {
   return new Promise((ok, ng) => {
     const s = netServer();
@@ -1984,6 +1996,15 @@ function state(): any {
   }
   // アプリの起動中に試した行(fetch failed)は、失敗ではなく「起動中」と出す(✗ が並んで不安になった。第 7 回評価)
   const starting = keep.some((l) => /fetch failed|ECONNREFUSED/.test(l));
+  // アプリの起動中に試して失敗したまま、試し直されないことがある(「起動し直しています…」で止まった。第 9 回評価)。
+  // 少し待っても新しい結果が無ければ、ソースの更新時刻だけを進めて koto dev に試し直させる(中身は変えない)
+  if (starting && previewAlive && Date.now() - checksTime > 15_000 && Date.now() - lastRetrigger > 30_000) {
+    lastRetrigger = Date.now();
+    try {
+      const f = (o.files ?? [])[0];
+      if (f) utimesSync(srcPath(f), new Date(), new Date());
+    } catch {}
+  }
   const shown = starting ? ["アプリを起動し直しています。少し待つと、もう一度試します…"] : keep;
   // 直した後、試し直すまでの間は前の結果だと分かるようにする(名前を変えた後に古い名前の結果が残った。第 7 回評価)
   // アプリが起動できずに止まっている間も、前の結果だと分かるようにする(全部 ✓ に見えた。第 8 回評価)

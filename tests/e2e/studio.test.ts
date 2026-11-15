@@ -523,6 +523,12 @@ test("第 9 回評価の途中の修正: 取り消せるようにしたい・項
   j = await (await api("/api/instruct", { text: "「講座」を「レッスン」に変える" })).json();
   j = await (await api("/api/instruct", { text: "「講座登録」を「レッスンを追加」に変える" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  // 「…が0以下なら「…」で止める」: 取り出しの後に確認の行が入り、失敗の値も足される
+  j = await (await api("/api/instruct", { text: "動作「申し込む」に「回数」を追加" })).json();
+  j = await (await api("/api/instruct", { text: "「申し込む」で回数が0以下なら「回数不正」で止める" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /    回数 > 0 を確認 または 失敗\("回数不正"\)\n/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
   // 表を指示の欄に貼ると、初期データの欄を案内する
   j = await (await api("/api/instruct", { text: "名前\t開始日時\n朝\t2026-12-01 10:00" })).json();
   assert.match(j.error ?? "", /これは表のようです/);

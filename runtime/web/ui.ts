@@ -166,7 +166,8 @@ export function okText(prefix: string, r: LoadResult): string {
 
 export function errorText(r: LoadResult): string {
   if (r.status === 401) return "ログインが必要です";
-  if (r.status === 403) return "権限がありません";
+  // 足りない権限の名前も出す(「権限がありません」だけでは理由が分からなかった。第 9 回評価)
+  if (r.status === 403) return typeof r.body?.message === "string" && r.body.message.startsWith("権限がありません") ? r.body.message : "権限がありません";
   if (r.status === 404) return "見つかりません";
   if (r.status === 429) return "要求が多すぎます。しばらく待ってから再試行してください";
   if (r.status === 422 && r.body?.error === "failure") return `失敗しました: ${String(r.body.value)}`;
