@@ -61,6 +61,7 @@ $("welcome-form").addEventListener("submit", async (e) => {
   S = j;
   renderAll();
 });
+let autoScreenTried = false;
 let notice = null; // 編集の欄に出す直前の結果({kind, text})
 async function post(path, body, beforeRender) {
   const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Studio-Token": TOKEN }, body: JSON.stringify(body) });
@@ -759,14 +760,26 @@ function showResult(j) {
   const box = $("ask-result");
   box.replaceChildren();
   const r = j.result;
-  if (j.error) return box.append(el("span", { class: "err", text: j.error }));
+  if (j.error) {
+    autoScreenTried = false;
+    return box.append(el("span", { class: "err", text: j.error }));
+  }
   if (!r) return;
   if (r.ok) {
+    autoScreenTried = false;
     box.append(el("span", { class: "ok", text: "✓ " + r.done }));
     $("ask-text").value = "";
     return;
   }
   if (r.need === "screen") {
+    // 入れられる画面が 1 つだけなら、聞かずにそこへ入れる(画面を選んでから送り直すのが手間だった。第 10 回評価で 11 人)
+    if (r.screens?.length === 1 && !autoScreenTried) {
+      autoScreenTried = true;
+      select({ kind: "screen", name: r.screens[0] });
+      $("ask-form").requestSubmit();
+      return;
+    }
+    autoScreenTried = false;
     box.append(el("span", { class: "err", text: r.message }), el("div", { class: "chips" }, ...r.screens.map((s) => el("button", { type: "button", class: "chip", onclick: () => { select({ kind: "screen", name: s }); $("ask-form").requestSubmit(); } }, `画面「${s}」に入れる`))));
     return;
   }

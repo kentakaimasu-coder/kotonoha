@@ -632,6 +632,15 @@ test("第 10 回評価の途中の修正: 名前が変わり済みなら伝え�
   assert.match(src(), /画面 行事詳細:\n    行事の名前と会場と定員を表示\n    「増席」を押すと 増席\(行事\.ID\)/);
   assert.match(src(), /行事を選ぶと 行事詳細 へ/);
   assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // 「借りる」で状態を変えると、借りた人(ログインした本人)と貸出日時も入れる
+  j = await (await api("/api/instruct", { text: "データ「備品」を作る(名前: 文字列、貸出状況: 文字列、借りた人: 識別子(任意)、貸出日時: 日時(任意))" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  j = await (await api("/api/instruct", { text: "「借りる」で備品の貸出状況を「貸出中」にする" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /動作 借りる\(備品ID: 識別子\)[^\n]*:\n    件 = 備品を取得\(備品ID\)\n    件\.貸出状況 = "貸出中"\n    件\.借りた人 = 本人\n    件\.貸出日時 = 現在日時\(\)\n/);
+  j = await (await api("/api/instruct", { text: "「返す」で備品の貸出状況を「在庫あり」にする" })).json();
+  assert.match(src(), /動作 返す\(備品ID: 識別子\)[^\n]*:\n    件 = 備品を取得\(備品ID\)\n    件\.貸出状況 = "在庫あり"\n    備品ID を返す/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
   // 役割を作ると、その役割では出ないボタン(動作)を知らせる
   j = await (await api("/api/instruct", { text: "役割「見学者」を作る" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));

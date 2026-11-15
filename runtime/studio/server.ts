@@ -138,7 +138,7 @@ function guessType(name: string, o: any): string {
   // (電話番号・営業時間は文字のまま)
   if (/(人数|数$|数量|定員|回数|点数|年齢|順番|積載|重量|距離|作業時間|所要時間|勤務時間|在庫|件数)/.test(n)) return "整数";
   // 操作をした人(連絡者・予約者・記入者など)は、ログインした人の ID(連絡者が文字の欄になった。第 9 回評価)
-  if (/(予約|申込|記入|送信|作成|登録|注文|依頼|連絡|投稿|報告|記録|受付|回答|訪問|発行|発券|入力|提出|申請|発注|購入|相談|応募|点検|貸出|借用)者$/.test(n)) return "識別子";
+  if (/(予約|申込|記入|送信|作成|登録|注文|依頼|連絡|投稿|報告|記録|受付|回答|訪問|発行|発券|入力|提出|申請|発注|購入|相談|応募|点検|貸出|借用)者$/.test(n) || /^(借りた人|借り手|借主|利用者|使用者)$/.test(n)) return "識別子";
   if (/メール/.test(n)) return "メール";
   if (o.enums && n in o.enums) return n;
   // 「状態」を足すとき、列挙「予約状態」「状態」があればそれにする(文字列になって登録が誤りになった。第 6 回評価)
@@ -959,7 +959,7 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       if (missing.length) throw new Error(`役割「${missing.join("・")}」がありません(役割: ${(o.decls ?? []).filter((d: any) => d.kind === "role").map((d: any) => d.name).join("、") || "なし"})。先に 役割「${missing[0]}」を作る と書きます`);
       const screens = (o.decls ?? []).filter((d: any) => d.kind === "screen").map((d: any) => d.name);
       const sc = sname && decl(o, "screen", sname);
-      if (!sc) return { ok: false, need: "screen", screens, message: "どの画面にしますか? 左の一覧で画面を選んでから、もう一度送ってください" };
+      if (!sc) return { ok: false, need: "screen", screens, message: "どの画面にしますか? 下の画面の名前を押すと、そこに入れます" };
       const ls = lines(sc.file);
       const line = `この画面は${roles.join("と")}だけ`;
       const k = ls.findIndex((l, i) => i >= sc.line && i < sc.end && /^\s+この画面は.+だけ\s*$/.test(l));
@@ -1006,7 +1006,7 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     const act = decl(o, "action", label);
     if (act) {
       const sc = (ctx.screen && decl(o, "screen", ctx.screen)) || null;
-      if (!sc) return { ok: false, need: "screen", screens: screens.map((d: any) => d.name), message: "どの画面にボタンを足しますか? 左の一覧で画面を選んでから、もう一度送ってください" };
+      if (!sc) return { ok: false, need: "screen", screens: screens.map((d: any) => d.name), message: "どの画面にボタンを足しますか? 下の画面の名前を押すと、そこに入れます" };
       const args = (act.params ?? []).map((p: any) => (p.name.endsWith("ID") && decl(o, "data", p.name.slice(0, -2)) ? `${p.name.slice(0, -2)}.ID` : /^(整数|金額)/.test(p.type) ? "1" : '""'));
       const at = apply({ op: "add_line", kind: "screen", name: sc.name, text: `「${label}」を押すと ${label}(${args.join(", ")})` });
       return checked(at, `画面「${sc.name}」に「${label}」のボタンを足しました`, o, text);
@@ -1383,7 +1383,16 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       const f = D.fields.find((x: any) => x.name === fn);
       if (!f) throw new Error(`データ「${dn}」に項目「${fn}」はありません(項目: ${D.fields.map((x: any) => x.name).join("、")})`);
       const lit = /^(整数|金額|選択<整数>)/.test(f.type) ? v : f.type === "真偽" ? (/^(はい|真|済|オン)$/.test(v) ? "真" : "偽") : `"${v}"`;
-      return [`件 = ${dn}を取得(${dn}ID)`, `件.${fn} = ${lit}`, `${dn}ID を返す`];
+      // 借りる・引き受けるなどの動作では、した人と日時も入れる(「借りる」で状態を貸出中にしても、借りた人が残らなかった。第 10 回評価)
+      const extra: string[] = [];
+      if (/借り|貸出|貸し出|引き受け|担当|受け持|使う|利用|予約|受付|対応|呼び出/.test(act) && !/返|戻|取り?消|キャンセル|終/.test(act)) {
+        for (const g of D.fields) {
+          if (g.name === fn) continue;
+          if (g.type.replace(/\(任意\)$/, "").replace(/^選択<(.+)>$/, "$1") === "識別子" && /(借りた人|借り手|借主|貸出先|担当者|利用者|使用者|受付者|対応者|予約者|貸出者|借用者)$/.test(g.name)) extra.push(`件.${g.name} = 本人`);
+          else if (g.type.replace(/\(任意\)$/, "").replace(/^選択<(.+)>$/, "$1") === "日時" && /(貸出|借用|借りた|利用|使用|受付|対応|開始|呼び出し)(日時|時刻)$/.test(g.name)) extra.push(`件.${g.name} = 現在日時()`);
+        }
+      }
+      return [`件 = ${dn}を取得(${dn}ID)`, `件.${fn} = ${lit}`, ...extra, `${dn}ID を返す`];
     });
   }
   // 取り消し: 予約を取り消せるようにしたい(第 9 回評価: 読めず、取り消しを作れなかった)
@@ -1542,7 +1551,7 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       guessed = true;
     }
   }
-  if (!target) return { ok: false, need: "screen", screens, message: "どの画面に入れますか? 左の一覧で画面を選んでから、もう一度送ってください" };
+  if (!target) return { ok: false, need: "screen", screens, message: "どの画面に入れますか? 下の画面の名前を押すと、そこに入れます" };
   // 同じデータ・同じ絞り込みの一覧があるなら、並び方だけを変える(一覧が 2 つになった。第 7 回評価)
   const listOf = (t: string) => /^(.+?)(?:のうち(.+?)のもの)?を(?:.+?順に)?一覧表示$/.exec(t);
   const nl = listOf(text);
