@@ -723,6 +723,21 @@ function apply(op: Op): { file: string; line: number } | null {
             .join("\n");
           if (u !== t) write(f, u);
         }
+        // そのデータを登録する動作の受け取る値(登録フォームの欄)も、項目の順にそろえる
+        // (一覧の列は動くのにフォームの欄の順が変わらなかった。第 10 回評価で 4 人)
+        for (const a of (o.decls ?? []).filter((x: any) => x.kind === "action")) {
+          const body = read(a.file).split("\n").slice(a.line - 1, a.end).join("\n");
+          if (!body.includes(`${D.name}を登録(`)) continue;
+          const names: string[] = (a.params ?? []).map((p: any) => p.name);
+          const slots = names.map((n, k) => (order.includes(n) ? k : -1)).filter((k) => k >= 0);
+          const want = slots.map((k) => names[k]).sort((x, y) => order.indexOf(x) - order.indexOf(y));
+          for (let k = 0; k < slots.length; k++) {
+            const cur = names.indexOf(want[k]);
+            if (cur === slots[k]) continue;
+            swapCallArgs(a.name, slots[k], cur, true);
+            [names[slots[k]], names[cur]] = [names[cur], names[slots[k]]];
+          }
+        }
       }
       return { file: op.file, line: j + 1 };
     }
@@ -1115,6 +1130,10 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   // 名前を変える(第 5 回評価: ひな形の「枠」を自分の言葉にする方法が無かった)
   //   枠の「定員」を「人数」に変える / 「枠」を「レッスン」に変える / 枠の名前をレッスンに変える
   if ((m = cmd(/^(?:データ)?「?(.+?)」?の(?:項目)?「(.+?)」を「(.+?)」に(?:名前を)?(?:変える|かえる|変更(?:する)?|直す)$/.exec(text))) && decl(o, "data", m[1].trim())) {
+    const D = decl(o, "data", m[1].trim());
+    const has = (n: string) => D.fields.some((f: any) => f.name === n);
+    // 「枠」を「イベント」に変えると「枠ID」も「イベントID」に変わる。その後の「枠ID」を「イベントID」に変える は、もう済んでいると伝える(第 10 回評価)
+    if (!has(m[2].trim()) && has(m[3].trim())) return { ok: true, done: `「${D.name}」の項目は、もう「${m[3].trim()}」になっています(前に名前を変えたときに一緒に変わりました)` };
     renameField(o, m[1].trim(), m[2].trim(), m[3].trim());
     return changed(o, `「${m[1].trim()}」の項目「${m[2].trim()}」を「${m[3].trim()}」に変えました`);
   }
@@ -1126,6 +1145,9 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     let [from, to] = [m[1].trim(), m[2].trim()];
     // 前に変えた名前で書いたとき(「枠」を「イベント」に変えた後の「枠を追加」): 今の名前に読み替える(第 9 回評価)
     let note = "";
+    // 変えたい名前が、もうある(前に同じ指示をした・前に名前を変えたときに一緒に変わった)ときは、済んでいると伝える(第 10 回評価)
+    if (!(o.decls ?? []).some((x: any) => x.name === from) && (o.decls ?? []).some((x: any) => x.name === to))
+      return { ok: true, done: `もう「${to}」になっています(前に名前を変えたときに一緒に変わりました)` };
     if (!(o.decls ?? []).some((x: any) => x.name === from)) {
       for (const [a, b] of renamedWords) {
         const cand = from.split(a).join(b);
@@ -1147,6 +1169,19 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       return changed(o, `「${owners[0].name}」の項目「${from}」を「${to}」に変えました`);
     }
     if (owners.length > 1) throw new Error(`項目「${from}」は ${owners.map((d: any) => d.name).join("・")} にあります。「${owners[0].name}の「${from}」を「${to}」に変える」のように書きます`);
+    // 変えたい名前が、もうある(前に名前を変えたときに一緒に変わった)ときは、済んでいると伝える(第 10 回評価)
+    if ((o.decls ?? []).some((x: any) => x.name === to)) return { ok: true, done: `もう「${to}」になっています(前に名前を変えたときに一緒に変わりました)` };
+    const toOwners = (o.decls ?? []).filter((d: any) => d.kind === "data" && d.fields.some((f: any) => f.name === to));
+    if (toOwners.length) return { ok: true, done: `「${toOwners[0].name}」の項目は、もう「${to}」になっています(前に名前を変えたときに一緒に変わりました)` };
+    // 前に変えた名前を含む項目名(「予約」を「取り置き」に変えた後の「予約者」)は、今の項目名を教える
+    for (const [a, b] of renamedWords) {
+      const cand = from.split(a).join(b);
+      const ow = cand !== from && (o.decls ?? []).find((d: any) => d.kind === "data" && d.fields.some((f: any) => f.name === cand));
+      if (ow) {
+        renameField(o, ow.name, cand, to);
+        return changed(o, `「${ow.name}」の項目「${cand}」を「${to}」に変えました(「${a}」は前に「${b}」に変えたので、今の名前は「${cand}」でした)`);
+      }
+    }
     throw new Error(`「${from}」という名前はありません`);
   }
   // 権限を与える: 受付係に予約の更新を許可する / 受付係は予約を更新できる / 店長に動作「締める」を許可する(第 6 回評価)
@@ -1272,6 +1307,8 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     return { ok: true, done: `列挙「${m[1]}」を作りました`, at };
   }
   if ((m = cmd(/^画面「?(.+?)」?を(?:作る|作って|追加(?:する)?)(?:[(（](.+)[)）])?$/.exec(text)))) {
+    // 画面の名前の空白は詰める(「先生用 予約の一覧」が断られた。第 10 回評価)
+    m[1] = m[1].trim().replace(/[\s　]+/g, "");
     const ls = m[2] ? m[2].split(/[、;；]/).map((x) => x.trim()).filter(Boolean) : [];
     if (ls.length === 0) throw new Error(`画面に出すものも書いてください(例: 画面「${m[1]}」を作る(注文を新しい順に一覧表示))`);
     const at = apply({ op: "add_screen", name: m[1], lines: ls });
@@ -1290,6 +1327,14 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       const owners = (o.decls ?? []).filter((x: any) => x.kind === "data" && x.fields.some((f: any) => f.name === name));
       if (owners.length === 1) return deleteField(o, owners[0], name);
       if (owners.length > 1) throw new Error(`項目「${name}」は ${owners.map((x: any) => x.name).join("・")} にあります。「${owners[0].name}の${name}を消す」のように書きます`);
+      // 約束・画面などの 1 行そのもの(「「生徒は誰でも閲覧可」を消す」が通じなかった。第 10 回評価)
+      const hits: { file: string; line: number; old: string }[] = [];
+      for (const f of srcFiles(o)) read(f).split("\n").forEach((l, k) => /^\s/.test(l) && l.trim() === name && hits.push({ file: f, line: k + 1, old: l }));
+      if (hits.length === 1) {
+        apply({ op: "remove_line", ...hits[0] });
+        return changed(o, `「${name}」の行を消しました`);
+      }
+      if (hits.length > 1) throw new Error(`「${name}」の行が ${hits.length} か所にあります。左の一覧で消したい行の「消す」を押します`);
       throw new Error(`「${name}」という名前のデータ・画面・動作・役割・項目はありません`);
     }
     if (d.kind === "data") {

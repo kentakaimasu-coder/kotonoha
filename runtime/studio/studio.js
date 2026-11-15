@@ -37,7 +37,7 @@ function renderWelcome() {
   for (const sel of [".ask", "main", ".tabs", ".status"]) document.querySelector(sel).hidden = true;
   const box = $("welcome-templates");
   box.replaceChildren(el("legend", { text: "ひな形" }));
-  const opts = [{ name: "", desc: "白紙(データ 1 つと一覧の画面だけ)" }, ...(S.templates ?? [])];
+  const opts = [{ name: "", desc: "白紙(見本のデータ「商品」1 つと一覧の画面だけ。「「商品」を「本」に変える」のように書くと、自分の言葉になります)" }, ...(S.templates ?? [])];
   opts.forEach((t, i) =>
     box.append(
       el("label", { class: "tpl" }, el("input", { type: "radio", name: "tpl", value: t.name, ...(i === 1 ? { checked: "" } : {}) }), el("b", { text: t.name || "白紙" }), el("span", { class: "help", text: t.desc })),
@@ -155,7 +155,7 @@ function renderRun() {
           "tr",
           {},
           ...cols.map((c) =>
-            el("td", {}, el("input", { value: r[c] === undefined ? "" : r[c] === true ? "はい" : r[c] === false ? "いいえ" : String(r[c]), "aria-label": `${i + 1} 行目の${c}`, oninput: (e) => { seedRows.rows[i][c] = e.target.value; seedRows.dirty = true; } })),
+            el("td", {}, el("input", { value: seedShow(r[c]), "aria-label": `${i + 1} 行目の${c}`, oninput: (e) => { seedRows.rows[i][c] = e.target.value; seedRows.dirty = true; } })),
           ),
           el("td", {}, el("button", { type: "button", class: "small", onclick: () => { seedRows.rows.splice(i, 1); seedRows.dirty = true; renderRun(); } }, "この行を消す")),
         ),
@@ -178,6 +178,14 @@ $("seed-add").addEventListener("click", () => {
   }
   renderRun();
 });
+/** 初期データの表に出す値。日時は「2026-12-05T19:00:00+09:00」ではなく「2026-12-05 19:00」で出す(ISO の形を写して入れていた。第 10 回評価) */
+function seedShow(v) {
+  if (v === undefined || v === null) return "";
+  if (v === true) return "はい";
+  if (v === false) return "いいえ";
+  const m = /^(\d{4}-\d\d-\d\d)T(\d\d:\d\d)(?::00(?:\.0+)?)?\+09:00$/.exec(String(v));
+  return m ? `${m[1]} ${m[2]}` : String(v);
+}
 async function saveSeed() {
   // 表が空のまま保存すると、前の初期データが全部消える。消してよいか確かめる(0 行で保存された。第 9 回評価)
   const had = (S?.seed ?? []).find((d) => d.data === seedRows?.data)?.rows?.length ?? 0;

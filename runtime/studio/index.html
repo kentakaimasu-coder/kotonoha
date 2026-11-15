@@ -82,13 +82,13 @@
     </div>
     <div class="card">
       <h3>初期データ(試すときに最初から入っているデータ)</h3>
-      <p class="help">表を直して「保存する」と、動いているアプリに入れ直します。Excel の表をコピーして下の欄に貼り付けても入れられます(1 行目が項目名)。</p>
+      <p class="help">表を直して「保存する」と、動いているアプリに入れ直します。最初に入っている行は見本なので、書き換えても消してもかまいません。日時は「2026-12-05 19:00」や「2026/12/5 19:00」の形で書けます。Excel の表をコピーして下の欄に貼り付けても入れられます(1 行目が項目名)。</p>
       <label>データ <select id="seed-data"></select></label>
       <div id="seed-table" class="seed-table"></div>
       <div class="row"><button type="button" id="seed-add" class="ghost">行を足す</button> <button type="button" id="seed-save">初期データを保存する</button></div>
-      <label for="seed-paste">Excel から貼り付け</label>
+      <label for="seed-paste">Excel から貼り付け(今の表の行と置き換えます)</label>
       <textarea id="seed-paste" rows="3" placeholder="名前	定員&#10;午前の回	5"></textarea>
-      <div class="row"><button type="button" id="seed-paste-apply" class="ghost">貼り付けた表を入れる</button></div>
+      <div class="row"><button type="button" id="seed-paste-apply" class="ghost">貼り付けた表で置き換える</button></div>
       <p id="seed-msg" class="msg" role="status" aria-live="polite"></p>
     </div>
     <div class="card">

@@ -587,3 +587,42 @@ test("第 9 回評価の途中の修正: 取り消せるようにしたい・項
   const shown = detail().replace(/^レッスンの|を表示$/g, "").split("と");
   assert.deepEqual(shown, [...shown].sort((a, b) => fields.indexOf(a) - fields.indexOf(b)));
 });
+
+test("第 10 回評価の途中の修正: 名前が変わり済みなら伝える・項目の順番でフォームの欄の順もそろう", async () => {
+  let j: any = await (await api("/api/instruct", { text: "データ「催し」を作る(名前: 文字列、定員: 数、会場: 文字列)" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  j = await (await api("/api/instruct", { text: "催しを登録できるようにしたい" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  const act = /動作 (\S+)\(名前: 文字列, 定員: 整数, 会場: 文字列\)/.exec(src());
+  assert.ok(act, src());
+  // 「催し」を「行事」に変えると「催しID」は無いが、項目名を含むもの(ここでは無い)も含めて済んでいれば「もう…」と伝える
+  j = await (await api("/api/instruct", { text: "「催し」を「行事」に変える" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  j = await (await api("/api/instruct", { text: "「催し」を「行事」に変える" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(j.result.done, /もう「行事」になっています/);
+  j = await (await api("/api/instruct", { text: "行事の「場所」を「会場」に変える" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(j.result.done, /もう「会場」になっています/);
+  // 項目「会場」を上へ動かすと、登録の動作の受け取る値(フォームの欄)も同じ順になる
+  const o: any = await (await fetch(url + "/api/state", { headers: { "X-Studio-Token": token } })).json();
+  const D = (o.outline?.decls ?? o.decls ?? []).find((d: any) => d.kind === "data" && d.name === "行事");
+  assert.ok(D, "行事のデータ");
+  const ls = src().split("\n");
+  const line = ls.findIndex((l, k) => k >= D.line - 1 && /^\s+会場: 文字列/.test(l)) + 1;
+  j = await (await api("/api/op", { op: "move_line", file: D.file, line, old: ls[line - 1], dir: "up" })).json();
+  assert.equal(j.ok, true, j.error);
+  assert.match(src(), /データ 行事:\n    ID: 識別子\n    名前: 文字列\n    会場: 文字列\n    定員: 整数\n/);
+  assert.match(src(), /動作 \S+\(名前: 文字列, 会場: 文字列, 定員: 整数\)/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // 約束の 1 行を、その文のまま「…を消す」で消せる
+  j = await (await api("/api/instruct", { text: "行事は誰でも閲覧可" })).json();
+  assert.match(src(), /^    行事は誰でも閲覧可$/m);
+  j = await (await api("/api/instruct", { text: "「行事は誰でも閲覧可」を消す" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.doesNotMatch(src(), /行事は誰でも閲覧可/);
+  // 画面の名前の空白は詰める
+  j = await (await api("/api/instruct", { text: "画面「先生用 行事の一覧」を作る(行事を一覧表示)" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /画面 先生用行事の一覧:/);
+});

@@ -327,6 +327,8 @@ export function ActionButton(p: { label: string; action: string; args: () => Rec
   const onClick = async () => {
     const args = p.args();
     if (args === null) return;
+    // 前の結果の知らせを先に消す(同じことをもう一度したとき、入ったかどうか分からなかった。第 10 回評価)
+    setM(null);
     setBusy(true);
     try {
       const r = await callApi("POST", "/api/actions/" + enc(p.action), args);
@@ -472,6 +474,7 @@ export function ActionForm(p: { action: string; fields: Field[]; reload: () => P
     const form = ev.currentTarget as HTMLFormElement;
     const v = readForm(form, p.fields.filter((f) => !(p.fixed && f.name in p.fixed)), p.tz ?? "Asia/Tokyo");
     if (typeof v === "string") return setM({ kind: "error", text: v });
+    setM(null);
     setBusy(true);
     try {
       // 詳細画面のフォームでは、表示中のデータの ID を自動で入れる(利用者に ID を打たせない)

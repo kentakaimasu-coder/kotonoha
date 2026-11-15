@@ -305,7 +305,7 @@ fn cmd_init(o: &mut Opts) -> Result<i32, String> {
         Some((_, _, src, seed)) => (src.replace("{name}", &name), seed.to_string()),
         None => (
             format!(
-                "アプリ「{name}」\n\nデータ 商品:\n    ID: 識別子\n    名前: 文字列\n\n画面 商品一覧:\n    商品を一覧表示\n\n約束:\n    商品は誰でも閲覧可\n"
+                "アプリ「{name}」\n\n# 「商品」は見本です。Studio の上の欄に「「商品」を「本」に変える」のように書くと、自分の言葉に変わります\nデータ 商品:\n    ID: 識別子\n    名前: 文字列\n\n画面 商品一覧:\n    商品を一覧表示\n\n約束:\n    商品は誰でも閲覧可\n"
             ),
             r#"{"商品": [{"ID": "p1", "名前": "見本の商品"}]}"#.to_string(),
         ),
