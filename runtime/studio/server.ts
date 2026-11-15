@@ -5,7 +5,7 @@
 // - 127.0.0.1 だけで待ち受け、Host を確かめ、書き込みには起動時に作った合言葉(ヘッダ)を求める(他のサイトから操作させない)
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, realpathSync, readdirSync, appendFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, realpathSync, readdirSync, appendFileSync, renameSync } from "node:fs";
 import { join, resolve, sep, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
@@ -65,6 +65,12 @@ let group = 0;
 function read(file: string): string {
   return readFileSync(srcPath(file), "utf8");
 }
+/** 書きかけのファイルを koto dev などが読まないよう、別の名前に書いてから置き換える */
+function atomicWrite(p: string, text: string): void {
+  const tmp = `${p}.${process.pid}.tmp`;
+  writeFileSync(tmp, text);
+  renameSync(tmp, p);
+}
 /** 最後にソース・初期データを書き換えた時刻(確かめるの結果が古いかどうかの判断に使う) */
 let wroteTime = 0;
 function write(file: string, text: string): void {
@@ -72,7 +78,7 @@ function write(file: string, text: string): void {
   queueMicrotask(retryAfterFix);
   history.push({ file, text: read(file), g: group });
   if (history.length > 300) history.shift();
-  writeFileSync(srcPath(file), text.endsWith("\n") ? text : text + "\n");
+  atomicWrite(srcPath(file), text.endsWith("\n") ? text : text + "\n");
 }
 /** 初期データ(seed*.json)の書き換え。プロジェクト直下の JSON だけ */
 function seedFiles(): string[] {
@@ -87,7 +93,7 @@ function writeRaw(file: string, text: string): void {
   queueMicrotask(retryAfterFix);
   const p = join(PROJECT, file);
   history.push({ file: p, text: readFileSync(p, "utf8"), g: group, raw: true });
-  writeFileSync(p, text);
+  atomicWrite(p, text);
 }
 function lines(file: string): string[] {
   return read(file).split("\n");
@@ -124,7 +130,8 @@ function guessType(name: string, o: any): string {
   if (n === "ID" || (ref && (o.decls ?? []).some((d: any) => d.kind === "data" && d.name === ref))) return "識別子";
   if (/日時$|時刻$/.test(n)) return "日時";
   if (/日$|日付$|期限$/.test(n)) return "日付";
-  if (/(料金|金額|価格|単価|家賃|代金|料$|費$|額$)/.test(n)) return "金額";
+  if (/(料金|金額|価格|単価|値段|家賃|代金|料$|費$|額$)/.test(n)) return "金額";
+  if (/^(.{1,4}中|.+済み?|.+の有無|.+可否|有効|公開)$/.test(n) && !/(期間|時間|日時|日)$/.test(n)) return "真偽";
   if (/(納期|期日|締切|締め切り|予定日|誕生日)$/.test(n)) return "日付";
   if (/(人数|数$|数量|定員|回数|点数|年齢|順番)/.test(n)) return "整数";
   if (/メール/.test(n)) return "メール";
@@ -614,6 +621,34 @@ function apply(op: Op): { file: string; line: number } | null {
       write(op.file, ls.join("\n"));
       return { file: op.file, line: j + 1 };
     }
+    case "add_param": {
+      const a = (o.decls ?? []).find((x: any) => x.kind === "action" && x.name === op.action);
+      if (!a) throw new Error(`動作「${op.action}」が見つかりません`);
+      const name = okName(op.name, "受け取る値の名前");
+      if ((a.params ?? []).some((p: any) => p.name === name)) throw new Error(`動作「${a.name}」は既に「${name}」を受け取ります`);
+      const t = op.type ? okType(op.type, o) : guessType(name, o);
+      const al = lines(a.file);
+      al[a.line - 1] = addParam(al[a.line - 1], `${name}: ${t}`);
+      // 登録しているデータに同じ名前の項目があれば、登録にも入れる
+      for (let k = a.line; k < a.end; k++) {
+        const mm = /([^\s(=]+)を登録\(/.exec(al[k] ?? "");
+        const D = mm && decl(o, "data", mm[1]);
+        if (D && D.fields.some((f: any) => f.name === name) && !new RegExp(`[(,]\\s*${reEsc(name)}\\s*:`).test(al[k])) al[k] = addParam(al[k], `${name}: ${name}`, al[k].indexOf(`${mm![1]}を登録(`));
+      }
+      write(a.file, al.join("\n"));
+      appendCallArg(a.name, sampleValue(o, t));
+      return { file: a.file, line: a.line };
+    }
+    case "move_param": {
+      // 動作の引数の順番を変える。ボタン・確かめるの呼び出しの値も同じように並べ替える
+      const a = (o.decls ?? []).find((x: any) => x.kind === "action" && x.name === op.action);
+      if (!a) throw new Error(`動作「${op.action}」が見つかりません`);
+      const i = Number(op.index);
+      const j = op.dir === "up" ? i - 1 : i + 1;
+      if (!(i >= 0 && j >= 0 && i < a.params.length && j < a.params.length)) throw new Error("これ以上は動かせません");
+      swapCallArgs(a.name, i, j, true);
+      return { file: a.file, line: a.line };
+    }
     case "replace_line":
     case "remove_line": {
       const ls = lines(op.file);
@@ -737,6 +772,11 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   }
   const cmd = (m: RegExpExecArray | null) => m;
   let m: RegExpExecArray | null;
+  // 動作に受け取る値を足す: 動作「予約する」に「目的」を追加(第 8 回評価: 読めず、ソースと確かめるを手で直した)
+  if ((m = cmd(/^(?:動作)?「?(.+?)」?(?:の入力|の引数|の受け取る値)?に(?:入力|引数|受け取る値)?「?(.+?)」?(?:[(（](.+?)[)）])?を(?:追加(?:する)?|足す|加える)$/.exec(text))) && decl(o, "action", m[1].trim()) && !decl(o, "data", m[1].trim())) {
+    const at = apply({ op: "add_param", action: m[1].trim(), name: m[2], type: m[3] ?? "" });
+    return checked(at, `動作「${m[1].trim()}」に受け取る値「${m[2].trim()}」を足しました(ボタン・確かめるの呼び出しにも仮の値を入れました)`, o, text);
+  }
   // アプリの名前: アプリの名前を「料理教室」にする(画面のいちばん上に出る)
   if ((m = cmd(/^アプリ(?:の名前)?を「?(.+?)」?に(?:する|変える)$/.exec(text)))) {
     const app = (o.decls ?? []).find((d: any) => d.kind === "app");
@@ -862,6 +902,7 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
             });
         }
       }
+      convertSeed(o, D.name, fn, t);
       return changed(o, `「${D.name}」の「${fn}」を ${t} にしました`);
     }
   }
@@ -993,6 +1034,9 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     return checked(at, `「${m[1].trim()}」に計算項目「${m[2].trim()}」を足しました`, o, text);
   }
   if ((m = cmd(/^(.+?)に(?:項目)?「?(.+?)」?(?:[(（](.+?)[)）])?を(?:追加(?:する)?|足す|加える)$/.exec(text))) && decl(o, "data", m[1].trim())) {
+    // 「参加費(金額)」のように名前の中に型を書いたとき(読めなかった。第 8 回評価)
+    const inner = /^(.+?)[(（](.+?)[)）]$/.exec(m[2].trim());
+    if (inner && !m[3]) [m[2], m[3]] = [inner[1], inner[2]];
     optionalNote = "";
     const at = apply({ op: "add_field", data: m[1].trim(), name: m[2], type: m[3] ?? "" });
     const f = decl(outline(), "data", m[1].trim())?.fields.find((x: any) => x.name === m![2].trim());
@@ -1166,6 +1210,115 @@ function fillSeed(o: any, dn: string, fn: string, t: string): void {
   }
   if (changed) writeRaw("seed.json", JSON.stringify(seed, null, 2) + "\n");
 }
+/** 型を変えたら、初期データのその項目の値も新しい型に合わせる(合わない値は仮の値に)
+ *  (型を変えると「初期データの誤り…整数が必要です」でアプリが起動しなかった。第 8 回評価) */
+function convertSeed(o: any, dn: string, fn: string, t: string): void {
+  const sp = join(PROJECT, "seed.json");
+  if (!existsSync(sp)) return;
+  let seed: any;
+  try {
+    seed = JSON.parse(readFileSync(sp, "utf8"));
+  } catch {
+    return;
+  }
+  const rows = seed?.[dn];
+  if (!Array.isArray(rows)) return;
+  const base = t.replace(/^選択<(.+)>$/, "$1");
+  const enumVals: string[] | undefined = o.enums?.[base] ?? outline().enums?.[base];
+  const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+  const conv = (v: any): any => {
+    if (v === null || v === undefined) return v;
+    if (/^(整数|金額)/.test(base)) {
+      const n = Number(String(v).replace(/[,円¥\s]/g, ""));
+      return Number.isFinite(n) ? Math.trunc(n) : 0;
+    }
+    if (base === "真偽") return v === true || /^(true|はい|真|1|yes)$/i.test(String(v));
+    if (base === "日付") return /^\d{4}-\d{2}-\d{2}/.test(String(v)) ? String(v).slice(0, 10) : today;
+    if (base === "日時") return /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(String(v)) ? String(v) : `${today}T09:00:00+09:00`;
+    if (enumVals) return enumVals.includes(String(v)) ? String(v) : enumVals[0];
+    if (base === "文字列" || base === "メール" || base === "URL") return String(v);
+    return v;
+  };
+  let changedAny = false;
+  for (const r of rows) {
+    if (!r || typeof r !== "object" || !(fn in r)) continue;
+    const nv = conv(r[fn]);
+    if (JSON.stringify(nv) !== JSON.stringify(r[fn])) {
+      r[fn] = nv;
+      changedAny = true;
+    }
+  }
+  if (changedAny) writeRaw("seed.json", JSON.stringify(seed, null, 2) + "\n");
+}
+/** 動作のすべての呼び出し(ボタン・確かめる・ほかの動作の中)の最後に値を足す */
+function appendCallArg(act: string, value: string): void {
+  const o = outline();
+  for (const f of srcFiles(o)) {
+    const t = read(f);
+    const u = t
+      .split("\n")
+      .map((l) => {
+        if (/^\S/.test(l)) return l;
+        const m = new RegExp(`(^|[\\s(、,])${reEsc(act)}\\(`).exec(l);
+        if (!m) return l;
+        const k = m.index + m[1].length;
+        return addParam(l, value, k);
+      })
+      .join("\n");
+    if (u !== t) write(f, u);
+  }
+}
+/** カッコの中を、外側の「,」で分ける(文字列・入れ子のカッコ・<…> の中は分けない) */
+function splitTop(x: string): string[] {
+  const parts: string[] = [];
+  let cur = "";
+  let d = 0;
+  let q = false;
+  for (const ch of x) {
+    if (ch === '"') q = !q;
+    if (!q && (ch === "(" || ch === "<" || ch === "{" || ch === "[")) d++;
+    if (!q && (ch === ")" || ch === ">" || ch === "}" || ch === "]")) d--;
+    if (!q && d === 0 && ch === ",") {
+      parts.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  parts.push(cur);
+  return parts.map((p) => p.trim());
+}
+/** 動作の i 番目と j 番目の引数を入れ替える(見出しと、すべての呼び出し) */
+function swapCallArgs(act: string, i: number, j: number, header: boolean): void {
+  const o = outline();
+  const swapAt = (l: string, k: number): string => {
+    const start = k + act.length + 1;
+    let depth = 0;
+    for (let x = start - 1; x < l.length; x++) {
+      if (l[x] === "(") depth++;
+      else if (l[x] === ")" && --depth === 0) {
+        const parts = splitTop(l.slice(start, x));
+        if (Math.max(i, j) >= parts.length) return l;
+        [parts[i], parts[j]] = [parts[j], parts[i]];
+        return l.slice(0, start) + parts.join(", ") + l.slice(x);
+      }
+    }
+    return l;
+  };
+  for (const f of srcFiles(o)) {
+    const t = read(f);
+    const u = t
+      .split("\n")
+      .map((l) => {
+        const isHead = new RegExp(`^動作\\s+${reEsc(act)}\\(`).test(l);
+        if (isHead) return header ? swapAt(l, l.indexOf(`${act}(`)) : l;
+        if (/^\S/.test(l)) return l;
+        // 呼び出し(ボタン・確かめる・ほかの動作の中)。名前の前が区切りのときだけ
+        const m = new RegExp(`(^|[\\s(、,])${reEsc(act)}\\(`).exec(l);
+        return m ? swapAt(l, m.index + m[1].length) : l;
+      })
+      .join("\n");
+    if (u !== t) write(f, u);
+  }
+}
 /** 確かめるの行の「動作名(…)」の呼び出しから、i 番目の値を外す(replace を渡すと、外さずに置き換える) */
 function dropScenarioArg(act: string, idx: number, replace?: (v: string) => string): void {
   const o = outline();
@@ -1280,6 +1433,17 @@ function deleteField(o: any, D: any, fn: string): any {
     if (hit) write(a.file, al.join("\n"));
     if (dropIdx >= 0) dropScenarioArg(a.name, dropIdx);
   }
+  // 初期データからも、その項目の値を外す(残すと初期データの表を保存できなかった。第 8 回評価)
+  {
+    const sp = join(PROJECT, "seed.json");
+    try {
+      const seed = JSON.parse(readFileSync(sp, "utf8"));
+      if (Array.isArray(seed?.[D.name]) && seed[D.name].some((r: any) => r && fn in r)) {
+        for (const r of seed[D.name]) if (r && typeof r === "object") delete r[fn];
+        writeRaw("seed.json", JSON.stringify(seed, null, 2) + "\n");
+      }
+    } catch {}
+  }
   // 詳細の表示「Dの A と B を表示」からも外す(項目が 1 つだけの行は、その画面の最後の行でなければ消す)
   const o2 = outline();
   const re = new RegExp(`^(\\s+)${reEsc(D.name)}の(.+)を表示\\s*$`);
@@ -1317,11 +1481,12 @@ function registration(o: any, ctx: { screen?: string }, text: string, D: any, ac
   const args: string[] = [];
   for (const f of D.fields.filter((x: any) => x.name !== "ID")) {
     // 本人を自動で入れるのは、その操作をした人を表す名前の項目だけ(担当者・割当先は入力にする。第 7 回評価)
-    const actor = /(予約|申込|申し込み|記入|送信|作成|登録|注文|依頼|連絡|投稿|報告|記録|受付|出品|回答)者$|^(本人|記入者|送信者|作成者)$/.test(f.name);
+    const VERB = "予約|申込|申し込み|記入|送信|作成|登録|注文|依頼|連絡|投稿|報告|記録|受付|出品|回答|訪問|発行|入力|提出|申請|発注|購入|相談|応募|点検|実施|貸出|借用";
+    const actor = new RegExp(`(${VERB})者$|^(本人|記入者|送信者|作成者)$`).test(f.name);
     const auto =
       f.type === "識別子" && actor && !(o.decls ?? []).some((d: any) => d.kind === "data" && `${d.name}ID` === f.name)
         ? "本人"
-        : f.type === "日時" && /(登録|作成|受付|申込|予約|記録|連絡|送信|投稿|注文|依頼)日時$/.test(f.name)
+        : f.type === "日時" && new RegExp(`(${VERB})(日時|時刻)$`).test(f.name)
           ? "現在日時()"
           : o.enums?.[f.type] && /(状況|状態|ステータス)$/.test(f.name)
             ? `"${o.enums[f.type][0]}"`
@@ -1403,7 +1568,7 @@ function undo(): boolean {
     const h = history.pop()!;
     wroteTime = Date.now();
     queueMicrotask(retryAfterFix);
-    writeFileSync(h.raw ? h.file : srcPath(h.file), h.text);
+    atomicWrite(h.raw ? h.file : srcPath(h.file), h.text);
   }
   return true;
 }
@@ -1569,7 +1734,9 @@ function state(): any {
   const checks = names.size === 0 ? { lines: [], ok: null } : { lines: shown, stale, ok: starting || stale ? null : keep.some((l) => l.trim().startsWith("✗")) ? false : raw.ok };
   // アプリが起動に失敗しているとき(初期データの誤りなど)は、その理由を出す。「動いています」と出していた(第 7 回評価)
   const lastErr = Math.max(devLog.lastIndexOf("エラー["), devLog.lastIndexOf("初期データの誤り"));
-  const lastOk = devLog.lastIndexOf("確かめる「") > lastErr ? devLog.lastIndexOf("確かめる「") : devLog.search(/http:\/\/127\.0\.0\.1:\d+\/[^\n]*$/m);
+  // 正常に動き出した印(確かめるの結果・待ち受けの表示)の、いちばん後ろの位置
+  // (最初の URL の行しか見ておらず、確かめるが無いアプリでは直っても「起動できません」が消えなかった。第 8 回評価)
+  const lastOk = Math.max(devLog.lastIndexOf("確かめる「"), devLog.lastIndexOf("すべて確かめました"), devLog.lastIndexOf("件が期待と違いました"), devLog.lastIndexOf("web listening on"), devLog.lastIndexOf("  画面:   http://"));
   const devError = devFailure && !previewAlive ? devFailure : previewAlive && lastErr >= 0 && lastErr > Math.max(lastOk, devLog.lastIndexOf("ソースの変更を"))
     ? devLog.slice(lastErr).split("\n").filter((l) => l.trim() && !/^\s+at /.test(l)).slice(0, 3).join(" ").slice(0, 400)
     : "";
@@ -1667,12 +1834,24 @@ const server = createServer(async (req, res) => {
                 if (!Number.isInteger(n)) throw new Error(`${i + 1} 行目の「${k}」は整数で入れます(入っていた値: ${v})`);
                 out[k] = n;
               } else if (t === "真偽") out[k] = /^(true|真|はい|○|1)$/.test(String(v));
-              else if (t === "日時" && /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}$/.test(String(v))) out[k] = String(v).replace(" ", "T") + ":00+09:00";
-              else out[k] = String(v);
+              else if (t === "日時" || t === "日付") {
+                // Excel の書き方(2026/11/15 11:05・2026年11月15日)も受け取る(「タイムゾーン付きの ISO 8601」と出て分からなかった。第 8 回評価)
+                const sv = String(v);
+                if (t === "日時" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?([+-]\d{2}:\d{2}|Z)$/.test(sv)) {
+                  out[k] = sv;
+                  continue;
+                }
+                const mm = /^(\d{4})\s*[-/年.]\s*(\d{1,2})\s*[-/月.]\s*(\d{1,2})\s*日?(?:[ T　]+(\d{1,2})\s*[:時]\s*(\d{1,2})\s*分?(?::(\d{1,2}))?)?$/.exec(sv);
+                if (!mm) throw new Error(`${i + 1} 行目の「${k}」は ${t === "日時" ? "2026/12/05 19:00" : "2026/12/05"} のような形で入れます(入っていた値: ${sv})`);
+                const p2 = (x: string | undefined) => String(x ?? "0").padStart(2, "0");
+                const day = `${mm[1]}-${p2(mm[2])}-${p2(mm[3])}`;
+                out[k] = t === "日付" ? day : `${day}T${p2(mm[4])}:${p2(mm[5])}:${p2(mm[6])}+09:00`;
+              } else out[k] = String(v);
             }
+            if (Object.keys(out).length === 0) return null;
             if (!out.ID) out.ID = `${D.name}${i + 1}`;
             return out;
-          });
+          }).filter((x: any) => x !== null);
           let seed: any = {};
           const sp = join(PROJECT, "seed.json");
           try {

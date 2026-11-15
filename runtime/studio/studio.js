@@ -75,6 +75,8 @@ async function post(path, body) {
   return j;
 }
 async function op(o, msgBox) {
+  // 前の指示の結果(✓ や誤り)を残さない(別の操作の後も出続けた。第 8 回評価)
+  $("ask-result")?.replaceChildren();
   const j = await post("/api/op", o);
   const text = j.error ? j.error : "✓ 入れました(ソースに書きました)";
   if (msgBox && msgBox.isConnected) {
@@ -136,8 +138,10 @@ function renderRun() {
   sel.replaceChildren(...ds.map((d) => el("option", { value: d.data, ...(d.data === seedSel ? { selected: "" } : {}) }, d.data)));
   const D = ds.find((d) => d.data === seedSel);
   if (!D) return $("seed-table").replaceChildren(el("p", { class: "help", text: "データがありません" }));
-  if (!seedRows || seedRows.data !== D.data) seedRows = { data: D.data, rows: D.rows.map((r) => ({ ...r })) };
+  // 手で直していない間は、いつも今の初期データ(名前の変更・項目の追加の後)を出す(古い項目名のまま保存して断られた。第 8 回評価)
+  if (!seedRows || seedRows.data !== D.data || !seedRows.dirty) seedRows = { data: D.data, rows: D.rows.map((r) => ({ ...r })), dirty: false };
   const cols = D.fields.map((f) => f.name);
+  seedRows.cols = cols;
   const table = el(
     "table",
     {},
@@ -150,9 +154,9 @@ function renderRun() {
           "tr",
           {},
           ...cols.map((c) =>
-            el("td", {}, el("input", { value: r[c] === undefined ? "" : String(r[c]), "aria-label": `${i + 1} 行目の${c}`, oninput: (e) => (seedRows.rows[i][c] = e.target.value) })),
+            el("td", {}, el("input", { value: r[c] === undefined ? "" : String(r[c]), "aria-label": `${i + 1} 行目の${c}`, oninput: (e) => { seedRows.rows[i][c] = e.target.value; seedRows.dirty = true; } })),
           ),
-          el("td", {}, el("button", { type: "button", class: "small", onclick: () => { seedRows.rows.splice(i, 1); renderRun(); } }, "消す")),
+          el("td", {}, el("button", { type: "button", class: "small", onclick: () => { seedRows.rows.splice(i, 1); seedRows.dirty = true; renderRun(); } }, "この行を消す")),
         ),
       ),
     ),
@@ -167,11 +171,17 @@ $("seed-data").addEventListener("change", (e) => {
   renderRun();
 });
 $("seed-add").addEventListener("click", () => {
-  seedRows?.rows.push({});
+  if (seedRows) {
+    seedRows.rows.push({});
+    seedRows.dirty = true;
+  }
   renderRun();
 });
 async function saveSeed() {
-  const j = await post("/api/seed", { data: seedRows.data, rows: seedRows.rows });
+  // 表に出ている項目だけ送る(消した・名前を変えた項目の古い値は送らない)
+  const cols = seedRows.cols ?? [];
+  const rows = seedRows.rows.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !cols.length || cols.includes(k))));
+  const j = await post("/api/seed", { data: seedRows.data, rows });
   $("seed-msg").textContent = j.error ? j.error : `✓ 保存しました(${seedRows.rows.length} 行)。動いているアプリに入れ直します`;
   $("seed-msg").className = "msg " + (j.error ? "err" : "ok");
   if (!j.error) seedRows = null;
@@ -197,6 +207,7 @@ $("seed-paste-apply").addEventListener("click", async () => {
   }
   const before = seedRows.rows;
   seedRows.rows = lines.slice(1).map((l) => Object.fromEntries(l.split(sep).map((v, i) => [head[i], v.trim()]).filter(([k]) => k)));
+  seedRows.dirty = true;
   $("seed-paste").value = "";
   await saveSeed();
   // 入れられなかったときは、貼り付けた表と元の行を戻す
@@ -338,7 +349,23 @@ function analysisForm() {
     const D = datas.find((d) => d.name === data.value);
     const fs = (D?.fields ?? []).filter((f) => f.name !== "ID");
     unit.replaceChildren(...fs.filter((f) => !/^(整数|金額)/.test(f.type)).map((f) => el("option", { value: f.name }, f.name)));
-    sums.replaceChildren(...fs.filter((f) => /^(選択<)?(整数|金額)/.test(f.type)).map((f) => el("label", {}, el("input", { type: "checkbox", value: f.name, checked: true, onchange: renderCols }), ` ${f.name}`)));
+    // 合計の列の順番も選べる(列の順が課題と違った。第 8 回評価)
+    const move = (row, dir) => {
+      const sib = dir < 0 ? row.previousElementSibling : row.nextElementSibling;
+      if (!sib) return;
+      if (dir < 0) sums.insertBefore(row, sib);
+      else sums.insertBefore(sib, row);
+      renderCols();
+    };
+    sums.replaceChildren(
+      ...fs
+        .filter((f) => /^(選択<)?(整数|金額)/.test(f.type))
+        .map((f) => {
+          const row = el("div", { class: "line" }, el("label", {}, el("input", { type: "checkbox", value: f.name, checked: !/^(選択<)?金額/.test(f.type), onchange: renderCols }), ` ${f.name}`));
+          row.append(el("button", { type: "button", class: "small ghost", "aria-label": `${f.name}の列を左へ`, onclick: () => move(row, -1) }, "↑"), el("button", { type: "button", class: "small ghost", "aria-label": `${f.name}の列を右へ`, onclick: () => move(row, 1) }, "↓"));
+          return row;
+        }),
+    );
     renderCols();
   };
   data.addEventListener("change", fill);
@@ -368,11 +395,11 @@ function analysisForm() {
     el("label", { class: "row" }, el("span", { text: "集計の名前" }), name),
     el("label", { class: "row" }, el("span", { text: "どのデータを" }), data),
     el("label", { class: "row" }, el("span", { text: "何ごとにまとめる" }), unit),
-    el("h3", { text: "合計する項目(選ばなければ件数だけ)" }),
+    el("h3", { text: "合計する項目(選ばなければ件数だけ。↑↓ で列の順番)" }),
     sums,
     el("h3", { text: "列の名前(左から順に。決まった名前があれば書き換える)" }),
     cols,
-    el("div", { class: "row" }, el("button", { type: "button", onclick: go }, "作る")),
+    el("div", { class: "row" }, el("button", { type: "button", onclick: go }, "この集計を作る")),
     msg,
   ];
 }
@@ -463,7 +490,7 @@ const EDITORS = {
       el("div", { class: "row" }, name),
       el("h3", { text: "項目" }),
       box,
-      el("div", { class: "row" }, el("button", { type: "button", class: "ghost", onclick: () => add() }, "項目をもう 1 つ"), el("button", { type: "button", onclick: async () => { const j = await op({ op: "add_data", name: name.value, fields: [...box.children].map((r) => r.read()) }, msg); if (!j.error) select({ kind: "data", name: name.value.trim() }); } }, "作る")),
+      el("div", { class: "row" }, el("button", { type: "button", class: "ghost", onclick: () => add() }, "項目をもう 1 つ"), el("button", { type: "button", onclick: async () => { const j = await op({ op: "add_data", name: name.value, fields: [...box.children].map((r) => r.read()) }, msg); if (!j.error) select({ kind: "data", name: name.value.trim() }); } }, "このデータを作る")),
       msg,
     ];
   },
@@ -488,7 +515,7 @@ const EDITORS = {
     return [
       el("h2", { text: "新しい画面" }),
       el("div", { class: "rows" }, name, first, el("datalist", { id }, ...S.outline.patterns.screen.map((p) => el("option", { value: p })))),
-      el("button", { type: "button", onclick: async () => { const j = await op({ op: "add_screen", name: name.value, lines: [first.value] }, msg); if (!j.error) select({ kind: "screen", name: name.value.trim() }); } }, "作る"),
+      el("button", { type: "button", onclick: async () => { const j = await op({ op: "add_screen", name: name.value, lines: [first.value] }, msg); if (!j.error) select({ kind: "screen", name: name.value.trim() }); } }, "この画面を作る"),
       msg,
     ];
   },
@@ -502,13 +529,41 @@ const EDITORS = {
     const D = data[0] ?? "データ";
     return [
       el("h2", { text: `動作「${d.name}」` }),
-      el("p", { class: "sub", text: `引数: ${d.params.map((p) => `${p.name}(${p.type})`).join("、") || "なし"}。処理は上から順に行い、失敗したら全部元に戻ります。` }),
+      el("p", { class: "sub", text: "処理は上から順に行い、失敗したら全部元に戻ります。" }),
+      // 引数の順番 = フォームの入力欄の順番(フォームの項目の順を変えられなかった。第 8 回評価)
+      el("h3", { text: "受け取る値(この順にフォームの入力欄が並びます)" }),
+      el(
+        "div",
+        { class: "rows" },
+        ...(d.params.length
+          ? d.params.map((p, i) =>
+              el(
+                "div",
+                { class: "line" },
+                el("code", {}, `${p.name}: ${p.type}`),
+                el("button", { type: "button", class: "small ghost", "aria-label": `${p.name}を上へ`, disabled: i === 0, onclick: () => op({ op: "move_param", action: d.name, index: i, dir: "up" }) }, "↑"),
+                el("button", { type: "button", class: "small ghost", "aria-label": `${p.name}を下へ`, disabled: i === d.params.length - 1, onclick: () => op({ op: "move_param", action: d.name, index: i, dir: "down" }) }, "↓"),
+              ),
+            )
+          : [el("p", { class: "help", text: "なし" })]),
+      ),
+      (() => {
+        const pn = el("input", { type: "text", placeholder: "受け取る値の名前(例: 目的)", "aria-label": "受け取る値の名前" });
+        const pm = el("div", { class: "msg", role: "status" });
+        return el(
+          "div",
+          {},
+          el("form", { class: "row", onsubmit: async (e) => { e.preventDefault(); if (!pn.value.trim()) return; const j = await op({ op: "add_param", action: d.name, name: pn.value }, pm); if (!j.error) pn.value = ""; } }, pn, el("button", { type: "submit" }, "受け取る値を足す")),
+          el("p", { class: "help", text: "型は名前から決めます(金額・日付など)。ボタンと確かめるの呼び出しにも仮の値が入ります。" }),
+          pm,
+        );
+      })(),
+      el("h3", { text: "処理" }),
       lineList(d),
       el("h3", { text: "処理を足す" }),
       el("div", { class: "row" }, tpl("1 件取り出す", `件 = ${D}を取得(${D}ID)`), tpl("条件を確かめる", `件.数 > 0 を確認 または 失敗("不正")`), tpl("書き換える", `件.状況 = "完了"`), tpl("登録する", `${D}を登録(${(decls("data")[0]?.fields ?? []).filter((f) => f.name !== "ID").map((f) => `${f.name}: …`).join(", ")}) を返す`), tpl("ID を返す", `${D}ID を返す`)),
       el("form", { class: "row", onsubmit: async (e) => { e.preventDefault(); const j = await op({ op: "add_line", kind: "action", name: d.name, text: input.value }, msg); if (!j.error) input.value = ""; } }, input, el("button", { type: "submit" }, "足す")),
       msg,
-      el("p", { class: "help", text: "行の順番を変えるときは「ソース」で直します。" }),
       el("hr"),
       el("button", { type: "button", class: "danger", onclick: () => confirm(`動作「${d.name}」を消しますか?`) && op({ op: "remove_decl", kind: "action", name: d.name }).then(() => select({ kind: "home" })) }, "この動作を消す"),
     ];
@@ -538,7 +593,7 @@ const EDITORS = {
       el("h3", { text: "処理" }),
       body,
       el("div", { class: "row" }, el("label", {}, "失敗の種類(列挙) ", fail)),
-      el("button", { type: "button", onclick: async () => { const j = await op({ op: "add_action", name: name.value, params: [...pbox.children].map((r) => r.read()), body: body.value.split("\n"), fail: fail.value }, msg); if (!j.error) select({ kind: "action", name: name.value.trim() }); } }, "作る"),
+      el("button", { type: "button", onclick: async () => { const j = await op({ op: "add_action", name: name.value, params: [...pbox.children].map((r) => r.read()), body: body.value.split("\n"), fail: fail.value }, msg); if (!j.error) select({ kind: "action", name: name.value.trim() }); } }, "この動作を作る"),
       msg,
     ];
   },
@@ -577,7 +632,7 @@ const EDITORS = {
     return [
       el("h2", { text: "新しい確かめる" }),
       el("div", { class: "rows" }, name, lines),
-      el("button", { type: "button", onclick: async () => { const j = await op({ op: "add_scenario", name: name.value, lines: lines.value.split("\n") }, msg); if (!j.error) select({ kind: "scenario", name: name.value.trim() }); } }, "作る"),
+      el("button", { type: "button", onclick: async () => { const j = await op({ op: "add_scenario", name: name.value, lines: lines.value.split("\n") }, msg); if (!j.error) select({ kind: "scenario", name: name.value.trim() }); } }, "この確かめるを作る"),
       msg,
     ];
   },
@@ -610,7 +665,7 @@ function roleEditor(d) {
     el("h3", { text: "この役割だけが実行できる動作" }),
     el("p", { class: "help", text: "選ぶと、同じデータを更新できる別の役割でも実行できなくなります(例: 店長だけの締切)。" }),
     el("div", { class: "rows" }, ...acts),
-    el("button", { type: "button", onclick: async () => { const j = await op(d ? { op: "set_role_caps", name: d.name, caps: caps() } : { op: "add_role", name: name.value, caps: caps() }, msg); if (!j.error && !d) select({ kind: "role", name: name.value.trim() }); } }, d ? "保存する" : "作る"),
+    el("button", { type: "button", onclick: async () => { const j = await op(d ? { op: "set_role_caps", name: d.name, caps: caps() } : { op: "add_role", name: name.value, caps: caps() }, msg); if (!j.error && !d) select({ kind: "role", name: name.value.trim() }); } }, d ? "役割を保存する" : "この役割を作る"),
     msg,
     d ? el("hr") : null,
     d ? el("button", { type: "button", class: "danger", onclick: () => confirm(`役割「${d.name}」を消しますか?`) && op({ op: "remove_decl", kind: "role", name: d.name }).then(() => select({ kind: "home" })) }, "この役割を消す") : null,
@@ -786,7 +841,7 @@ function renderSources() {
     if (!wrap) {
       const ta = el("textarea", { spellcheck: "false", "aria-label": file, oninput: () => dirtySource.add(file) });
       const msg = el("div", { class: "msg", role: "status" });
-      wrap = el("div", { class: "file", "data-file": file }, el("h3", { text: file }), ta, el("div", { class: "row" }, el("button", { type: "button", onclick: async () => { await op({ op: "save_source", file, text: ta.value }, msg); dirtySource.delete(file); } }, "保存する"), msg));
+      wrap = el("div", { class: "file", "data-file": file }, el("h3", { text: file }), ta, el("div", { class: "row" }, el("button", { type: "button", onclick: async () => { await op({ op: "save_source", file, text: ta.value }, msg); dirtySource.delete(file); } }, "ソースを保存する"), msg));
       box.append(wrap);
     }
     const ta = wrap.querySelector("textarea");

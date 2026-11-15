@@ -385,7 +385,11 @@ test("集計を画面のフォームで作る(記号を書かない)・項目の
   assert.match(src(), /分析 会場別の予約状況\(\) -> 一覧<記録\{会場: 文字列, イベント数: 整数, 予約数: 整数\}>/);
   // 項目の順番(一覧の列の順番)を変える
   await page.click('#tree button:text-is("レッスン")');
-  const order = () => /データ レッスン:\n([\s\S]*?)\n\n/.exec(src())![1].split("\n").map((l) => l.trim().split(":")[0]);
+  const order = () => {
+    const m = /データ レッスン:\n([\s\S]*?)\n\n/.exec(src());
+    if (!m) console.error("SRC", src());
+    return m![1].split("\n").map((l) => l.trim().split(":")[0]);
+  };
   const o0 = order();
   const k = o0.indexOf("会場");
   await page.click(`button[aria-label="会場を上へ"]`);
@@ -403,4 +407,43 @@ test("集計を画面のフォームで作る(記号を書かない)・項目の
   assert.match(src(), /画面 レッスン一覧:\n    レッスンを開始日時の新しい順に一覧表示\n/);
   assert.deepEqual(errors, []);
   await ctx.close();
+});
+
+test("第 8 回評価の途中の修正: 動作の引数の順番(フォームの順)・型を変えると初期データもそろう", async () => {
+  // 引数の順番を変えると、ボタンと確かめるの呼び出しの値も並べ替える
+  const head = () => /動作 予約する\(([^)]*)\)/.exec(src())![1];
+  const h0 = head();
+  let j: any = await (await api("/api/op", { op: "move_param", action: "予約する", index: 0, dir: "down" })).json();
+  assert.equal(j.ok, true, j.error);
+  assert.equal(head(), h0.split(", ").reverse().join(", "));
+  assert.match(src(), /「1名で予約」を押すと 予約する\(1, レッスン\.ID\)/);
+  assert.match(src(), /花子\(利用者\)が 予約する\(1, 回\) → 成功/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  j = await (await api("/api/op", { op: "move_param", action: "予約する", index: 1, dir: "up" })).json();
+  assert.equal(head(), h0);
+  // 動作に受け取る値を足す(ボタン・確かめるにも仮の値)
+  j = await (await api("/api/instruct", { text: "動作「予約する」に「目的」を追加" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /動作 予約する\([^)]*目的: 文字列\)/);
+  assert.match(src(), /「1名で予約」を押すと 予約する\(レッスン\.ID, 1, ""\)/);
+  assert.match(src(), /花子\(利用者\)が 予約する\(回, 1, ""\) → 成功/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // 型を変えると、初期データの値も新しい型に合わせる
+  j = await (await api("/api/instruct", { text: "レッスンに「部屋番号」を追加" })).json();
+  j = await (await api("/api/instruct", { text: "レッスンの「部屋番号」を「整数」にする" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  const seed = JSON.parse(readFileSync(join(dir, "seed.json"), "utf8"));
+  assert.ok(seed["レッスン"].every((r: any) => r.部屋番号 === 0), JSON.stringify(seed["レッスン"]));
+  // 「名前(型)」を括弧の中に書いても読める
+  j = await (await api("/api/instruct", { text: "レッスンに「教材費(金額)」を追加" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /    教材費: 金額\n/);
+  // 初期データの日時は Excel の書き方(2026/11/15 11:05)でも入る
+  const rows = seed["レッスン"].map((r: any, i: number) => ({ ...r, 開始日時: i === 0 ? "2026/11/15 11:05" : "2026年12月1日 9:30" }));
+  j = await (await api("/api/seed", { data: "レッスン", rows })).json();
+  assert.equal(j.ok, true, j.error);
+  const seed2 = JSON.parse(readFileSync(join(dir, "seed.json"), "utf8"));
+  assert.deepEqual(seed2["レッスン"].slice(0, 2).map((r: any) => r.開始日時), ["2026-11-15T11:05:00+09:00", "2026-12-01T09:30:00+09:00"]);
+  j = await (await api("/api/seed", { data: "レッスン", rows: [{ ...rows[0], 開始日時: "来週" }] })).json();
+  assert.match(j.error ?? "", /2026\/12\/05 19:00 のような形/);
 });

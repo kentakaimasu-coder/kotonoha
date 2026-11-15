@@ -1241,19 +1241,38 @@ fn dev_once(o: &mut Opts, port: u16, no_start: bool, ever_started: &mut bool) ->
     }
     let web = dev.join("web");
     let be = dev.join("backend");
-    if !web.join("node_modules").exists() {
-        eprintln!("初回だけ、画面の部品(React など)をダウンロードします。1 分ほどかかります…");
+    // 部品のダウンロードが最後まで終わった印。印が無い node_modules は途中で切れたものなので取り直す
+    // (ディスクがいっぱいで途中で切れ、「画面のビルド に失敗しました」が直らなかった。第 8 回評価)
+    let installed = web.join("node_modules").join(".koto-installed");
+    let install = |why: &str| -> Result<(), String> {
+        eprintln!("{why}");
+        let _ = std::fs::remove_dir_all(web.join("node_modules"));
         run_cmd(
             std::process::Command::new("npm")
                 .args(["install", "--no-audit", "--no-fund", "--silent"])
                 .current_dir(&web),
-            "npm install",
+            "画面の部品のダウンロード(npm install)",
         )?;
+        std::fs::write(&installed, "ok\n").map_err(|e| format!("画面の部品の印を書けません: {e}(ディスクの空きを確かめてください)"))
+    };
+    if !installed.exists() {
+        install(if web.join("node_modules").exists() {
+            "画面の部品のダウンロードが途中で終わっていたので、取り直します。1 分ほどかかります…"
+        } else {
+            "初回だけ、画面の部品(React など)をダウンロードします。1 分ほどかかります…"
+        })?;
     }
-    run_cmd(
-        std::process::Command::new("npm").args(["run", "build", "--silent"]).current_dir(&web),
-        "画面のビルド",
-    )?;
+    let build = || {
+        run_cmd(
+            std::process::Command::new("npm").args(["run", "build", "--silent"]).current_dir(&web),
+            "画面のビルド",
+        )
+    };
+    if build().is_err() {
+        // 部品が壊れていることがあるので、一度だけ取り直してから作り直す
+        install("画面のビルドに失敗したので、画面の部品を取り直してもう一度作ります…")?;
+        build().map_err(|e| format!("{e}。ディスクの空き・ネットワークを確かめてください(.koto/dev/web/node_modules を消すと、次に取り直します)"))?;
+    }
     // 開発用の秘密(この PC の .koto/dev だけに置く。ソースや生成物には入れない)
     let secret_path = dev.join("secret");
     let secret = match std::fs::read_to_string(&secret_path) {
@@ -1297,9 +1316,13 @@ fn dev_once(o: &mut Opts, port: u16, no_start: bool, ever_started: &mut bool) ->
         }
     }
     // 初期データ(seed.json)を書き換えたら、開発用のデータを作り直す(同じ ID は飛ばすので、ひな形の古いデータが残った。第 6 回評価)
+    // 列挙の値を変えたときも作り直す(前の値の行が残り、読むときに「内部エラー」になった。第 8 回評価)
     let applied = dev.join("seed.applied.json");
+    let enums_applied = dev.join("enums.applied.json");
+    let enums_now = api.get("enums").map(|e| e.to_string()).unwrap_or_default();
+    let enums_changed = enums_applied.exists() && std::fs::read_to_string(&enums_applied).unwrap_or_default() != enums_now;
     let seed_now = std::fs::read_to_string(&seed).unwrap_or_default();
-    if db.exists() && applied.exists() && std::fs::read_to_string(&applied).unwrap_or_default() != seed_now {
+    if db.exists() && ((applied.exists() && std::fs::read_to_string(&applied).unwrap_or_default() != seed_now) || enums_changed) {
         let old = dev.join("data.sqlite.前の初期データ");
         for ext in ["", "-wal", "-shm"] {
             let from = dev.join(format!("data.sqlite{ext}"));
@@ -1309,10 +1332,16 @@ fn dev_once(o: &mut Opts, port: u16, no_start: bool, ever_started: &mut bool) ->
             }
         }
         eprintln!(
-            "初期データ(seed.json)が変わったので、開発用のデータを作り直しました(前のデータは {} に残しています)。",
+            "{}ので、開発用のデータを作り直しました(前のデータは {} に残しています)。",
+            if enums_changed {
+                "列挙(選択肢)の値が変わった"
+            } else {
+                "初期データ(seed.json)が変わった"
+            },
             old.display()
         );
     }
+    let _ = std::fs::write(&enums_applied, &enums_now);
     if seed.exists() {
         run_cmd(
             std::process::Command::new("node")
