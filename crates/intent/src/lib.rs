@@ -217,7 +217,19 @@ impl ListFilter {
 
 /// 一覧 API に付けるクエリ(順序固定)
 pub fn list_query(order: &Option<ListOrder>, filters: &[ListFilter]) -> Vec<(String, String)> {
-    let mut q: Vec<(String, String)> = filters.iter().map(|f| f.query()).collect();
+    // 同じ項目の同じ条件が 2 つ以上あるとき(「状態が案内済でない かつ 状態が取消でない」)、
+    // キーが重なると対応表(Web の JSON・iOS の辞書)で前の条件が消える。2 つ目からは `#2` を付けて区別する
+    // (backend は `#番号` を外して読む。第 7 回評価: 前の条件が効かなかった)
+    let mut seen: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    let mut q: Vec<(String, String)> = filters
+        .iter()
+        .map(|f| {
+            let (k, v) = f.query();
+            let n = seen.entry(k.clone()).or_insert(0);
+            *n += 1;
+            (if *n == 1 { k } else { format!("{k}#{n}") }, v)
+        })
+        .collect();
     if let Some(o) = order {
         q.push(("order".into(), o.field.clone()));
         if o.desc {

@@ -330,3 +330,17 @@ fn unique_except_and_sequence_anytime() {
     let (_, d) = run(&format!("{src2}約束:\n    注文の状態は 調理中 → 提供済み の順\n"), &[]);
     assert!(d.iter().any(|x| x.hints.iter().any(|h| h.contains("(取消はいつでも)"))), "{d:?}");
 }
+
+#[test]
+fn repeated_filters_on_the_same_field_get_distinct_keys() {
+    let f = |v: &str| ListFilter {
+        field: "状態".into(),
+        op: FilterOp::Ne,
+        value: Some(v.into()),
+    };
+    let q = list_query(&None, &[f("案内済"), f("取消")]);
+    assert_eq!(
+        q,
+        vec![("ne.状態".to_string(), "案内済".to_string()), ("ne.状態#2".to_string(), "取消".to_string())]
+    );
+}

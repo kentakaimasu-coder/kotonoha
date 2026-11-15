@@ -581,7 +581,8 @@ export function listView(ctx: Ctx, table: string, query: URLSearchParams = new U
     if (dot < 0) continue;
     const op = key.slice(0, dot);
     if (!["eq", "ne", "today", "me", "lt_today", "gt_today", "ge_today", "le_today"].includes(op)) continue;
-    const f = fieldOf(key.slice(dot + 1));
+    // 同じ項目の 2 つ目からの条件は「ne.状態#2」(キーが重ならないように)
+    const f = fieldOf(key.slice(dot + 1).replace(/#\d+$/, ""));
     const w = baseWire(f.type);
     if (op.endsWith("_today")) {
       // 今日より前・後・以降・まで(アプリの時刻帯の暦日)

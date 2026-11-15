@@ -173,3 +173,20 @@ test("計算項目: 一覧と詳細に計算した値が入り、計算した値
     assert.equal(one.作業分, 300, s.name);
   }
 });
+
+test("一覧の絞り込み: 同じ項目に「でない」を 2 つ重ねても両方効く(ne.状態 と ne.状態#2)", async () => {
+  for (const s of servers) {
+    const t = tok("絞込");
+    for (const 日付 of ["2026-11-01", "2026-11-02", "2026-11-03"]) {
+      const r = await fetch(`${s.url}/api/actions/${enc("日報を書く")}`, { method: "POST", headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" }, body: JSON.stringify({ 日付, 作業内容: "絞込", 作業時間: 1 }) });
+      assert.equal(r.status, 200, s.name);
+    }
+    const all = await (await fetch(`${s.url}/api/data/${enc("日報")}`, { headers: { Authorization: `Bearer ${t}` } })).json();
+    const states = new Set(all.map((r: any) => r.状態));
+    const qs = new URLSearchParams([["ne.状態", "下書き"], ["ne.状態#2", "取下げ"]]);
+    const rows = await (await fetch(`${s.url}/api/data/${enc("日報")}?${qs}`, { headers: { Authorization: `Bearer ${t}` } })).json();
+    assert.ok(Array.isArray(rows), `${s.name} ${JSON.stringify(rows)}`);
+    assert.ok(rows.every((r: any) => r.状態 !== "下書き" && r.状態 !== "取下げ"), `${s.name} ${JSON.stringify(rows)}`);
+    if (states.has("下書き")) assert.ok(rows.length < all.length, s.name);
+  }
+});
