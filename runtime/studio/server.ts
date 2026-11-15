@@ -202,6 +202,18 @@ function addLine(d: any, text: string): { file: string; line: number } {
     insertAfter(D3.file, k, ["    " + text.trim()]);
     return { file: D3.file, line: k + 1 };
   }
+  // 同じ動作のフォームの行(「注文するのフォームを表示」)が既にあれば、置き換える(2 つ並んだ。第 10 回評価)
+  const fm = /^(.+?)のフォームを/.exec(text.trim());
+  if (d.kind === "screen" && fm) {
+    const ls = lines(d.file);
+    for (let k = d.line; k < d.end; k++) {
+      if (new RegExp(`^\\s+${reEsc(fm[1])}のフォームを`).test(ls[k] ?? "") && ls[k].trim() !== text.trim()) {
+        ls[k] = ls[k].replace(/^(\s+).*$/, `$1${text.trim()}`);
+        write(d.file, ls.join("\n"));
+        return { file: d.file, line: k + 1 };
+      }
+    }
+  }
   // 画面の「…を表示」は、ボタン(「…」を押すと)より上に入れる(ボタンの下に入って並べ直した。第 7 回評価)
   if (d.kind === "screen" && /を表示$/.test(text.trim()) && !/フォーム/.test(text)) {
     const ls = lines(d.file);

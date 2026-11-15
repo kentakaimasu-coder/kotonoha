@@ -566,6 +566,11 @@ test("第 9 回評価の途中の修正: 取り消せるようにしたい・項
   assert.match(src(), /    進みの状態: 予約の進み\n/);
   assert.match(src(), /予約を登録\(.*進みの状態: "予約済"/);
   assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // 同じ動作のフォームの行は置き換える(2 つ並べない)
+  j = await (await api("/api/op", { op: "add_line", kind: "screen", name: "管理", text: "レッスンを追加のフォームを「登録する」ボタンで表示" })).json();
+  assert.equal(j.ok, true, j.error);
+  assert.equal(src().match(/レッスンを追加のフォームを/g)!.length, 1);
+  assert.match(src(), /    レッスンを追加のフォームを「登録する」ボタンで表示\n/);
   // 表を指示の欄に貼ると、初期データの欄を案内する
   j = await (await api("/api/instruct", { text: "名前\t開始日時\n朝\t2026-12-01 10:00" })).json();
   assert.match(j.error ?? "", /これは表のようです/);
