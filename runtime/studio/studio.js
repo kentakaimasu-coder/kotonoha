@@ -179,6 +179,10 @@ $("seed-add").addEventListener("click", () => {
   renderRun();
 });
 async function saveSeed() {
+  // 表が空のまま保存すると、前の初期データが全部消える。消してよいか確かめる(0 行で保存された。第 9 回評価)
+  const had = (S?.seed ?? []).find((d) => d.data === seedRows?.data)?.rows?.length ?? 0;
+  const nonEmpty = (seedRows?.rows ?? []).filter((r) => Object.values(r).some((v) => String(v ?? "").trim() !== "")).length;
+  if (had > 0 && nonEmpty === 0 && !confirm(`「${seedRows.data}」の初期データ ${had} 行を全部消して保存しますか?`)) return;
   // 表に出ている項目だけ送る(消した・名前を変えた項目の古い値は送らない)
   const cols = seedRows.cols ?? [];
   const rows = seedRows.rows.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !cols.length || cols.includes(k))));

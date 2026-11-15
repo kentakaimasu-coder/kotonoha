@@ -366,18 +366,66 @@ fn ja_cap(c: &str) -> String {
     c.to_string()
 }
 
+/// 公開前の点検: だれが何を見られる・できるかを、API の言葉を使わずに書く(第 9 回評価)
+fn plain_access(api: &serde_json::Value) -> String {
+    let mut s = String::new();
+    let who = |a: &serde_json::Value| -> String {
+        if a["public"].as_bool() == Some(true) {
+            return "だれでも(ログインしなくても)".into();
+        }
+        if let Some(o) = a["owner"].as_str() {
+            return format!("ログインした本人の分だけ(全件閲覧.{o} を持つ役割の人は全員分)");
+        }
+        let roles: Vec<String> = api["roles"]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter(|(_, caps)| {
+                let cs: Vec<&str> = caps.as_array().into_iter().flatten().filter_map(|c| c.as_str()).collect();
+                let need: Vec<&str> = a["capabilities"].as_array().into_iter().flatten().filter_map(|c| c.as_str()).collect();
+                a["grant"].as_str().is_some_and(|g| cs.contains(&g)) || (!need.is_empty() && need.iter().all(|c| cs.contains(c)))
+            })
+            .map(|(r, _)| r.clone())
+            .collect();
+        if roles.is_empty() {
+            "ログインした人".into()
+        } else {
+            format!("ログインした {} の人", roles.join("・"))
+        }
+    };
+    for e in api["endpoints"].as_array().into_iter().flatten() {
+        let path = e["path"].as_str().unwrap_or("");
+        let method = e["method"].as_str().unwrap_or("");
+        let a = &e["access"];
+        if method == "GET" {
+            if let Some(d) = path.strip_prefix("/api/data/").filter(|d| !d.contains('/') && !d.contains('{')) {
+                s.push_str(&format!("- 「{d}」の一覧を見られる: {}\n", who(a)));
+            } else if let Some(n) = path.strip_prefix("/api/analyses/") {
+                s.push_str(&format!("- 集計「{n}」を見られる: {}\n", who(a)));
+            }
+        } else if let Some(n) = path.strip_prefix("/api/actions/") {
+            s.push_str(&format!("- 「{n}」をできる: {}\n", who(a)));
+        }
+    }
+    if s.is_empty() {
+        s.push_str("- (見られるデータ・できる操作はありません)\n");
+    }
+    s
+}
+
 /// 自動で入る安全対策(K-26: 利用者から見えるようにする)
 fn safety_text(api: &serde_json::Value) -> String {
     let mut s = String::from("自動で入っている安全対策:\n");
     for line in [
-        "ログイン(JWT)の検証と、権限の無い操作の拒否(何も書かなければ拒否)",
-        "「本人のものだけ閲覧可」と書いたデータは、本人の行だけを返す(許可 全件閲覧.データ名 を持つ人だけは全員分)",
-        "取引: の中の更新はまとめて行い、失敗したら元に戻す(同時の更新でも数が合う)",
-        "入力の型・長さの検査(合わない入力は 400)",
-        "画面の文字は自動でエスケープ(スクリプトの埋め込みを防ぐ)、CSP などのセキュリティヘッダ",
-        "他サイトからの操作(CSRF)・ログインの拒否",
-        "書き込みの回数制限、認証の失敗が続く接続元の一時遮断、操作の記録(監査ログ)",
-        "応答に製品名やバージョンを出さない",
+        // 言葉はやさしく、専門の名前はかっこの中に(JWT・CSRF が分からなかった。第 9 回評価)
+        "毎回、ログインしている本人か・その操作をしてよい人かを確かめ、許されていない操作は断る(JWT の検証。何も書かなければ断る)",
+        "「本人のものだけ閲覧可」と書いたデータは、その人の分だけを見せる(全件閲覧.データ名 を持つ役割の人だけは全員分)",
+        "一度に行う変更はまとめて行い、途中で失敗したら全部元に戻す(同時に操作されても数が合う)",
+        "入力の形・長さを確かめ、合わない入力は断る",
+        "名前などに仕込まれたプログラムが画面で動かないように、文字として表示する(エスケープ・CSP)",
+        "ほかのサイトから、このアプリを勝手に操作させない(CSRF 対策)",
+        "短い時間に大量の操作をさせない・ログインの失敗が続く相手を一時的に止める・だれが何をしたかを記録する",
+        "使っている部品の名前や版を外に出さない",
     ] {
         s.push_str(&format!("  ・{line}\n"));
     }
@@ -934,10 +982,15 @@ fn cmd_publish(o: &mut Opts) -> Result<i32, String> {
         .map_err(|e| e.to_string())?;
     let app_name = a.env.app_name.clone().unwrap_or_else(|| "アプリ".into());
     let warns: Vec<String> = a.diags.items.iter().map(|d| format!("- ⚠ {}", d.message_ja)).collect();
+    let api_json: serde_json::Value = std::fs::read_to_string(out.join("backend").join("api.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default();
     let check = format!(
-        "# 公開前の点検({})\n\n## 注意(警告)\n{}\n\n## 自動で入っている安全対策と、API ごとの公開範囲\n```\n{}{}```\n",
+        "# 公開前の点検({})\n\n## 注意(警告)\n{}\n\n## だれが何を見られる・できるか\n{}\n## 自動で入っている安全対策と、API ごとの公開範囲(詳しい人向け)\n```\n{}{}```\n",
         app_name,
         if warns.is_empty() { "- なし".to_string() } else { warns.join("\n") },
+        plain_access(&api_json),
         String::from_utf8_lossy(&safety.stdout),
         String::from_utf8_lossy(&safety.stderr)
     );

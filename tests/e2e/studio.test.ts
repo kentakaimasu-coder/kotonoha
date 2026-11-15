@@ -538,6 +538,10 @@ test("第 9 回評価の途中の修正: 取り消せるようにしたい・項
   assert.equal(j.ok, true, j.error);
   assert.doesNotMatch(src(), /画面 集計だけ:|消す集計/);
   assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // 権限を 2 つまとめて許可する
+  j = await (await api("/api/instruct", { text: "店長に申込の作成と更新を許可する" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /役割 店長:\n    権限 = \[[^\]]*申込\.作成[^\]]*申込\.更新|役割 店長:\n    権限 = \[[^\]]*申込\.更新[^\]]*申込\.作成/);
   // 表を指示の欄に貼ると、初期データの欄を案内する
   j = await (await api("/api/instruct", { text: "名前\t開始日時\n朝\t2026-12-01 10:00" })).json();
   assert.match(j.error ?? "", /これは表のようです/);

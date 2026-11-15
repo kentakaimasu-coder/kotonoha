@@ -49,6 +49,22 @@ for (const sc of scenarios) {
     else claims.caps = [...general];
     return signToken(claims, secret);
   };
+  // 「…から D が n件見える」は、この確かめるの中で作った行だけを数える(初期データの行は数えない)。
+  // 初期データを入れ替えても結果が変わらないようにする(Studio と koto test で ✓ / ✗ が食い違った。第 9 回評価)
+  const initial = new Map<string, Set<string>>();
+  {
+    const d = await openDb(db, tables);
+    try {
+      for (const t of tables) {
+        try {
+          const rows: any[] = await d.conn.all(`SELECT "ID" AS id FROM ${q(t.name)}`, []);
+          initial.set(t.name, new Set(rows.map((r) => String(r.id))));
+        } catch {}
+      }
+    } finally {
+      await d.close();
+    }
+  }
   console.log(`確かめる「${sc.name}」`);
   // `→ 成功(名前)` で名付けた ID(後の行の {"$ref": 名前} を置き換える)
   const saved = new Map<string, unknown>();
@@ -73,7 +89,8 @@ for (const sc of scenarios) {
         if (r.status === 404) got = `${st.data} の一覧の画面が無いため数えられません(画面に「${st.data}を一覧表示」を書いてください)`;
         else {
           const b: any = await r.json().catch(() => null);
-          const n = Array.isArray(b) ? b.length : null;
+          const before = initial.get(st.data) ?? new Set<string>();
+          const n = Array.isArray(b) ? b.filter((x: any) => !before.has(String(x?.ID))).length : null;
           ok = n === st.count;
           got = n === null ? `${r.status} ${b?.message ?? ""}`.trim() : `${n}件`;
         }

@@ -273,7 +273,6 @@ export function DataList(p: { r: LoadResult | undefined; fields: Field[]; tz: st
                   window.location.href = p.link!(row);
                 }
               : undefined,
-            style: p.link ? { cursor: "pointer" } : undefined,
           },
           p.fields.map((f, j) => {
             const v = h(Value, { refs: p.refs, f, v: row[f.name], tz: p.tz });

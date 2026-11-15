@@ -169,7 +169,7 @@ table.list th {
 table.list td { padding: 14px 16px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 table.list tbody tr:last-child td { border-bottom: 0; }
 table.list .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-table.list.linked tbody tr { position: relative; }
+table.list.linked tbody tr { position: relative; cursor: pointer; }
 table.list.linked tbody tr:hover td { background: var(--surface-2); }
 table.list a.row-link { font-weight: 600; text-decoration: none; color: var(--fg); }
 table.list a.row-link::after { content: ""; position: absolute; inset: 0; }

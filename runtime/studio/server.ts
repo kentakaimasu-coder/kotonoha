@@ -1114,9 +1114,11 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   {
     const CAP: Record<string, string> = { 読取: "読取", 閲覧: "読取", 読み取り: "読取", 見る: "読取", 作成: "作成", 登録: "作成", 追加: "作成", 更新: "更新", 変更: "更新", 書き換え: "更新", 削除: "削除", 全件閲覧: "全件閲覧" };
     const role = (r: string) => decl(o, "role", r.replace(/^役割/, "").replace(/[「」]/g, "").trim());
-    let mm = /^(?:役割)?「?(.+?)」?に(.+?)の(読取|閲覧|読み取り|作成|登録|追加|更新|変更|書き換え|削除)(?:の権限)?を?(?:許可|与え|許)(?:する|る|す)?$/.exec(text);
+    // 「店長に予約の読取と更新を許可する」のように 2 つ以上まとめても読む(第 9 回評価)
+    const V = "読取|閲覧|読み取り|作成|登録|追加|更新|変更|書き換え|削除";
+    let mm = new RegExp(`^(?:役割)?「?(.+?)」?に(.+?)の((?:${V})(?:(?:と|、|・)(?:${V}))*)(?:の権限)?を?(?:許可|与え|許)(?:する|る|す)?$`).exec(text);
     let caps: string[] = [];
-    if (mm && role(mm[1]) && decl(o, "data", mm[2].trim())) caps = [`${mm[2].trim()}.${CAP[mm[3]]}`];
+    if (mm && role(mm[1]) && decl(o, "data", mm[2].trim())) caps = [...new Set(mm[3].split(/と|、|・/).map((v) => `${mm![2].trim()}.${CAP[v]}`))];
     if (!caps.length && (mm = /^(?:役割)?「?(.+?)」?(?:は|が)(.+?)を(見|閲覧|作成|登録|追加|更新|変更|削除)(?:でき|られ)る(?:ように(?:する|したい))?$/.exec(text)) && role(mm[1]) && decl(o, "data", mm[2].trim()))
       caps = [`${mm[2].trim()}.${CAP[mm[3] === "見" ? "見る" : mm[3]]}`];
     if (!caps.length && (mm = /^(?:役割)?「?(.+?)」?に(?:動作)?「(.+?)」を(?:許可|許)(?:する|す)?$/.exec(text)) && role(mm[1]) && decl(o, "action", mm[2].trim())) caps = [`動作.${mm[2].trim()}`];
