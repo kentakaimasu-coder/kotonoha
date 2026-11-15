@@ -133,7 +133,10 @@ function guessType(name: string, o: any): string {
   if (/(料金|金額|価格|単価|値段|家賃|代金|料$|費$|額$)/.test(n)) return "金額";
   if (/^(.{1,4}中|.+済み?|.+の有無|.+可否|有効|公開)$/.test(n) && !/(期間|時間|日時|日)$/.test(n)) return "真偽";
   if (/(納期|期日|締切|締め切り|予定日|誕生日)$/.test(n)) return "日付";
-  if (/(人数|数$|数量|定員|回数|点数|年齢|順番)/.test(n)) return "整数";
+  // (電話番号・営業時間は文字のまま)
+  if (/(人数|数$|数量|定員|回数|点数|年齢|順番|積載|重量|距離|作業時間|所要時間|勤務時間|在庫|件数)/.test(n)) return "整数";
+  // 操作をした人(連絡者・予約者・記入者など)は、ログインした人の ID(連絡者が文字の欄になった。第 9 回評価)
+  if (/(予約|申込|記入|送信|作成|登録|注文|依頼|連絡|投稿|報告|記録|受付|回答|訪問|発行|発券|入力|提出|申請|発注|購入|相談|応募|点検|貸出|借用)者$/.test(n)) return "識別子";
   if (/メール/.test(n)) return "メール";
   if (o.enums && n in o.enums) return n;
   // 「状態」を足すとき、列挙「予約状態」「状態」があればそれにする(文字列になって登録が誤りになった。第 6 回評価)
@@ -169,6 +172,34 @@ function addDecl(o: any, kinds: string[], block: string[]): { file: string; line
   return { file, line: n + 2 };
 }
 function addLine(d: any, text: string): { file: string; line: number } {
+  // 動作に「…を確認 または 失敗("X")」を足すとき: 登録・返す行より前に入れ、失敗を返せる動作にする
+  // (後ろに入り、「結果<T, E> の動作でのみ使えます」の意味が分からなかった。第 9 回評価)
+  if (d.kind === "action" && /を確認\s*または\s*失敗\(/.test(text)) {
+    const vals = [...text.matchAll(/失敗\(\s*"([^"]+)"\s*\)/g)].map((m) => m[1]);
+    let ls = lines(d.file);
+    const head = ls[d.line - 1];
+    const ret = /->\s*(.+?)\s*:\s*$/.exec(head)?.[1]?.trim();
+    const res = ret && /^結果<\s*(.+?)\s*,\s*(.+?)\s*>$/.exec(ret);
+    if (res) {
+      // 失敗の列挙に、まだ無い値を足す
+      const E = decl(outline(), "enum", res[2]);
+      for (const v of vals) if (E && !(E.values ?? []).includes(v)) addLine(decl(outline(), "enum", res[2]), v);
+    } else {
+      const en = `${d.name}の失敗`;
+      if (!decl(outline(), "enum", en)) apply({ op: "add_enum", name: en, values: vals.length ? vals : ["できない"] });
+      const ok = ret || "識別子";
+      const D2 = decl(outline(), "action", d.name);
+      ls = lines(D2.file);
+      ls[D2.line - 1] = ls[D2.line - 1].replace(/\s*(->\s*.+?)?\s*:\s*$/, ` -> 結果<${ok}, ${en}>:`);
+      write(D2.file, ls.join("\n"));
+    }
+    const D3 = decl(outline(), "action", d.name);
+    ls = lines(D3.file);
+    let k = D3.line;
+    while (k < D3.end && /^\s+\S+\s*=\s*\S+を取得\(/.test(ls[k] ?? "")) k++;
+    insertAfter(D3.file, k, ["    " + text.trim()]);
+    return { file: D3.file, line: k + 1 };
+  }
   // 画面の「…を表示」は、ボタン(「…」を押すと)より上に入れる(ボタンの下に入って並べ直した。第 7 回評価)
   if (d.kind === "screen" && /を表示$/.test(text.trim()) && !/フォーム/.test(text)) {
     const ls = lines(d.file);
@@ -409,6 +440,10 @@ function makeOptional(o: any, dn: string | undefined, fn: string): string[] {
       const nh = head.replace(new RegExp(`([(,]\\s*${reEsc(fn)}\\s*:\\s*)(${reEsc(f.type)})(?=\\s*[,)])`), `$1選択<$2>`);
       if (nh !== head) {
         al[a.line - 1] = nh;
+        // 「メモ != "" を確認 または 失敗(…)」のように、空でないことを確かめる行は、空でもよくなったので外す
+        // (残すと「文字列 が必要ですが 選択<文字列> です」になり、意味が分からなかった。第 9 回評価)
+        for (let k = a.end - 1; k >= a.line; k--)
+          if (new RegExp(`^\\s*${reEsc(fn)}\\s*(!=|==|>|>=)\\s*(""|0)\\s*を確認`).test(al[k] ?? "")) al.splice(k, 1);
         write(a.file, al.join("\n"));
       }
     }
@@ -606,6 +641,9 @@ function apply(op: Op): { file: string; line: number } | null {
     case "add_line": {
       const d = (o.decls ?? []).find((x: any) => x.kind === op.kind && x.name === op.name);
       if (!d) throw new Error(`「${op.name}」が見つかりません`);
+      // 同じ行が既にあれば足さない(自動で入っていた行をもう一度足し、2 行になった。第 9 回評価)
+      if (d.kind === "screen" && (d.lines ?? []).some((l: any) => l.text.trim() === String(op.text).trim()))
+        throw new Error(`画面「${d.name}」には、もう「${String(op.text).trim()}」があります`);
       return addLine(d, op.text);
     }
     case "move_line": {
@@ -619,6 +657,28 @@ function apply(op: Op): { file: string; line: number } | null {
       if (j < 0 || j >= ls.length || !/^\s/.test(ls[j]) || !/^\s/.test(ls[i])) throw new Error("これ以上は動かせません");
       [ls[i], ls[j]] = [ls[j], ls[i]];
       write(op.file, ls.join("\n"));
+      // データの項目を動かしたら、詳細の表示「Dの A と B を表示」の並びも項目の順にそろえる(詳細の並びが変わらなかった。第 9 回評価)
+      const D = (o.decls ?? []).find((x: any) => x.kind === "data" && x.file === op.file && op.line > x.line && op.line <= x.end);
+      if (D) {
+        const D2 = decl(outline(), "data", D.name);
+        const order = (D2?.fields ?? []).map((f: any) => f.name);
+        const re = new RegExp(`^(\\s+)${reEsc(D.name)}の(.+)を表示\\s*$`);
+        for (const f of srcFiles(o)) {
+          const t = read(f);
+          const u = t
+            .split("\n")
+            .map((l) => {
+              const mm = re.exec(l);
+              if (!mm || /フォーム/.test(mm[2])) return l;
+              const parts = mm[2].split("と").map((x) => x.trim());
+              if (!parts.every((p) => order.includes(p))) return l;
+              parts.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+              return `${mm[1]}${D.name}の${parts.join("と")}を表示`;
+            })
+            .join("\n");
+          if (u !== t) write(f, u);
+        }
+      }
       return { file: op.file, line: j + 1 };
     }
     case "add_param": {
@@ -1057,8 +1117,8 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     return checked(at, `「${m[1].trim()}」に計算項目「${m[2].trim()}」を足しました`, o, text);
   }
   if ((m = cmd(/^(.+?)に(?:項目)?「?(.+?)」?(?:[(（](.+?)[)）])?を(?:追加(?:する)?|足す|加える)$/.exec(text) ?? /^(.+?)に(?:項目)?「?(.+?)」?を(?:追加(?:する)?|足す|加える)[(（](.+?)[)）]$/.exec(text))) && decl(o, "data", m[1].trim())) {
-    // 「参加費(金額)」のように名前の中に型を書いたとき(読めなかった。第 8 回評価)
-    const inner = /^(.+?)[(（](.+?)[)）]$/.exec(m[2].trim());
+    // 「参加費(金額)」「参加費: 金額」のように名前の中に型を書いたとき(読めなかった。第 8・9 回評価)
+    const inner = /^(.+?)[(（](.+?)[)）]$/.exec(m[2].trim()) ?? /^(.+?)\s*[:：]\s*(.+)$/.exec(m[2].trim());
     if (inner && !m[3]) [m[2], m[3]] = [inner[1], inner[2]];
     optionalNote = "";
     const at = apply({ op: "add_field", data: m[1].trim(), name: m[2], type: m[3] ?? "" });
@@ -1112,6 +1172,74 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       const lit = /^(整数|金額|選択<整数>)/.test(f.type) ? v : f.type === "真偽" ? (/^(はい|真|済|オン)$/.test(v) ? "真" : "偽") : `"${v}"`;
       return [`件 = ${dn}を取得(${dn}ID)`, `件.${fn} = ${lit}`, `${dn}ID を返す`];
     });
+  }
+  // 取り消し: 予約を取り消せるようにしたい(第 9 回評価: 読めず、取り消しを作れなかった)
+  //   状態の項目(取消・キャンセルの値を持つ列挙)が無ければ作る。登録の動作には最初の値を入れる。
+  //   「枠ID」のように親を指し、親に「予約数」、自分に「人数」があれば、親の予約数を戻す。2 回目は「取消済み」で断る
+  if ((m = cmd(/^(?:「(.+?)」で)?(.+?)を(?:取り消せる|取り消しできる|キャンセルできる)ように(?:する|したい|して)?$/.exec(text) ?? /^(?:「(.+?)」で)?(.+?)を取り消す$/.exec(text))) && decl(o, "data", m[2].trim())) {
+    const dn = m[2].trim();
+    const act = m[1]?.trim() || `${dn}を取り消す`;
+    if (decl(o, "action", act)) throw new Error(`動作「${act}」は既にあります`);
+    let D = decl(o, "data", dn);
+    let sf = D.fields.find((f: any) => o.enums?.[f.type.replace(/^選択<(.+)>$/, "$1")]?.some((v: string) => /取消|取り消し|キャンセル/.test(v)));
+    let cancelV = "";
+    if (sf) cancelV = o.enums[sf.type.replace(/^選択<(.+)>$/, "$1")].find((v: string) => /取消|取り消し|キャンセル/.test(v));
+    else {
+      // 状態の列挙と項目を足す
+      const en = decl(o, "enum", `${dn}状態`) ? `${dn}の状態` : `${dn}状態`;
+      apply({ op: "add_enum", name: en, values: ["有効", "取消済み"] });
+      const o2 = outline();
+      const D2 = decl(o2, "data", dn);
+      addLine(D2, `状態: ${en}`);
+      // 登録の行には「有効」を入れる(フォームの入力は増やさない)
+      for (const a of (outline().decls ?? []).filter((x: any) => x.kind === "action")) {
+        const al = lines(a.file);
+        let hit = false;
+        for (let k = a.line; k < a.end; k++) {
+          const at0 = (al[k] ?? "").indexOf(`${dn}を登録(`);
+          if (at0 >= 0 && /\w*[:：]/.test(al[k].slice(at0)) && !/[(,]\s*状態\s*:/.test(al[k])) {
+            al[k] = addParam(al[k], `状態: "有効"`, at0);
+            hit = true;
+          }
+        }
+        if (hit) write(a.file, al.join("\n"));
+      }
+      fillSeed(outline(), dn, "状態", en);
+      sf = { name: "状態", type: en };
+      cancelV = "取消済み";
+    }
+    D = decl(outline(), "data", dn);
+    const parent = D.fields.map((f: any) => f.name).find((n: string) => n.endsWith("ID") && n !== "ID" && decl(o, "data", n.slice(0, -2)));
+    const P = parent && decl(outline(), "data", parent.slice(0, -2));
+    const cnt = P?.fields.find((f: any) => /(予約数|申込数|人数の合計|使用数|貸出数)$/.test(f.name))?.name;
+    const qty = D.fields.find((f: any) => /^(人数|数量|数|個数|台数)$/.test(f.name))?.name;
+    // 失敗の理由の列挙(既にあれば値を足す。無ければ作る)
+    const failEnum = (outline().decls ?? []).find((d: any) => d.kind === "enum" && /失敗$/.test(d.name) && (d.values ?? []).length);
+    let fe = failEnum?.name;
+    if (fe && !failEnum.values.includes("取消済み")) apply({ op: "add_line", kind: "enum", name: fe, text: "取消済み" });
+    if (!fe) {
+      fe = `${act}の失敗`;
+      apply({ op: "add_enum", name: fe, values: ["取消済み"] });
+    }
+    const body = [
+      `件 = ${dn}を取得(${dn}ID)`,
+      `件.${sf.name} != "${cancelV}" を確認 または 失敗("取消済み")`,
+      `件.${sf.name} = "${cancelV}"`,
+      ...(P && cnt && qty ? [`親 = ${P.name}を取得(件.${parent})`, `親.${cnt} = 親.${cnt} - 件.${qty}`] : []),
+      `${dn}ID を返す`,
+    ];
+    const at = apply({ op: "add_action", name: act, params: [{ name: `${dn}ID`, type: "識別子" }], body, fail: fe });
+    // 詳細の画面があれば、取り消していないときだけボタンを出す
+    const after = outline();
+    const detail = (after.decls ?? []).find((d: any) => d.kind === "screen" && (d.lines ?? []).some((l: any) => l.text.startsWith(`${dn}の`) && l.text.endsWith("を表示")));
+    if (detail) apply({ op: "add_line", kind: "screen", name: detail.name, text: `${dn}の${sf.name}が${cancelV}でないとき「${act}」を押すと ${act}(${dn}.ID)` });
+    return checked(
+      at,
+      `動作「${act}」を作りました(状態を「${cancelV}」にする${P && cnt && qty ? `・${P.name}の${cnt}を戻す` : ""}・2 回目は「取消済み」で断る)` +
+        (detail ? `。画面「${detail.name}」にボタンを出しました` : `。ボタンを出すには、${dn}の詳細の画面を作ります(画面「${dn}詳細」を作る(${dn}の…を表示))`),
+      o,
+      text,
+    );
   }
   // 「来店」で予約の人数を1増やす / 減らす
   if ((m = cmd(/^「(.+?)」で(.+?)の(.+?)を(\d*)(増やす|減らす)$/.exec(text)))) {
@@ -1542,8 +1670,9 @@ function registration(o: any, ctx: { screen?: string }, text: string, D: any, ac
   const args: string[] = [];
   for (const f of D.fields.filter((x: any) => x.name !== "ID")) {
     // 本人を自動で入れるのは、その操作をした人を表す名前の項目だけ(担当者・割当先は入力にする。第 7 回評価)
-    const VERB = "予約|申込|申し込み|記入|送信|作成|登録|注文|依頼|連絡|投稿|報告|記録|受付|出品|回答|訪問|発行|入力|提出|申請|発注|購入|相談|応募|点検|実施|貸出|借用";
-    const actor = new RegExp(`(${VERB})者$|^(本人|記入者|送信者|作成者)$`).test(f.name);
+    const VERB = "予約|申込|申し込み|記入|送信|作成|登録|注文|依頼|連絡|投稿|報告|記録|受付|出品|回答|訪問|発行|発券|入力|提出|申請|発注|購入|相談|応募|点検|実施|貸出|借用";
+    // 操作をした人(お客様・利用者など、データを登録する本人を表す名前も。お客様が入力欄になった。第 9 回評価)
+    const actor = new RegExp(`(${VERB})者$|^(本人|記入者|送信者|作成者|お客様|お客さん|客|利用者|会員|患者|申込者|参加者)$`).test(f.name);
     const auto =
       f.type === "識別子" && actor && !(o.decls ?? []).some((d: any) => d.kind === "data" && `${d.name}ID` === f.name)
         ? "本人"

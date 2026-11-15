@@ -153,3 +153,4 @@ main { padding: 16px 20px 40px; }
 a.button{display:inline-block;padding:6px 12px;border-radius:6px;background:var(--accent,#2563eb);color:#fff;text-decoration:none}
 a.button:not([href]){opacity:.5;pointer-events:none}
 pre.code { background: var(--surface-2); border: 1px solid var(--line); padding: 8px 12px; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; font-size: 0.9em; }
+.line input[aria-label="直した文"] { flex: 1; min-width: 18em; }

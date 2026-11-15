@@ -183,7 +183,8 @@ async function saveSeed() {
   const cols = seedRows.cols ?? [];
   const rows = seedRows.rows.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !cols.length || cols.includes(k))));
   const j = await post("/api/seed", { data: seedRows.data, rows });
-  $("seed-msg").textContent = j.error ? j.error : `✓ 保存しました(${seedRows.rows.length} 行)。動いているアプリに入れ直します`;
+  const n = rows.filter((r) => Object.values(r).some((v) => String(v ?? "").trim() !== "")).length;
+  $("seed-msg").textContent = j.error ? j.error : `✓ 保存しました(${n} 行)。動いているアプリに入れ直します`;
   $("seed-msg").className = "msg " + (j.error ? "err" : "ok");
   if (!j.error) seedRows = null;
   renderRun();
@@ -266,7 +267,7 @@ function lineList(d, opts = {}) {
       const input = el("input", { type: "text", value: text.trim(), "aria-label": "直した文" });
       const msg = el("div", { class: "msg", role: "status" });
       row.replaceChildren(
-        el("form", { class: "row", onsubmit: async (e) => { e.preventDefault(); if (input.value.trim() && input.value.trim() !== text.trim()) await op({ op: "replace_line", file: d.file, line: n, old: text, text: input.value }, msg); else renderAll(); } }, input, el("button", { type: "submit" }, "直す"), el("button", { type: "button", class: "ghost", onclick: () => renderAll() }, "やめる")),
+        el("form", { class: "row", onsubmit: async (e) => { e.preventDefault(); const v = input.value; input.blur(); if (v.trim() && v.trim() !== text.trim()) { const j = await op({ op: "replace_line", file: d.file, line: n, old: text, text: v }, msg); if (j.error) { input.value = v; input.focus(); } } else renderAll(); } }, input, el("button", { type: "submit" }, "直す"), el("button", { type: "button", class: "ghost", onclick: () => renderAll() }, "やめる")),
         msg,
       );
       input.focus();

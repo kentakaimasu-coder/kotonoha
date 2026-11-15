@@ -468,3 +468,51 @@ test("第 8 回評価の途中の修正: 動作の引数の順番(フォーム�
   j = await (await api("/api/seed", { data: "レッスン", rows: [{ ...rows[0], 開始日時: "来週" }] })).json();
   assert.match(j.error ?? "", /2026\/12\/05 19:00 のような形/);
 });
+
+test("第 9 回評価の途中の修正: 取り消せるようにしたい・項目の順番で詳細の並びもそろう", async () => {
+  // 予約を取り消せるようにしたい: 状態の項目を作り、登録には「有効」を入れ、レッスンの予約数を戻す動作
+  let j: any = await (await api("/api/instruct", { text: "予約を取り消せるようにしたい" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /列挙 予約状態:\n    有効\n    取消済み/);
+  assert.match(src(), /予約を登録\(.*状態: "有効"\) を返す/);
+  // (前のテストで予約の「人数」を消したので、予約数を戻す行は入らない)
+  assert.match(src(), /動作 予約を取り消す\(予約ID: 識別子\)[^\n]*:\n    件 = 予約を取得\(予約ID\)\n    件\.状態 != "取消済み" を確認 または 失敗\("取消済み"\)\n    件\.状態 = "取消済み"\n    予約ID を返す\n/);
+  // 2 回目の指示は「既にあります」
+  j = await (await api("/api/instruct", { text: "予約を取り消せるようにしたい" })).json();
+  assert.match(j.error ?? "", /既にあります/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // 空でないことを確かめていた項目を空でもよくすると、その確かめる行は外れる(型の誤りにしない)
+  j = await (await api("/api/instruct", { text: "レッスンに「備考欄」を追加" })).json();
+  j = await (await api("/api/op", { op: "add_line", kind: "action", name: "レッスンを追加", text: '備考欄 != "" を確認 または 失敗("定員不正")' })).json();
+  j = await (await api("/api/instruct", { text: "レッスンの備考欄を空でもよいにする" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.doesNotMatch(src(), /備考欄 != ""/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // 失敗しない動作に「…を確認 または 失敗(…)」を足すと、取り出しの後に入り、失敗を返せる動作になる
+  j = await (await api("/api/instruct", { text: "「点検する」でレッスンの予約数を0にする" })).json();
+  assert.match(src(), /動作 点検する\(レッスンID: 識別子\) -> 識別子:/);
+  j = await (await api("/api/op", { op: "add_line", kind: "action", name: "点検する", text: '件.予約数 < 100 を確認 または 失敗("多すぎ")' })).json();
+  assert.equal(j.ok, true, j.error);
+  assert.match(src(), /列挙 点検するの失敗:\n    多すぎ/);
+  assert.match(src(), /動作 点検する\(レッスンID: 識別子\) -> 結果<識別子, 点検するの失敗>:\n    件 = レッスンを取得\(レッスンID\)\n    件\.予約数 < 100 を確認 または 失敗\("多すぎ"\)\n/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // 名前から型を決める: 連絡者はログインした人、最大積載は整数、電話番号は文字のまま。「名前: 型」も読める
+  j = await (await api("/api/instruct", { text: "データ「連絡」を作る(内容: 文字列)" })).json();
+  for (const t of ["連絡に「連絡者」を追加", "連絡に「最大積載」を追加", "連絡に「電話番号」を追加", "連絡に「金額欄: 金額」を追加"]) {
+    j = await (await api("/api/instruct", { text: t })).json();
+    assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  }
+  assert.match(src(), /データ 連絡:\n    ID: 識別子\n    内容: 文字列\n    連絡者: 識別子\n    最大積載: 整数\n    電話番号: 文字列\n    金額欄: 金額\n/);
+  // 同じ画面の行は 2 つにしない
+  j = await (await api("/api/op", { op: "add_line", kind: "screen", name: "レッスン一覧", text: "レッスンを選ぶと レッスン詳細 へ" })).json();
+  assert.match(j.error ?? "", /もう「レッスンを選ぶと レッスン詳細 へ」があります/);
+  // データの項目を動かすと、詳細の表示「レッスンの…を表示」の並びも項目の順になる
+  const detail = () => /    (レッスンの[^\n]*を表示)\n/.exec(src())![1];
+  const ls = src().split("\n");
+  const k = ls.findIndex((l) => l.trim() === "予約数: 整数");
+  j = await (await api("/api/op", { op: "move_line", file: "src/app.koto", line: k + 1, old: ls[k], dir: "up" })).json();
+  assert.equal(j.ok, true, j.error);
+  const fields = /データ レッスン:\n([\s\S]*?)\n\n/.exec(src())![1].split("\n").map((l) => l.trim().split(":")[0]);
+  const shown = detail().replace(/^レッスンの|を表示$/g, "").split("と");
+  assert.deepEqual(shown, [...shown].sort((a, b) => fields.indexOf(a) - fields.indexOf(b)));
+});
