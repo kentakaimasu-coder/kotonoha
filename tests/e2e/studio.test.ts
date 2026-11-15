@@ -523,6 +523,9 @@ test("第 9 回評価の途中の修正: 取り消せるようにしたい・項
   j = await (await api("/api/instruct", { text: "「講座」を「レッスン」に変える" })).json();
   j = await (await api("/api/instruct", { text: "「講座登録」を「レッスンを追加」に変える" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  // 表を指示の欄に貼ると、初期データの欄を案内する
+  j = await (await api("/api/instruct", { text: "名前\t開始日時\n朝\t2026-12-01 10:00" })).json();
+  assert.match(j.error ?? "", /これは表のようです/);
   // 同じ画面の行は 2 つにしない
   j = await (await api("/api/op", { op: "add_line", kind: "screen", name: "レッスン一覧", text: "レッスンを選ぶと レッスン詳細 へ" })).json();
   assert.match(j.error ?? "", /もう「レッスンを選ぶと レッスン詳細 へ」があります/);

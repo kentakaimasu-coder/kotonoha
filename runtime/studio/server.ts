@@ -833,6 +833,12 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       text = `${nm![1].trim()}${nm![2] ? `のうち${nm![2]}のもの` : ""}を${f.name}の${nm![3]}順に一覧表示`;
     }
   }
+  // Excel の表(タブ区切りの何行か)を指示の欄に貼ったとき: 初期データの貼り付け欄を案内する(第 9 回評価)
+  if (text0.includes("\t") && text0.trim().split("\n").length >= 2) {
+    const head = text0.trim().split("\n")[0].split("\t").map((x) => x.trim());
+    const D = (o.decls ?? []).filter((d: any) => d.kind === "data").find((d: any) => head.every((h) => d.fields.some((f: any) => f.name === h)));
+    throw new Error(`これは表のようです。表は「動かす・初期データ・公開」の「Excel から貼り付け」の欄に入れます${D ? `(データ「${D.name}」を選んでから)` : ""}`);
+  }
   // 宣言(分析・データ・動作 など)を何行か貼り付けたときは、そのままソースに入れて検査する
   // (チュートリアルの「分析」の 2 行を貼ると「意図行の中にブロックは書けません」になった。第 7 回評価)
   if (/^(データ|列挙|動作|画面|分析|役割|確かめる|関数) \S/.test(text0.trim()) && text0.trim().includes("\n")) {
