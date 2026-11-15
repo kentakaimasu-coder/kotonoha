@@ -507,11 +507,10 @@ function apply(op: Op): { file: string; line: number } | null {
       const block: string[] = [];
       const failVals = body.some((l: string) => /失敗\(/.test(l));
       if (!fail && !failVals) {
-        // 失敗しない動作は、使わない失敗の列挙(「できない」)を作らず、結果も返さない形にする(第 6 回評価)
-        const plain = body
-          .map((l: string) => (/^(\S+ID|\S+) を返す$/.test(l) && !/\(/.test(l) ? "" : l.replace(/\s+を返す$/, "")))
-          .filter(Boolean);
-        block.push(`動作 ${name}(${params.join(", ")}):`, ...plain.map((l: string) => "    " + l));
+        // 失敗しない動作は、使わない失敗の列挙(「できない」)を作らない(第 6 回評価)。
+        // 登録した・変えた物の ID は返す(返さないと、確かめるで名前を付けて次の行で使えなかった。第 7 回評価)
+        const returns = body.some((l: string) => /を返す$/.test(l));
+        block.push(`動作 ${name}(${params.join(", ")})${returns ? " -> 識別子" : ""}:`, ...body.map((l: string) => "    " + l));
         return addDecl(o, ["action"], block);
       }
       if (!fail) {
@@ -533,6 +532,19 @@ function apply(op: Op): { file: string; line: number } | null {
       const d = (o.decls ?? []).find((x: any) => x.kind === op.kind && x.name === op.name);
       if (!d) throw new Error(`「${op.name}」が見つかりません`);
       return addLine(d, op.text);
+    }
+    case "move_line": {
+      // 行を 1 つ上・下へ(同じ宣言の中だけ。画面の部品の順番を画面で変えられなかった。第 7 回評価)
+      const ls = lines(op.file);
+      const i = op.line - 1;
+      if (ls[i]?.trim() !== String(op.old ?? "").trim()) throw new Error("ソースが変わっています。もう一度読み込んでください");
+      const step = op.dir === "up" ? -1 : 1;
+      let j = i + step;
+      while (j >= 0 && j < ls.length && (!ls[j].trim() || ls[j].trim().startsWith("#"))) j += step;
+      if (j < 0 || j >= ls.length || !/^\s/.test(ls[j]) || !/^\s/.test(ls[i])) throw new Error("これ以上は動かせません");
+      [ls[i], ls[j]] = [ls[j], ls[i]];
+      write(op.file, ls.join("\n"));
+      return { file: op.file, line: j + 1 };
     }
     case "replace_line":
     case "remove_line": {
@@ -627,6 +639,37 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     ls[app.line - 1] = `アプリ「${nm}」`;
     write(app.file, ls.join("\n"));
     return changed(o, `アプリの名前を「${nm}」にしました`);
+  }
+  // 決まった名前の集計(API の名前・列の名前が決まっているとき。ADR-0133):
+  //   分析「会場別の予約状況」を作る(イベントの予約数と定員を会場ごとに合計)
+  //   列の名前を決めるとき: …(イベントの予約数と定員を会場ごとに合計、列: 会場・イベント数・予約数・定員)
+  if ((m = cmd(/^(?:分析|集計)「(.+?)」を(?:作る|作って|追加(?:する)?)[(（](.+)[)）]$/.exec(text)) ?? cmd(/^「?(.+?)」?という(?:分析|集計)を(?:作る|作って)[(（](.+)[)）]$/.exec(text)))) {
+    const an = okName(m[1], "分析の名前");
+    let [sentence, colsPart] = m[2].split(/[、,]\s*列[::]\s*/);
+    sentence = sentence.trim();
+    const mm = /^(.+?)(?:のうち(.+?)のもの)?(?:の(.+?)を(.+?)ごとに合計|を(.+?)ごとに集計)$/.exec(sentence);
+    if (!mm) throw new Error("集計の文は「イベントの予約数と定員を会場ごとに合計」か「予約を会場ごとに集計」の形で書きます");
+    const dn = mm[1].trim();
+    const D = decl(o, "data", dn);
+    if (!D) throw new Error(`データ「${dn}」はありません`);
+    const unit = (mm[4] ?? mm[5]).trim();
+    const sums = mm[3] ? mm[3].split(/と/).map((x) => x.trim()) : [];
+    const typeOf = (fn: string) => {
+      const f = D.fields.find((x: any) => x.name === fn);
+      if (!f) throw new Error(`データ「${dn}」に項目「${fn}」はありません(項目: ${D.fields.map((x: any) => x.name).join("、")})`);
+      return f.type.replace(/^選択<(.+)>$/, "$1");
+    };
+    const cols: [string, string][] = [[unit, typeOf(unit)], [`${dn}数`, "整数"], ...sums.map((f): [string, string] => [f, /^金額/.test(typeOf(f)) ? "金額" : "整数"])];
+    if (colsPart) {
+      const names = splitList(colsPart);
+      if (names.length !== cols.length) throw new Error(`列は ${cols.length} 個です(${cols.map((c) => c[0]).join("・")} の順。単位・件数・合計の順に当てはめます)`);
+      names.forEach((n, i) => (cols[i][0] = okName(n, "列の名前")));
+    }
+    if ((o.decls ?? []).some((x: any) => x.name === an)) throw new Error(`「${an}」は既にあります`);
+    const at = addDecl(o, ["action", "data"], [`分析 ${an}() -> 一覧<記録{${cols.map(([n, t]) => `${n}: ${t}`).join(", ")}}>:`, `    集計 = "${sentence}"`]);
+    const sc = (ctx.screen && decl(outline(), "screen", ctx.screen)) || null;
+    if (sc) apply({ op: "add_line", kind: "screen", name: sc.name, text: `${an}を表示` });
+    return checked(at, `分析「${an}」を作りました(列: ${cols.map((c) => c[0]).join("・")})${sc ? `。画面「${sc.name}」に出しました` : "。画面を選んでから「" + an + "を表示」と書くと画面に出ます"}`, o, text);
   }
   // 列挙の値の名前を変える: 列挙「状況」の「受付」を「受付中」に変える
   if ((m = cmd(/^(?:列挙)?「?(.+?)」?の(?:値)?「(.+?)」を「(.+?)」に(?:変える|する|直す)$/.exec(text))) && decl(o, "enum", m[1].trim())) {
@@ -725,6 +768,13 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     if (!caps.length && (mm = /^(?:役割)?「?(.+?)」?(?:は|が)(.+?)を(見|閲覧|作成|登録|追加|更新|変更|削除)(?:でき|られ)る(?:ように(?:する|したい))?$/.exec(text)) && role(mm[1]) && decl(o, "data", mm[2].trim()))
       caps = [`${mm[2].trim()}.${CAP[mm[3] === "見" ? "見る" : mm[3]]}`];
     if (!caps.length && (mm = /^(?:役割)?「?(.+?)」?に(?:動作)?「(.+?)」を(?:許可|許)(?:する|す)?$/.exec(text)) && role(mm[1]) && decl(o, "action", mm[2].trim())) caps = [`動作.${mm[2].trim()}`];
+    // 権限の名前をそのまま: 指導員に全件閲覧.欠席連絡を許可する / 受付係に予約.更新を許可する(第 7 回評価)
+    if (!caps.length && (mm = /^(?:役割)?「?(.+?)」?に「?((?:全件閲覧|動作)\.[^「」\s]+?|[^「」\s.]+\.(?:読取|作成|更新|削除))」?を(?:許可|与え|許)(?:する|る|す)?$/.exec(text)) && role(mm[1])) {
+      const [kind, rest] = mm[2].split(".");
+      const ok = kind === "全件閲覧" ? !!decl(o, "data", rest) : kind === "動作" ? !!decl(o, "action", rest) : !!decl(o, "data", kind);
+      if (!ok) throw new Error(`権限「${mm[2]}」の名前が見つかりません(データ・動作の名前を確かめてください)`);
+      caps = [mm[2]];
+    }
     if (!caps.length && (mm = /^(?:役割)?「?(.+?)」?に(.+?)の全員の分を見せる$/.exec(text)) && role(mm[1]) && decl(o, "data", mm[2].trim())) caps = [`全件閲覧.${mm[2].trim()}`];
     if (caps.length && mm) {
       const r = role(mm[1]);
@@ -886,15 +936,21 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       vis = mm[2] === "誰でも見られる" ? `${dn}は誰でも閲覧可` : mm[2] === "ログインした人だけ" ? `${dn}はログインした人だけ閲覧可` : `${dn}は${owner.name}が本人のものだけ閲覧可`;
     }
     if (vis) {
+      // 前の約束の行をその場で置き換える(先に消すと、約束がその 1 行だけのとき中身の無い「約束:」が残った。第 7 回評価)
       const R = decl(o, "rules");
       if (R) {
         const ls = lines(R.file);
-        const re = new RegExp(`^\\s*${reEsc(dn)}は(誰でも閲覧可|ログインした人だけ閲覧可|.+?が本人のものだけ閲覧可)\\s*$`);
-        const kept = ls.filter((l, k) => !(k >= R.line && k < R.end && re.test(l)));
-        if (kept.length !== ls.length) write(R.file, kept.join("\n"));
+        const re = new RegExp(`^(\\s*)${reEsc(dn)}は(誰でも閲覧可|ログインした人だけ閲覧可|.+?が本人のものだけ閲覧可)\\s*$`);
+        const hits = ls.map((l, k) => (k >= R.line && k < R.end && re.test(l) ? k : -1)).filter((k) => k >= 0);
+        if (hits.length) {
+          ls[hits[0]] = ls[hits[0]].replace(re, `$1${vis}`);
+          const out = ls.filter((_l, k) => !hits.slice(1).includes(k));
+          write(R.file, out.join("\n"));
+          return checked({ file: R.file, line: hits[0] + 1 }, `約束を「${vis}」にしました(前の見られる人の約束と置き換えました)`, o, text);
+        }
       }
       const at = apply({ op: "add_rule", text: vis });
-      return checked(at, `約束を「${vis}」にしました(前の見られる人の約束は外しました)`, o, text);
+      return checked(at, `約束を「${vis}」にしました`, o, text);
     }
   }
   // 文: 約束・確かめる・画面
@@ -923,6 +979,47 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   if (!sc) return { ok: false, need: "screen", screens, message: "どの画面に入れますか? 左の一覧で画面を選んでから、もう一度送ってください" };
   const at = apply({ op: "add_line", kind: "screen", name: sc.name, text });
   return checked(at, `画面「${sc.name}」に入れました`, o, text);
+}
+/** 確かめるの行の「動作名(…)」の呼び出しから、i 番目の値を外す */
+function dropScenarioArg(act: string, idx: number): void {
+  const o = outline();
+  for (const f of srcFiles(o)) {
+    const t = read(f);
+    const u = t
+      .split("\n")
+      .map((l) => {
+        if (!/(→|->)/.test(l) || /^\s*(動作|関数|アダプタ|外部関数)\s/.test(l)) return l;
+        const k = l.indexOf(`${act}(`);
+        if (k < 0) return l;
+        let depth = 0;
+        const start = k + act.length + 1;
+        for (let i = start - 1; i < l.length; i++) {
+          if (l[i] === "(") depth++;
+          else if (l[i] === ")" && --depth === 0) {
+            const parts: string[] = [];
+            let cur = "";
+            let d = 0;
+            let q = false;
+            for (const ch of l.slice(start, i)) {
+              if (ch === '"') q = !q;
+              if (!q && ch === "(") d++;
+              if (!q && ch === ")") d--;
+              if (!q && d === 0 && ch === ",") {
+                parts.push(cur);
+                cur = "";
+              } else cur += ch;
+            }
+            parts.push(cur);
+            if (idx >= parts.length) return l;
+            parts.splice(idx, 1);
+            return l.slice(0, start) + parts.map((x) => x.trim()).join(", ") + l.slice(i);
+          }
+        }
+        return l;
+      })
+      .join("\n");
+    if (u !== t) write(f, u);
+  }
 }
 /** 動作の見出しの行から、名前がちょうど fn の引数を外す(「数」を外すとき「人数」を壊さない) */
 function dropParam(head: string, fn: string): string {
@@ -971,12 +1068,16 @@ function deleteField(o: any, D: any, fn: string): any {
         hit = true;
       }
     }
-    // 引数がもう使われていなければ、引数も消す
+    // 引数がもう使われていなければ、引数も消す。確かめるの呼び出しからも、その位置の値を外す
+    // (外さないと「引数は 6 個です」で消せなかった。第 7 回評価)
     const body = al.slice(a.line, a.end).join("\n");
+    let dropIdx = -1;
     if (hit && !new RegExp(`(^|[^\\p{L}\\p{N}_])${reEsc(fn)}([^\\p{L}\\p{N}_]|$)`, "u").test(body)) {
+      dropIdx = (a.params ?? []).findIndex((p: any) => p.name === fn);
       al[a.line - 1] = dropParam(al[a.line - 1], fn);
     }
     if (hit) write(a.file, al.join("\n"));
+    if (dropIdx >= 0) dropScenarioArg(a.name, dropIdx);
   }
   return changed(o, `「${D.name}」の項目「${fn}」を消しました`);
 }
@@ -1025,8 +1126,33 @@ function actionTemplate(o: any, text: string, act: string, dn: string, body: (D:
   return checked(at, `動作「${act}」を作りました${detail ? `(画面「${detail.name}」にボタンを出しました)` : ""}`, o, text);
 }
 
+/** 詳細画面の「表示する X がどれか決まりません」: X を一覧表示している画面に「X を選ぶと 詳細画面 へ」を足す
+ * (詳細画面を作るたびにこの誤りが出て、直し方が分かりにくかった。第 7 回評価) */
+function autoNav(): string[] {
+  const added: string[] = [];
+  for (let round = 0; round < 3; round++) {
+    const o = outline();
+    const need = (o.diagnostics ?? [])
+      .map((d: any) => /画面 `(.+?)` で表示する (.+?) がどれか決まりません/.exec(d.message_ja ?? ""))
+      .filter(Boolean) as RegExpExecArray[];
+    if (need.length === 0) break;
+    let progressed = false;
+    for (const [, scr, dn] of need) {
+      const lists = (o.decls ?? []).filter((d: any) => d.kind === "screen" && d.name !== scr && (d.lines ?? []).some((l: any) => new RegExp(`^${reEsc(dn)}(を|のうち).*一覧表示`).test(l.text)));
+      const L = lists[0];
+      if (!L || (L.lines ?? []).some((l: any) => l.text.startsWith(`${dn}を選ぶと `))) continue;
+      apply({ op: "add_line", kind: "screen", name: L.name, text: `${dn}を選ぶと ${scr} へ` });
+      added.push(`画面「${L.name}」に「${dn}を選ぶと ${scr} へ」`);
+      progressed = true;
+    }
+    if (!progressed) break;
+  }
+  return added;
+}
 /** 入れた行に誤りがあれば元に戻して、理由と近い書き方を返す */
 function checked(at: { file: string; line: number } | null, done: string, before: any, text: string): any {
+  const nav = autoNav();
+  if (nav.length) done += `(一覧から開けるように、${nav.join("、")}を足しました)`;
   const o = outline();
   const bad = (o.diagnostics ?? []).filter((d: any) => d.severity === "error" && at && d.span?.line === at.line && d.file === at.file);
   if (bad.length === 0) {
@@ -1159,7 +1285,10 @@ function state(): any {
     if (h) on = names.has(h[1]);
     if (on) keep.push(l);
   }
-  const checks = names.size === 0 ? { lines: [], ok: null } : { lines: keep, ok: keep.some((l) => l.trim().startsWith("✗")) ? false : raw.ok };
+  // アプリの起動中に試した行(fetch failed)は、失敗ではなく「起動中」と出す(✗ が並んで不安になった。第 7 回評価)
+  const starting = keep.some((l) => /fetch failed|ECONNREFUSED/.test(l));
+  const shown = starting ? ["アプリを起動し直しています。少し待つと、もう一度試します…"] : keep;
+  const checks = names.size === 0 ? { lines: [], ok: null } : { lines: shown, ok: starting ? null : keep.some((l) => l.trim().startsWith("✗")) ? false : raw.ok };
   return { outline: o, sources, previewPort: previewAlive ? previewPort : 0, previewNote: previewAlive ? "" : stopping ? "アプリは止めてあります(「動かす」で動きます)" : "表示用のサーバーを起動しています…", running: previewAlive, checks, canUndo: history.length > 0, theme, seed: seedState(o), published: existsSync(join(PROJECT, "公開用", "点検の結果.md")) ? readFileSync(join(PROJECT, "公開用", "点検の結果.md"), "utf8") : "" };
 }
 

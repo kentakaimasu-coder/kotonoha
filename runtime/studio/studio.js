@@ -110,14 +110,19 @@ function renderAll() {
 // ---- 動かす・初期データ・公開 ----
 let seedSel = store("seed") ?? "";
 let seedRows = null; // 編集中の表(保存するまで)
-function renderRun() {
+/** 動いているか・アプリを開くのリンク(3 秒ごとの読み直しでも更新する。「動いています」なのに押せなかった。第 7 回評価) */
+function renderRunStatus() {
   if (!S || S.home) return;
   $("run-state").textContent = S.running ? "動いています。「アプリを開く」でブラウザの別のタブに出ます(ログインは「名前を入れてすぐ入る」)" : S.previewNote || "止まっています";
   const a = $("run-open");
-  if (S.previewPort) a.href = `http://127.0.0.1:${S.previewPort}/`;
+  if (S.running && S.previewPort) a.href = `http://127.0.0.1:${S.previewPort}/`;
   else a.removeAttribute("href");
   $("run-stop").disabled = !S.running;
   $("run-start").disabled = !!S.running;
+}
+function renderRun() {
+  if (!S || S.home) return;
+  renderRunStatus();
   const ds = S.seed ?? [];
   const sel = $("seed-data");
   if (!ds.some((d) => d.data === seedSel)) seedSel = ds[0]?.data ?? "";
@@ -233,6 +238,8 @@ function lineList(d, opts = {}) {
         "div",
         { class: "line" + (bad.length ? " bad" : "") },
         el("code", {}, text.trim(), ...bad.map((b) => el("span", { class: "why", text: b.message_ja + (b.hints?.length ? "(" + b.hints[0] + ")" : "") }))),
+        opts.removable === false ? null : el("button", { type: "button", class: "small ghost", "aria-label": "この行を上へ", title: "上へ", onclick: () => op({ op: "move_line", file: d.file, line: n, old: text, dir: "up" }) }, "↑"),
+        opts.removable === false ? null : el("button", { type: "button", class: "small ghost", "aria-label": "この行を下へ", title: "下へ", onclick: () => op({ op: "move_line", file: d.file, line: n, old: text, dir: "down" }) }, "↓"),
         opts.removable === false ? null : el("button", { type: "button", class: "small", "aria-label": "この行を消す", onclick: () => op({ op: "remove_line", file: d.file, line: n, old: text }) }, "消す"),
       ),
     );
@@ -695,7 +702,7 @@ setInterval(async () => {
     if (changed) {
       renderSide();
       renderLook();
-      $("run-state").textContent = S.running ? "動いています" : S.previewNote || "止まっています";
+      renderRunStatus();
     }
   } catch {}
 }, 3000);

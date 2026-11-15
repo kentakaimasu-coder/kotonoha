@@ -245,7 +245,7 @@ test("日本語の指示(第 7 回の改善): 権限・役割・型・項目を�
   // 失敗しない動作は、使わない失敗の列挙を作らない
   j = await (await api("/api/instruct", { text: "「満員にする」でレッスンの予約数を9にする" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
-  assert.match(src(), /動作 満員にする\(レッスンID: 識別子\):/);
+  assert.match(src(), /動作 満員にする\(レッスンID: 識別子\) -> 識別子:/);
   assert.doesNotMatch(src(), /満員にするの失敗/);
   // 見られる人の約束は、前の約束を置き換える(矛盾させない)
   j = await (await api("/api/instruct", { text: "レッスンをログインした人だけにする" })).json();
@@ -257,5 +257,44 @@ test("日本語の指示(第 7 回の改善): 権限・役割・型・項目を�
   j = await (await api("/api/instruct", { text: "いい感じにして" })).json();
   assert.equal(j.result.ok, false);
   assert.ok(j.result.suggestions.length >= 3, JSON.stringify(j.result));
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+});
+
+test("日本語の指示(第 8 回の改善): 決まった名前の集計・権限の名前をそのまま・項目を消すと確かめるもそろう", async () => {
+  let j: any = await (await api("/api/instruct", { text: "レッスンに「会場」を追加" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  // 決まった名前・列の集計(分析)を日本語で
+  j = await (await api("/api/instruct", { text: "分析「会場別の状況」を作る(レッスンの予約数を会場ごとに合計、列: 会場・回数・予約数)" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /分析 会場別の状況\(\) -> 一覧<記録\{会場: 文字列, 回数: 整数, 予約数: 整数\}>:\n    集計 = "レッスンの予約数を会場ごとに合計"/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  j = await (await api("/api/instruct", { text: "分析「だめ」を作る(レッスンの予約数を会場ごとに合計、列: 会場・回数)" })).json();
+  assert.match(j.error ?? "", /列は 3 個です/);
+  // 権限の名前をそのまま書く
+  j = await (await api("/api/instruct", { text: "店長に全件閲覧.予約を許可する" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /役割 店長:\n    権限 = \[[^\]]*全件閲覧\.予約/);
+  // 集計に使っていない項目を消すと、確かめるの呼び出しの値も外れる
+  const call = () => /レッスンを追加\(("確かめる回"[^)]*)\)/.exec(src())![1].split(",").length;
+  const n0 = call();
+  j = await (await api("/api/instruct", { text: "レッスンに「備考」を追加" })).json();
+  assert.equal(call(), n0 + 1, "確かめるの呼び出しに値が足される");
+  j = await (await api("/api/instruct", { text: "レッスンの備考を消す" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.equal(call(), n0, "消すと値も外れる");
+  // 詳細画面を作ると、一覧の画面に「選ぶと 詳細へ」が自動で入る(誤りを残さない)
+  j = await (await api("/api/instruct", { text: "画面「予約詳細」を作る(予約の予約者と予約日時を表示)" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /予約を選ぶと 予約詳細 へ/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // 画面の行を上へ動かす
+  const lsBefore = src().split("\n");
+  const k = lsBefore.findIndex((l) => l.trim() === "予約を選ぶと 予約詳細 へ");
+  const prev = lsBefore[k - 1];
+  j = await (await api("/api/op", { op: "move_line", file: "src/app.koto", line: k + 1, old: lsBefore[k], dir: "up" })).json();
+  assert.equal(j.ok, true, j.error);
+  const lsAfter = src().split("\n");
+  assert.equal(lsAfter[k - 1].trim(), "予約を選ぶと 予約詳細 へ");
+  assert.equal(lsAfter[k], prev);
   assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
 });
