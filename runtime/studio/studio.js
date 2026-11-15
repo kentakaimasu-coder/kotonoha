@@ -62,10 +62,11 @@ $("welcome-form").addEventListener("submit", async (e) => {
   renderAll();
 });
 let notice = null; // 編集の欄に出す直前の結果({kind, text})
-async function post(path, body) {
+async function post(path, body, beforeRender) {
   const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Studio-Token": TOKEN }, body: JSON.stringify(body) });
   const j = await r.json();
   if (j.outline || j.home) S = j;
+  beforeRender?.(j);
   if (j.error) {
     // 失敗したときは編集の欄を描き直さない(書いた内容を残す)。ほかの欄だけ新しくする
     renderSide();
@@ -78,13 +79,16 @@ async function post(path, body) {
 async function op(o, msgBox) {
   // 前の指示の結果(✓ や誤り)を残さない(別の操作の後も出続けた。第 8 回評価)
   $("ask-result")?.replaceChildren();
-  const j = await post("/api/op", o);
-  const text = j.error ? j.error : "✓ 入れました(ソースに書きました)";
+  // 知らせは描き直す前に入れる(描き直した後に入れていたので、役割を保存しても何も出なかった。第 10 回評価)
+  const okText = (j) => "✓ 入れました(ソースに書きました)" + (j.at?.note ? `。${j.at.note}` : "");
+  const j = await post("/api/op", o, (j) => {
+    if (!j.error) notice = { kind: "ok", text: okText(j) };
+  });
+  const text = j.error ? j.error : okText(j);
   if (msgBox && msgBox.isConnected) {
     msgBox.textContent = text;
     msgBox.className = "msg " + (j.error ? "err" : "ok");
   }
-  if (!j.error) notice = { kind: "ok", text };
   return j;
 }
 const decls = (kind) => (S?.outline?.decls ?? []).filter((d) => d.kind === kind);
@@ -527,7 +531,8 @@ const EDITORS = {
       el("p", { class: "sub", text: "この画面に出すもの。上の「日本語で指示する」に書いた文も、この画面に入ります。" }),
       lineList(d),
       el("h3", { text: "足す(候補から選ぶか、日本語で書く)" }),
-      addLineForm("screen", d.name, "例: 予約を新しい順に一覧表示 / 「予約する」を押すと 予約する(枠.ID, 1)", S.outline.patterns.screen),
+      // 例は今のデータの名前で出す(名前を変えた後も「枠」のままだった。第 10 回評価)
+      addLineForm("screen", d.name, `例: ${decls("data")[0]?.name ?? "予約"}を新しい順に一覧表示 / 「2名で予約」ボタンを足す`, S.outline.patterns.screen),
       el("hr"),
       el("button", { type: "button", class: "danger", onclick: () => confirm(`画面「${d.name}」を消しますか?`) && op({ op: "remove_decl", kind: "screen", name: d.name }).then(() => select({ kind: "home" })) }, "この画面を消す"),
     ];

@@ -485,6 +485,31 @@ function makeOptional(o: any, dn: string | undefined, fn: string): string[] {
 }
 /** 動作をある役割だけにしたとき、確かめるでその動作を役割の無い人が呼んでいる行を探す
  *  (役割の無い人のままで 403 になり、✗ の理由が分からなかった。第 7 回評価)。ソースは変えずに、直し方を伝える */
+/** 役割の権限では使えない動作(ボタン・フォームが出ない)を、動作の中の文から見積もって知らせる
+ *  (役割を作ると見るだけになり、ボタンが黙って出なかった。第 10 回評価で 4 人) */
+function roleGapNote(roleName: string): string {
+  const o = outline();
+  const r = decl(o, "role", roleName);
+  if (!r) return "";
+  const caps: string[] = r.caps ?? [];
+  const gaps: string[] = [];
+  for (const a of (o.decls ?? []).filter((x: any) => x.kind === "action")) {
+    if (caps.includes(`動作.${a.name}`)) continue;
+    const need = new Set<string>();
+    const vars = new Map<string, string>();
+    for (const l of lines(a.file).slice(a.line, a.end)) {
+      let mm = /^\s*(\S+)\s*=\s*(\S+?)を取得\(/.exec(l);
+      if (mm) vars.set(mm[1], mm[2]);
+      for (const g of l.matchAll(/(\S+?)を登録\(/g)) need.add(`${g[1].replace(/^.*[\s(=]/, "")}.作成`);
+      for (const g of l.matchAll(/(\S+?)を削除\(/g)) need.add(`${g[1].replace(/^.*[\s(=]/, "")}.削除`);
+      mm = /^\s*(\S+)\.\S+\s*=[^=]/.exec(l);
+      if (mm && vars.has(mm[1])) need.add(`${vars.get(mm[1])}.更新`);
+    }
+    const lack = [...need].filter((c) => decl(o, "data", c.split(".")[0]) && !caps.includes(c));
+    if (lack.length) gaps.push(`${a.name}(${lack.join("・")} が要る)`);
+  }
+  return gaps.length ? `役割「${r.name}」の人には、次の動作のボタン・フォームが出ません: ${gaps.slice(0, 4).join("、")}${gaps.length > 4 ? " ほか" : ""}。使わせるときは権限にチェックを付けます` : "";
+}
 function roleLessCallers(act: string): string[] {
   const o = outline();
   const out = new Set<string>();
@@ -636,7 +661,8 @@ function apply(op: Op): { file: string; line: number } | null {
       if (decl(o, "role", name)) throw new Error(`役割「${name}」は既にあります`);
       const caps = (op.caps ?? []).map((c: string) => c.trim()).filter(Boolean);
       if (caps.length === 0) throw new Error("権限を 1 つ以上選びます");
-      return addDecl(o, ["role"], [`役割 ${name}:`, `    権限 = [${caps.join(", ")}]`]);
+      const at = addDecl(o, ["role"], [`役割 ${name}:`, `    権限 = [${caps.join(", ")}]`]);
+      return { ...at, note: roleGapNote(name) };
     }
     case "set_role_caps": {
       const d = decl(o, "role", op.name);
@@ -646,7 +672,7 @@ function apply(op: Op): { file: string; line: number } | null {
       const ls = lines(d.file);
       ls.splice(d.line - 1, d.end - d.line + 1, `役割 ${d.name}:`, `    権限 = [${caps.join(", ")}]`);
       write(d.file, ls.join("\n"));
-      return { file: d.file, line: d.line };
+      return { file: d.file, line: d.line, note: roleGapNote(d.name) };
     }
     case "add_rule": {
       const d = decl(o, "rules");
@@ -1223,8 +1249,8 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   // 役割を作る: 役割「店長」を作る(予約.読取、予約.更新)。権限を書かなければ、すべてのデータを見られるだけ
   if ((m = cmd(/^役割「?(.+?)」?を(?:作る|作って|追加(?:する)?)(?:[(（](.+)[)）])?$/.exec(text)))) {
     const caps = m[2] ? splitList(m[2]) : (o.decls ?? []).filter((d: any) => d.kind === "data").map((d: any) => `${d.name}.読取`);
-    apply({ op: "add_role", name: m[1].trim(), caps });
-    return changed(o, `役割「${m[1].trim()}」を作りました(権限: ${caps.join("、")})。左の「役割」で権限のチェックを変えられます`);
+    const at = apply({ op: "add_role", name: m[1].trim(), caps });
+    return changed(o, `役割「${m[1].trim()}」を作りました(権限: ${caps.join("、")})。左の「役割」で権限のチェックを変えられます${at?.note ? `。${at.note}` : ""}`);
   }
   // 項目を消す: 予約の「メモ」を消す(登録の動作の引数・確かめるの値もそろえる)
   if ((m = cmd(/^(.+?)の(?:項目)?「?(.+?)」?を(?:消す|消して|削除(?:する)?)$/.exec(text))) && decl(o, "data", m[1].trim())) {

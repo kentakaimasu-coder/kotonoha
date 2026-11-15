@@ -625,4 +625,8 @@ test("第 10 回評価の途中の修正: 名前が変わり済みなら伝え�
   j = await (await api("/api/instruct", { text: "画面「先生用 行事の一覧」を作る(行事を一覧表示)" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
   assert.match(src(), /画面 先生用行事の一覧:/);
+  // 役割を作ると、その役割では出ないボタン(動作)を知らせる
+  j = await (await api("/api/instruct", { text: "役割「見学者」を作る" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(j.result.done, /役割「見学者」の人には、次の動作のボタン・フォームが出ません: [^。]*\(予約\.作成/);
 });
