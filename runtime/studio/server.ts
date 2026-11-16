@@ -1573,6 +1573,29 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       text,
     );
   }
+  // 既にある動作で、ほかのデータの数を増やす・減らす: 「予約する」で回数券の残り回数を1減らす
+  //   (予約で回数券を減らす・納品で在庫を増やす・返すで貸出数を戻す を、ソースに書いていた。第 7〜12 回評価で多かった)
+  //   どの 1 件かは、動作が受け取る「データ名ID」で決める。減らすときは足りなければ「…不足」で止める
+  if ((m = cmd(/^「(.+?)」で(.+?)の(.+?)を(\d*)(増やす|減らす)$/.exec(text))) && decl(o, "action", m[1].trim()) && decl(o, "data", m[2].trim())) {
+    const [, act, dn, fn, n0, dir] = m.map((x) => x?.trim());
+    const n = n0 || "1";
+    const A = decl(o, "action", act);
+    const D = decl(o, "data", dn);
+    const f = D.fields.find((x: any) => x.name === fn);
+    if (!f || !/^(整数|金額)/.test(f.type)) throw new Error(`データ「${dn}」に数の項目「${fn}」はありません(数の項目: ${D.fields.filter((x: any) => /^(整数|金額)/.test(x.type)).map((x: any) => x.name).join("、") || "なし"})`);
+    const body = lines(A.file).slice(A.line, A.end);
+    let v = body.map((l) => new RegExp(`^\\s*(\\S+)\\s*=\\s*${reEsc(dn)}を取得\\(`).exec(l)?.[1]).find(Boolean);
+    if (!v) {
+      const idp = (A.params ?? []).find((p: any) => p.name === `${dn}ID`);
+      if (!idp) throw new Error(`動作「${act}」は「${dn}ID」を受け取らないので、どの${dn}かが決まりません。先に「「${act}」で${dn}を選べるようにしたい」と書きます`);
+      const used = new Set(body.map((l) => /^\s*(\S+)\s*=/.exec(l)?.[1]).filter(Boolean));
+      v = ["対象", "対象2", "対象3"].find((x) => !used.has(x))!;
+      insertAfter(A.file, A.line, [`    ${v} = ${dn}を取得(${dn}ID)`]);
+    }
+    if (dir === "減らす") addLine(decl(outline(), "action", act), `${v}.${fn} >= ${n} を確認 または 失敗("${fn}不足")`);
+    const at = addLine(decl(outline(), "action", act), `${v}.${fn} = ${v}.${fn} ${dir === "増やす" ? "+" : "-"} ${n}`);
+    return checked(at, `動作「${act}」で、${dn}の${fn}を${n}${dir}ようにしました${dir === "減らす" ? `(足りなければ「${fn}不足」で止めます)` : ""}`, o, text);
+  }
   // 「来店」で予約の人数を1増やす / 減らす
   if ((m = cmd(/^「(.+?)」で(.+?)の(.+?)を(\d*)(増やす|減らす)$/.exec(text)))) {
     const [, act, dn, fn, n, dir] = m.map((x) => x?.trim());
