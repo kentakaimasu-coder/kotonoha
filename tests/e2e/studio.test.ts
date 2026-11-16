@@ -691,6 +691,13 @@ test("第 10 回評価の途中の修正: 名前が変わり済みなら伝え�
   j = await (await api("/api/instruct", { text: "増席するときに備品を選べるようにしたい" })).json();
   assert.equal(j.result?.ok, true, JSON.stringify(j));
   assert.match(src(), /動作 増席\([^)]*備品ID: 識別子\)/);
+  // 取り消せるようにすると、重複不可の約束は取り消したものを数えない
+  j = await (await api("/api/instruct", { text: "データ「整体予約」を作る(枠名: 文字列、患者: 識別子)" })).json();
+  j = await (await api("/api/instruct", { text: "整体予約は枠名と患者の組で重複不可" })).json();
+  j = await (await api("/api/instruct", { text: "整体予約を取り消せるようにしたい" })).json();
+  assert.equal(j.result?.ok, true, JSON.stringify(j));
+  assert.match(src(), /整体予約は枠名と患者の組で重複不可\(状態が取消済みのものを除く\)/);
+  assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
   // 確認数のような「数えていく数」は登録のとき 0(入力欄にしない)
   j = await (await api("/api/instruct", { text: "データ「回覧」を作る(題名: 文字列、確認数: 整数)" })).json();
   j = await (await api("/api/instruct", { text: "回覧を登録できるようにしたい" })).json();

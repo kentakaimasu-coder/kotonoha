@@ -1536,13 +1536,34 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     ];
     const at = apply({ op: "add_action", name: act, params: [{ name: `${dn}ID`, type: "識別子" }], body, fail: fe });
     // 詳細の画面があれば、取り消していないときだけボタンを出す
+    // 重複不可の約束があれば、取り消したものは数えない(取り消した後に予約し直せなかった。第 12 回評価)
+    let uniqNote = "";
+    for (const f of srcFiles(o)) {
+      const t = read(f);
+      const u = t
+        .split("\n")
+        .map((l) => {
+          const mm = new RegExp(`^(\\s+)(${reEsc(dn)}は.+重複不可)\\s*$`).exec(l);
+          if (!mm || l.includes("除く")) return l;
+          uniqNote = `。約束「${mm[2]}」は、取り消したものを数えないようにしました`;
+          return `${mm[1]}${mm[2]}(${sf.name}が${cancelV}のものを除く)`;
+        })
+        .join("\n");
+      if (u !== t) write(f, u);
+    }
+    // 役割の人が取り消せないときは知らせる(取消ボタンが出ず、理由が分からなかった。第 12 回評価)
+    const roles = (outline().decls ?? []).filter((d: any) => d.kind === "role");
+    const lack = roles.filter((r: any) => !(r.caps ?? []).includes(`${dn}.更新`)).map((r: any) => r.name);
+    const capNote = lack.length ? `。役割「${lack.join("・")}」の人には ${dn}.更新 が無いので、取り消すボタンが出ません。「${lack[0]}に${dn}の更新を許可する」と書くと出ます` : "";
     const ds = detailScreen(dn);
     const detail = ds?.d;
     if (detail) apply({ op: "add_line", kind: "screen", name: detail.name, text: `${dn}の${sf.name}が${cancelV}でないとき「${act}」を押すと ${act}(${dn}.ID)` });
     return checked(
       at,
       `動作「${act}」を作りました(状態を「${cancelV}」にする${P && cnt && qty ? `・${P.name}の${cnt}を戻す` : ""}・2 回目は「取消済み」で断る)` +
-        (detail ? `。${ds!.made ? `詳細の画面「${detail.name}」を作り、` : `画面「${detail.name}」に`}ボタンを出しました` : `。ボタンを出すには、${dn}の詳細の画面を作ります(画面「${dn}詳細」を作る(${dn}の…を表示))`),
+        (detail ? `。${ds!.made ? `詳細の画面「${detail.name}」を作り、` : `画面「${detail.name}」に`}ボタンを出しました` : `。ボタンを出すには、${dn}の詳細の画面を作ります(画面「${dn}詳細」を作る(${dn}の…を表示))`) +
+        uniqNote +
+        capNote,
       o,
       text,
     );
