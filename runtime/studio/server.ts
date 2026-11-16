@@ -1383,13 +1383,17 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       const f = D.fields.find((x: any) => x.name === fn);
       if (!f) throw new Error(`データ「${dn}」に項目「${fn}」はありません(項目: ${D.fields.map((x: any) => x.name).join("、")})`);
       const lit = /^(整数|金額|選択<整数>)/.test(f.type) ? v : f.type === "真偽" ? (/^(はい|真|済|オン)$/.test(v) ? "真" : "偽") : `"${v}"`;
-      // 借りる・引き受けるなどの動作では、した人と日時も入れる(「借りる」で状態を貸出中にしても、借りた人が残らなかった。第 10 回評価)
+      // 借りる・引き受けるなどの動作では、した人と日時も入れる(「借りる」で状態を貸出中にしても、借りた人が残らなかった。第 10 回評価)。
+      // 登録した人の項目(予約者・受付者など)は書き換えない(「呼び出す」で予約者が受付係に変わり、権限がなくなった。第 11 回評価)
       const extra: string[] = [];
-      if (/借り|貸出|貸し出|引き受け|担当|受け持|使う|利用|予約|受付|対応|呼び出/.test(act) && !/返|戻|取り?消|キャンセル|終/.test(act)) {
+      if (/借り|貸出|貸し出|引き受け|受け持/.test(act) && !/返|戻|取り?消|キャンセル|終/.test(act)) {
+        const regSets = (n: string) =>
+          (o.decls ?? []).some((a: any) => a.kind === "action" && lines(a.file).slice(a.line, a.end).some((l) => l.includes(`${dn}を登録(`) && new RegExp(`[(,]\\s*${reEsc(n)}\\s*:\\s*本人`).test(l)));
         for (const g of D.fields) {
           if (g.name === fn) continue;
-          if (g.type.replace(/\(任意\)$/, "").replace(/^選択<(.+)>$/, "$1") === "識別子" && /(借りた人|借り手|借主|貸出先|担当者|利用者|使用者|受付者|対応者|予約者|貸出者|借用者)$/.test(g.name)) extra.push(`件.${g.name} = 本人`);
-          else if (g.type.replace(/\(任意\)$/, "").replace(/^選択<(.+)>$/, "$1") === "日時" && /(貸出|借用|借りた|利用|使用|受付|対応|開始|呼び出し)(日時|時刻)$/.test(g.name)) extra.push(`件.${g.name} = 現在日時()`);
+          const t = g.type.replace(/\(任意\)$/, "").replace(/^選択<(.+)>$/, "$1");
+          if (t === "識別子" && /^(借りた人|借り手|借主|貸出先|担当者|借用者|貸出者)$/.test(g.name) && !regSets(g.name)) extra.push(`件.${g.name} = 本人`);
+          else if (t === "日時" && /^(貸出|借用|借りた|貸し出し)(日時|時刻)$/.test(g.name)) extra.push(`件.${g.name} = 現在日時()`);
         }
       }
       return [`件 = ${dn}を取得(${dn}ID)`, `件.${fn} = ${lit}`, ...extra, `${dn}ID を返す`];

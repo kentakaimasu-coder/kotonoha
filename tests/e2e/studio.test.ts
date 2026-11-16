@@ -648,6 +648,11 @@ test("第 10 回評価の途中の修正: 名前が変わり済みなら伝え�
   j = await (await api("/api/op", { op: "add_param", action: "増席", name: "部屋ID" })).json();
   assert.equal(j.ok, true, j.error);
   assert.match(src(), /「増席」を押すと 増席\(行事\.ID, 行事\.部屋ID\)/);
+  // 「呼び出す」のように借りる以外の動作では、登録した人の項目を書き換えない
+  j = await (await api("/api/instruct", { text: "データ「受付票」を作る(名前: 文字列、状況: 文字列、予約者: 識別子(任意)、受付日時: 日時(任意))" })).json();
+  j = await (await api("/api/instruct", { text: "「呼び出す」で受付票の状況を「呼出中」にする" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /動作 呼び出す\(受付票ID: 識別子\)[^\n]*:\n    件 = 受付票を取得\(受付票ID\)\n    件\.状況 = "呼出中"\n    受付票ID を返す/);
   // 役割を作ると、その役割では出ないボタン(動作)を知らせる
   j = await (await api("/api/instruct", { text: "役割「見学者」を作る" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
