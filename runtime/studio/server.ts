@@ -256,8 +256,9 @@ function renameDecl(o: any, from: string, to: string): string {
   const re = new RegExp(reEsc(from) + "(?!(?![をのはがにでとへかもや])[ぁ-ゖ])", "g");
   for (const f of srcFiles(o)) {
     const t = read(f);
-    // 注釈(# …)の行は変えない
-    const u = t.split("\n").map((l) => (l.trim().startsWith("#") ? l : l.replace(re, to))).join("\n");
+    // 注釈(# …)の行も古い名前をそろえる(説明書きに「受付係」が残って迷った。第 10・12 回評価)。
+    // ただし名前の変え方の例(「「枠」を「イベント」に変える」)を書いた行は変えない
+    const u = t.split("\n").map((l) => (l.trim().startsWith("#") && /に変える|koto rename/.test(l) ? l : l.replace(re, to))).join("\n");
     if (u !== t) write(f, u);
   }
   if (d.kind === "data") renameSeed(from, to);
@@ -727,6 +728,8 @@ function apply(op: Op): { file: string; line: number } | null {
       let j = i + step;
       while (j >= 0 && j < ls.length && (!ls[j].trim() || ls[j].trim().startsWith("#"))) j += step;
       if (j < 0 || j >= ls.length || !/^\s/.test(ls[j]) || !/^\s/.test(ls[i])) throw new Error("これ以上は動かせません");
+      // データの ID はいつも先頭(↑を押しすぎて会場が ID より上に行った。第 12 回評価)
+      if (/^\s+ID\s*:/.test(ls[j]) || /^\s+ID\s*:/.test(ls[i])) throw new Error("ID はいつも先頭です。これ以上は動かせません");
       [ls[i], ls[j]] = [ls[j], ls[i]];
       write(op.file, ls.join("\n"));
       // データの項目を動かしたら、詳細の表示「Dの A と B を表示」の並びも項目の順にそろえる(詳細の並びが変わらなかった。第 9 回評価)
@@ -1008,7 +1011,9 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
         if (!mm) continue;
         const oldNum = /(\d+)/.exec(mm[3])?.[1];
         // 数だけ違うボタン(1名で予約 → 2名で予約)
-        if (num && oldNum && mm[3].replace(oldNum, num) === label) {
+        // 数え方が違ってもよい(「1名で予約」をまねて「3つで予約」。読めなかった。第 12 回評価)
+        const norm = (x: string) => x.replace(/\d+\s*(名|人|つ|個|枚|段|台|本|冊|席|件|皿|杯)?/, "#");
+        if (num && oldNum && (mm[3].replace(oldNum, num) === label || norm(mm[3]) === norm(label))) {
           const args = mm[5].split(",").map((x) => x.trim());
           const ai = args.findIndex((x) => x === oldNum);
           if (ai >= 0) args[ai] = num;
