@@ -1191,8 +1191,23 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       }
     }
     if ((o.decls ?? []).some((x: any) => x.name === from)) {
+      const wasAction = !!decl(o, "action", from);
       renameDecl(o, from, to);
       renamedWords.unshift([from, to]);
+      // 動作の名前を変えたら、その動作を呼ぶボタンの文字の中の古い名前もそろえる(「1個入庫」のまま残った。第 11 回評価)
+      if (wasAction) {
+        for (const f of srcFiles(o)) {
+          const t = read(f);
+          const u = t
+            .split("\n")
+            .map((l) => {
+              const mm = /^(\s+.*?)「([^「」]*)」を押すと\s+(\S+?)\(/.exec(l);
+              return mm && mm[3] === to && mm[2].includes(from) ? l.replace(`「${mm[2]}」を押すと`, `「${mm[2].split(from).join(to)}」を押すと`) : l;
+            })
+            .join("\n");
+          if (u !== t) write(f, u);
+        }
+      }
       return changed(o, `「${from}」を「${to}」に変えました(使っている所と初期データもそろえました)${note}`);
     }
     const owners = (o.decls ?? []).filter((d: any) => d.kind === "data" && d.fields.some((f: any) => f.name === from));

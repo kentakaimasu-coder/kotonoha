@@ -671,6 +671,12 @@ test("第 10 回評価の途中の修正: 名前が変わり済みなら伝え�
   j = await (await api("/api/instruct", { text: "「席を足す」を「1席ふやす」に変える" })).json();
   assert.equal(j.result?.ok, true, JSON.stringify(j));
   assert.match(src(), /「1席ふやす」を押すと 増席\(/);
+  // 動作の名前を変えると、ボタンの文字の中の古い名前もそろう
+  j = await (await api("/api/op", { op: "add_line", kind: "screen", name: "行事詳細", text: "「1つ増席」を押すと 増席(行事.ID, 行事.部屋ID)" })).json();
+  j = await (await api("/api/instruct", { text: "「増席」を「席追加」に変える" })).json();
+  assert.equal(j.result?.ok, true, JSON.stringify(j));
+  assert.match(src(), /「1つ席追加」を押すと 席追加\(/);
+  j = await (await api("/api/instruct", { text: "「席追加」を「増席」に変える" })).json();
   // 計算の項目は「を追加」が無くても読む
   j = await (await api("/api/instruct", { text: "データ「受注」を作る(数量: 整数、単価: 金額)" })).json();
   j = await (await api("/api/instruct", { text: "受注に 金額 = 数量 * 単価" })).json();
