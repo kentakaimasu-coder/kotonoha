@@ -1970,7 +1970,8 @@ function autoValue(o: any, name: string, type: string): string | null {
   if (type === "識別子" && actor && !(o.decls ?? []).some((d: any) => d.kind === "data" && `${d.name}ID` === name)) return "本人";
   if (type === "日時" && new RegExp(`(${VERB})(日時|時刻)$`).test(name)) return "現在日時()";
   // 貸出日・受付日のような「した日」は今日(借りた人・貸出日が入力欄になった。第 11 回評価)
-  if (type === "日付" && new RegExp(`(${VERB})日$`).test(name)) return "今日()";
+  //   訪問日・記録日・実施日のように過去の日を書くこともあるものは入力欄のまま(訪問日が必ず今日になった。第 12 回評価)
+  if (type === "日付" && /(貸出|借用|受付|登録|作成|発行|申請|申込|申し込み|注文|発注|購入|応募|提出)日$/.test(name)) return "今日()";
   if (o.enums?.[type] && /(状況|状態|ステータス)$/.test(name)) return `"${o.enums[type][0]}"`;
   return null;
 }
