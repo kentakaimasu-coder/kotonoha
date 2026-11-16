@@ -1048,6 +1048,21 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     const at = apply({ op: "add_line", kind: "action", name: acts[0].name, text: `${fld} ${okCond} ${n} を確認 または 失敗("${val}")` });
     return checked(at, `動作「${acts[0].name}」で、${fld}が${n}${cmp}なら「${val}」で止めるようにしました`, o, text);
   }
+  // 最初に出る画面: 「最初の画面を「順番待ち」にする」(画面の宣言の順で、いちばん前の画面が最初に出る。分からなかった。第 12 回評価)
+  if ((m = cmd(/^(?:アプリを開いたときの|開いたときの)?(?:最初|はじめ|トップ)(?:に出る|の)?画面を「?(.+?)」?に(?:する|変える)$/.exec(text)))) {
+    const sc = decl(o, "screen", m[1].trim());
+    if (!sc) throw new Error(`画面「${m[1].trim()}」はありません(画面: ${(o.decls ?? []).filter((d: any) => d.kind === "screen").map((d: any) => d.name).join("、")})`);
+    const first = (o.decls ?? []).filter((d: any) => d.kind === "screen" && d.file === sc.file).sort((a: any, b: any) => a.line - b.line)[0];
+    if (first.name === sc.name) return { ok: true, done: `画面「${sc.name}」は、もう最初に出る画面です` };
+    const ls = lines(sc.file);
+    let n = sc.end - sc.line + 1;
+    if (ls[sc.end] !== undefined && ls[sc.end].trim() === "") n += 1;
+    const block = ls.splice(sc.line - 1, n);
+    if (block[block.length - 1]?.trim() !== "") block.push("");
+    ls.splice(first.line - 1, 0, ...block);
+    write(sc.file, ls.join("\n"));
+    return changed(o, `画面「${sc.name}」を、アプリを開いたときに最初に出る画面にしました(メニューでもいちばん前です)`);
+  }
   // アプリの名前: アプリの名前を「料理教室」にする(画面のいちばん上に出る)
   if ((m = cmd(/^アプリ(?:の名前)?を「?(.+?)」?に(?:する|変える)$/.exec(text)))) {
     const app = (o.decls ?? []).find((d: any) => d.kind === "app");
