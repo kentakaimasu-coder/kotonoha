@@ -1903,9 +1903,11 @@ function changed(before: any, done: string): any {
 function autoValue(o: any, name: string, type: string): string | null {
   const VERB = "予約|申込|申し込み|記入|送信|作成|登録|注文|依頼|連絡|投稿|報告|記録|受付|出品|回答|訪問|発行|発券|入力|提出|申請|発注|購入|相談|応募|点検|実施|貸出|借用";
   // 操作をした人(お客様・利用者など、データを登録する本人を表す名前も。お客様が入力欄になった。第 9 回評価)
-  const actor = new RegExp(`(${VERB})者$|^(本人|記入者|送信者|作成者|お客様|お客さん|客|利用者|会員|患者|申込者|参加者)$`).test(name);
+  const actor = new RegExp(`(${VERB})者$|^(本人|記入者|送信者|作成者|お客様|お客さん|客|利用者|会員|患者|申込者|参加者|借りた人|借り手|借主|使用者)$`).test(name);
   if (type === "識別子" && actor && !(o.decls ?? []).some((d: any) => d.kind === "data" && `${d.name}ID` === name)) return "本人";
   if (type === "日時" && new RegExp(`(${VERB})(日時|時刻)$`).test(name)) return "現在日時()";
+  // 貸出日・受付日のような「した日」は今日(借りた人・貸出日が入力欄になった。第 11 回評価)
+  if (type === "日付" && new RegExp(`(${VERB})日$`).test(name)) return "今日()";
   if (o.enums?.[type] && /(状況|状態|ステータス)$/.test(name)) return `"${o.enums[type][0]}"`;
   return null;
 }

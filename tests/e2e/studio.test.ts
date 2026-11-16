@@ -660,6 +660,11 @@ test("第 10 回評価の途中の修正: 名前が変わり済みなら伝え�
     assert.equal(j.result.ok, true, JSON.stringify(j.result));
     assert.match(src(), /\n    花子から 行事が 0件見える\n/);
   }
+  // 登録できるようにしたい: 借りた人は本人、貸出日は今日が自動で入る
+  j = await (await api("/api/instruct", { text: "データ「貸出」を作る(品名: 文字列、借りた人: 識別子、貸出日: 日付)" })).json();
+  j = await (await api("/api/instruct", { text: "貸出を登録できるようにしたい" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  assert.match(src(), /動作 \S+\(品名: 文字列\)[^\n]*:\n    貸出を登録\(品名: 品名, 借りた人: 本人, 貸出日: 今日\(\)\) を返す/);
   // 計算の項目は「を追加」が無くても読む
   j = await (await api("/api/instruct", { text: "データ「受注」を作る(数量: 整数、単価: 金額)" })).json();
   j = await (await api("/api/instruct", { text: "受注に 金額 = 数量 * 単価" })).json();
