@@ -1526,7 +1526,9 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       : [];
     return checked(at, olds.length ? `約束に入れました。前からある「${olds.join("」「")}」も効いています(いらなければ、左の「約束」で消します)` : "約束に入れました", o, text);
   }
-  if (/(→|->)/.test(text)) {
+  // 確かめるの文: 「→」のある文に加えて、「連絡(連1)の状況は 確認済み」「花子から 連絡が 1件見える」も、
+  // 確かめるを選んでいるときの文も、確かめるに入れる(上の欄に書くと読めなかった。第 10・11 回評価)
+  if (/(→|->)/.test(text) || /^\S+[(（]\S+[)）]の\S+は\s*\S+$/.test(text) || /^\S+から\s*\S+が\s*\d+\s*件見える$/.test(text) || (ctx.scenario && decl(o, "scenario", ctx.scenario))) {
     const sc = (ctx.scenario && decl(o, "scenario", ctx.scenario)) || decl(o, "scenario");
     const at = sc ? apply({ op: "add_line", kind: "scenario", name: sc.name, text }) : apply({ op: "add_scenario", name: "動きの確認", lines: [text] });
     return checked(at, `確かめる「${sc?.name ?? "動きの確認"}」に入れました`, o, text);

@@ -653,6 +653,13 @@ test("第 10 回評価の途中の修正: 名前が変わり済みなら伝え�
   j = await (await api("/api/instruct", { text: "「呼び出す」で受付票の状況を「呼出中」にする" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
   assert.match(src(), /動作 呼び出す\(受付票ID: 識別子\)[^\n]*:\n    件 = 受付票を取得\(受付票ID\)\n    件\.状況 = "呼出中"\n    受付票ID を返す/);
+  // 確かめるの文は「→」が無くても、上の欄から確かめるに入る
+  {
+    const scs = (await (await fetch(url + "/api/state", { headers: { "X-Studio-Token": token } })).json()).outline.decls.filter((d: any) => d.kind === "scenario");
+    j = await (await api("/api/instruct", { text: "花子から 行事が 0件見える", scenario: scs[0].name })).json();
+    assert.equal(j.result.ok, true, JSON.stringify(j.result));
+    assert.match(src(), /\n    花子から 行事が 0件見える\n/);
+  }
   // 役割を作ると、その役割では出ないボタン(動作)を知らせる
   j = await (await api("/api/instruct", { text: "役割「見学者」を作る" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
