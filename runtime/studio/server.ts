@@ -1030,8 +1030,11 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     throw new Error(`「${label}」に似たボタンも、同じ名前の動作もありません。先に動作を作ります(例: 「${label}」で…を…にする)`);
   }
   // 入力の確認: 「注文する」で数量が0以下なら「数量不正」で止める(第 9 回評価: 読めず、ソースで書いた)
-  if ((m = cmd(/^(?:動作)?(?:「(.+?)」で)?(.+?)が(-?\d+)(以下|未満|以上|より大きい|より小さい|を超える|を超えた)(?:なら|のとき|ときは)、?「?(.+?)」?(?:で|として|と出して)?(?:止める|失敗|失敗にする|断る|エラー)$/.exec(text)))) {
-    const [, act0, fld, n, cmp, val] = m.map((x) => x?.trim());
+  //   「数量が1より少ないときは断る」「数量が0以下なら止める」(失敗の名前を書かないときは「数量不正」。第 12 回評価)
+  if ((m = cmd(/^(?:動作)?(?:「(.+?)」で)?(.+?)が(-?\d+)(以下|未満|以上|より大きい|より小さい|より少ない|より多い|を超える|を超えた)(?:なら|のとき|ときは|とき|場合は|の場合)、?(?:「?([^「」]+?)」?(?:で|として|と出して))?(?:止める|失敗|失敗にする|断る|エラー|エラーにする)$/.exec(text)))) {
+    const [, act0, fld, n, cmp0, val0] = m.map((x) => x?.trim());
+    const cmp = ({ より少ない: "より小さい", より多い: "より大きい" } as Record<string, string>)[cmp0] ?? cmp0;
+    const val = val0 || `${fld}不正`;
     const acts = (o.decls ?? []).filter((d: any) => d.kind === "action" && (act0 ? d.name === act0 : (d.params ?? []).some((p: any) => p.name === fld)));
     if (acts.length === 0) throw new Error(act0 ? `動作「${act0}」が無いか、「${fld}」を受け取りません` : `「${fld}」を受け取る動作がありません`);
     if (acts.length > 1) throw new Error(`「${fld}」を受け取る動作が ${acts.map((a: any) => a.name).join("・")} の ${acts.length} つあります。「「${acts[0].name}」で${fld}が${n}${cmp}なら「${val}」で止める」のように書きます`);
@@ -1982,6 +1985,8 @@ function autoValue(o: any, name: string, type: string): string | null {
   //   訪問日・記録日・実施日のように過去の日を書くこともあるものは入力欄のまま(訪問日が必ず今日になった。第 12 回評価)
   if (type === "日付" && /(貸出|借用|受付|登録|作成|発行|申請|申込|申し込み|注文|発注|購入|応募|提出)日$/.test(name)) return "今日()";
   if (o.enums?.[type] && /(状況|状態|ステータス)$/.test(name)) return `"${o.enums[type][0]}"`;
+  // 予約数・確認数・貸出数のような「数えていく数」は 0 から(登録フォームに確認数の欄が出た。第 11・12 回評価)
+  if (type === "整数" && /(予約|確認|貸出|申込|申し込み|注文|参加|閲覧|既読|使用|販売|取り置き|来場|応募|回答)(者)?数$/.test(name)) return "0";
   return null;
 }
 /** データ D を登録する動作(とフォーム)。本人・登録日時・状況は自動で入れ、ほかは入力にする */

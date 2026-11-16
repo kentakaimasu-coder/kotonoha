@@ -691,6 +691,15 @@ test("第 10 回評価の途中の修正: 名前が変わり済みなら伝え�
   j = await (await api("/api/instruct", { text: "増席するときに備品を選べるようにしたい" })).json();
   assert.equal(j.result?.ok, true, JSON.stringify(j));
   assert.match(src(), /動作 増席\([^)]*備品ID: 識別子\)/);
+  // 確認数のような「数えていく数」は登録のとき 0(入力欄にしない)
+  j = await (await api("/api/instruct", { text: "データ「回覧」を作る(題名: 文字列、確認数: 整数)" })).json();
+  j = await (await api("/api/instruct", { text: "回覧を登録できるようにしたい" })).json();
+  assert.match(src(), /動作 \S+\(題名: 文字列\)[^\n]*:\n    回覧を登録\(題名: 題名, 確認数: 0\) を返す/);
+  // 「…が1より少ないときは断る」(失敗の名前を書かなくても「…不正」)
+  j = await (await api("/api/instruct", { text: "動作「増席」に「席数」を追加" })).json();
+  j = await (await api("/api/instruct", { text: "席数が1より少ないときは断る" })).json();
+  assert.equal(j.result?.ok, true, JSON.stringify(j));
+  assert.match(src(), /    席数 >= 1 を確認 または 失敗\("席数不正"\)\n/);
   // 計算の項目は「を追加」が無くても読む
   j = await (await api("/api/instruct", { text: "データ「受注」を作る(数量: 整数、単価: 金額)" })).json();
   j = await (await api("/api/instruct", { text: "受注に 金額 = 数量 * 単価" })).json();
