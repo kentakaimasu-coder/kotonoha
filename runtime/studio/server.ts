@@ -1341,6 +1341,31 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     const at = apply({ op: "add_line", kind: "enum", name: m[1].trim(), text: okName(m[2], "値") });
     return checked(at, `列挙「${m[1].trim()}」に「${m[2].trim()}」を足しました`, o, text);
   }
+  // 項目の順番をまとめて変える: 「イベントの項目を 名前・会場・開始日時・参加費・定員 の順にする」
+  //   (↑↓ を何度も押した。第 11 回評価で 27 人)。一覧の列・詳細の並び・登録フォームの欄もそろう(↑↓ と同じ)
+  if ((m = cmd(/^(?:データ)?「?(.+?)」?の(?:項目|列|並び)(?:の順番|の順)?を\s*(.+?)\s*の順(?:番)?に(?:する|並べる|変える|そろえる)$/.exec(text))) && decl(o, "data", m[1].trim())) {
+    const dn = m[1].trim();
+    const want = m[2].split(/[・、,，\s]+/).map((x) => x.replace(/[「」]/g, "").trim()).filter(Boolean);
+    const D0 = decl(o, "data", dn);
+    const names = D0.fields.map((f: any) => f.name);
+    const bad = want.filter((w) => !names.includes(w));
+    if (bad.length) throw new Error(`「${dn}」に項目「${bad.join("」「")}」はありません(項目: ${names.join("・")})`);
+    const target = [...want, ...names.filter((n: string) => !want.includes(n) && n !== "ID")];
+    if (names.includes("ID")) target.unshift("ID");
+    for (let guard = 0; guard < 200; guard++) {
+      const D = decl(outline(), "data", dn);
+      const cur = D.fields.map((f: any) => f.name);
+      const k = cur.findIndex((n: string, i: number) => n !== target[i]);
+      if (k < 0) break;
+      const pos = cur.indexOf(target[k]);
+      const ls = lines(D.file);
+      let line = -1;
+      for (let x = D.line; x < D.end; x++) if (new RegExp(`^\\s+${reEsc(target[k])}\\s*:`).test(ls[x] ?? "")) line = x + 1;
+      if (line < 0 || pos <= k) break;
+      apply({ op: "move_line", file: D.file, line, old: ls[line - 1], dir: "up" });
+    }
+    return changed(o, `「${dn}」の項目を ${target.filter((n) => n !== "ID").join("・")} の順にしました(一覧の列・詳細・登録フォームの欄もこの順です)`);
+  }
   // 計算項目: 「枠に「残席 = 定員 - 予約数」を追加」(ADR-0136)
   //   「受注に 金額 = 数量 * 単価」「受注の金額は 数量 * 単価」のように、「を追加」が無くても読む(第 11 回評価)
   if (

@@ -67,8 +67,9 @@ async function post(path, body, beforeRender) {
   const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Studio-Token": TOKEN }, body: JSON.stringify(body) });
   const j = await r.json();
   if (j.outline || j.home) S = j;
-  beforeRender?.(j);
-  if (j.error) {
+  // beforeRender が false を返したら編集の欄を描き直さない(読めなかった文と理由を欄に残す)
+  const keep = beforeRender?.(j) === false;
+  if (j.error || keep) {
     // 失敗したときは編集の欄を描き直さない(書いた内容を残す)。ほかの欄だけ新しくする
     renderSide();
   } else {
@@ -328,14 +329,16 @@ function addLineForm(kind, name, placeholder, list) {
         // 読めない行が入って ✗ になった。第 11 回評価)。読めない文は入れずに理由と近い書き方を出す
         if (kind === "screen") {
           $("ask-result")?.replaceChildren();
-          const j = await post("/api/instruct", { text: input.value, screen: name }, (j) => {
+          // 送る前に欄を空にする(書きかけの欄があると描き直さないので、足した行が画面に出なかった)。読めなかったら戻す
+          const text = input.value;
+          input.value = "";
+          const j = await post("/api/instruct", { text, screen: name }, (j) => {
             if (j.result?.ok) notice = { kind: "ok", text: "✓ " + j.result.done };
+            else return false;
           });
           const r = j.result;
-          if (r?.ok) {
-            input.value = "";
-            return;
-          }
+          if (r?.ok) return;
+          input.value = text;
           if (msg.isConnected) {
             const why = j.error || r?.errors?.[0]?.message || r?.message || "この文は読めませんでした";
             msg.className = "msg err";
@@ -346,8 +349,10 @@ function addLineForm(kind, name, placeholder, list) {
           }
           return;
         }
-        const j = await op(kind === "rules" ? { op: "add_rule", text: input.value } : { op: "add_line", kind, name, text: input.value }, msg);
-        if (!j.error) input.value = "";
+        const text = input.value;
+        input.value = "";
+        const j = await op(kind === "rules" ? { op: "add_rule", text } : { op: "add_line", kind, name, text }, msg);
+        if (j.error) input.value = text;
       },
     },
     input,
