@@ -74,9 +74,9 @@ test("AT-01 / TC-011 商品一覧の SSR 表示とクリック遷移", async () 
 test("FR-012 / AT-04 ボタン操作 → 状態変更 → 表示更新(未ログインは拒否)", async () => {
   const { page, errors } = await newPage();
   await page.goto(webUrl + "/s/" + encodeURIComponent("商品詳細") + "/P01");
-  await page.click("text=購入");
-  await page.waitForSelector(".msg.error");
-  assert.match(await page.textContent(".msg.error"), /ログインが必要/);
+  // ログインしていない人には、押しても失敗するボタンではなくログインの案内を出す(第 11 回評価)
+  await page.waitForSelector("main .notice");
+  assert.match(await page.textContent("main"), /「購入」は、ログインすると使えます。/);
   await login(page, ["商品.read", "商品.update", "注文.create"]);
   await page.goto(webUrl + "/s/" + encodeURIComponent("商品詳細") + "/P01");
   const before = await page.textContent("dl.detail");

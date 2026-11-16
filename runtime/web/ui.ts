@@ -321,6 +321,12 @@ function MessageView(p: { m: { kind: "ok" | "error"; text: string; login?: boole
   );
 }
 
+/** ログイン中か(画面を描くたびに App が入れる。認証基盤のログインでは権限が分からず caps が null になるため、caps とは別に持つ) */
+let loggedIn = false;
+function LoginNotice(p: { what: string }) {
+  return h("p", { className: "notice" }, `「${p.what}」は、ログインすると使えます。`, h("a", { href: "/login" }, "ログイン"));
+}
+
 export function ActionButton(p: { label: string; action: string; args: () => Record<string, unknown> | null; reload: () => Promise<void>; need?: Need; caps?: string[] | null }) {
   const [m, setM] = useMessage();
   const [busy, setBusy] = React.useState(false);
@@ -344,6 +350,8 @@ export function ActionButton(p: { label: string; action: string; args: () => Rec
     }
   };
   if (!canUse(p.caps ?? null, p.need)) return null;
+  // ログインしていない人には、押しても失敗する欄を出さずに、ログインの案内を出す(第 11 回評価)
+  if (p.caps === null && !loggedIn) return h(LoginNotice, { what: p.label });
   return h("div", { className: "action" }, h("button", { type: "button", onClick, disabled: busy }, p.label), h(MessageView, { m }));
 }
 
@@ -498,6 +506,7 @@ export function ActionForm(p: { action: string; fields: Field[]; reload: () => P
     if (ev.key === "Enter" && (ev.nativeEvent?.isComposing || ev.keyCode === 229)) ev.preventDefault();
   };
   if (!canUse(p.caps ?? null, p.need)) return null;
+  if (p.caps === null && !loggedIn) return h(LoginNotice, { what: p.action });
   return h(
     "form",
     // 次の入力を始めたら、前の結果の知らせを消す(2 件目が入ったか分かりにくい。第 5 回評価)
@@ -555,6 +564,7 @@ export function App(p: { init: Init; screens: Record<string, ScreenDef> }) {
     for (const l of def.loaders) next[l.key] = l.method === "POST" ? data[l.key] : await callApi("GET", loaderUrl(l, p.init.id));
     setData(next);
   };
+  loggedIn = !!p.init.loggedIn;
   return h(
     "div",
     { className: "app" },

@@ -83,10 +83,9 @@ for (const kind of ["pc", "phone"] as const) {
     // 日時は「2026年12月24日(木) 18:30」の形(秒を出さない)
     assert.match((await page.textContent("dl"))!, /2026年12月24日\(木\) 18:30/);
     assert.match((await page.textContent("dl"))!, /¥500/);
-    const label = (await page.textContent("main"))!.includes("参加を申し込む") ? "参加を申し込む" : "1名で予約";
-    await page.click(`button:has-text("${label}")`);
-    await page.waitForFunction(() => /完了|失敗|必要|権限/.test(document.querySelector(".msg")?.textContent ?? ""), null, { timeout: 15000 });
-    assert.match((await page.textContent(".msg"))!, /ログインが必要/);
+    // ログインしていない人には、押しても失敗するボタンではなくログインの案内を出す(第 11 回評価)
+    assert.match((await page.textContent("main"))!, /「(1名で予約|参加を申し込む)」は、ログインすると使えます。/);
+    assert.equal(await page.locator('main a[href="/login"]').count() > 0, true);
     await ctx.close();
 
     const s = await session(kind, attendee(`user-${kind}`));
