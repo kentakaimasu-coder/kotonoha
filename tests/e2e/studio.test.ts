@@ -641,6 +641,13 @@ test("第 10 回評価の途中の修正: 名前が変わり済みなら伝え�
   j = await (await api("/api/instruct", { text: "「返す」で備品の貸出状況を「在庫あり」にする" })).json();
   assert.match(src(), /動作 返す\(備品ID: 識別子\)[^\n]*:\n    件 = 備品を取得\(備品ID\)\n    件\.貸出状況 = "在庫あり"\n    備品ID を返す/);
   assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
+  // ボタンの動作にほかのデータの ID を足すと、画面に出ているデータから値を取る(仮の値を入れない)
+  j = await (await api("/api/instruct", { text: "データ「部屋」を作る(名前: 文字列)" })).json();
+  j = await (await api("/api/instruct", { text: "行事に「部屋ID」を追加" })).json();
+  assert.equal(j.result.ok, true, JSON.stringify(j.result));
+  j = await (await api("/api/op", { op: "add_param", action: "増席", name: "部屋ID" })).json();
+  assert.equal(j.ok, true, j.error);
+  assert.match(src(), /「増席」を押すと 増席\(行事\.ID, 行事\.部屋ID\)/);
   // 役割を作ると、その役割では出ないボタン(動作)を知らせる
   j = await (await api("/api/instruct", { text: "役割「見学者」を作る" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));

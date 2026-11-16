@@ -782,7 +782,7 @@ function apply(op: Op): { file: string; line: number } | null {
         if (D && D.fields.some((f: any) => f.name === name) && !new RegExp(`[(,]\\s*${reEsc(name)}\\s*:`).test(al[k])) al[k] = addParam(al[k], `${name}: ${name}`, al[k].indexOf(`${mm![1]}を登録(`));
       }
       write(a.file, al.join("\n"));
-      appendCallArg(a.name, sampleValue(o, t, name));
+      appendCallArg(a.name, sampleValue(o, t, name), /ID$/.test(name) && decl(o, "data", name.slice(0, -2)) ? name.slice(0, -2) : "");
       return { file: a.file, line: a.line };
     }
     case "move_param": {
@@ -1632,18 +1632,35 @@ function convertSeed(o: any, dn: string, fn: string, t: string): void {
   if (changedAny) writeRaw("seed.json", JSON.stringify(seed, null, 2) + "\n");
 }
 /** 動作のすべての呼び出し(ボタン・確かめる・ほかの動作の中)の最後に値を足す */
-function appendCallArg(act: string, value: string): void {
+function appendCallArg(act: string, value: string, idOf = ""): void {
   const o = outline();
   for (const f of srcFiles(o)) {
     const t = read(f);
-    const u = t
-      .split("\n")
-      .map((l) => {
+    const all = t.split("\n");
+    // 画面のボタンでは、ほかのデータの ID は画面に出ているデータから取る(「メニューIDの例」が入った。第 11 回評価)
+    //   X の詳細の画面 → X.ID、X の ID を持つ Y の詳細の画面 → Y.XID
+    const screenValue = (k: number): string | null => {
+      if (!idOf) return null;
+      let h = k;
+      while (h > 0 && !/^\S/.test(all[h])) h--;
+      if (!/^画面\s/.test(all[h])) return null;
+      const body = [];
+      for (let x = h + 1; x < all.length && !/^\S/.test(all[x]); x++) body.push(all[x].trim());
+      if (body.some((b) => b.startsWith(`${idOf}の`) && b.endsWith("を表示"))) return `${idOf}.ID`;
+      for (const b of body) {
+        const mm = /^(\S+?)の.+を表示$/.exec(b);
+        const Y = mm && decl(o, "data", mm[1]);
+        if (Y && Y.fields.some((x: any) => x.name === `${idOf}ID`)) return `${Y.name}.${idOf}ID`;
+      }
+      return null;
+    };
+    const u = all
+      .map((l, i) => {
         if (/^\S/.test(l)) return l;
         const m = new RegExp(`(^|[\\s(、,])${reEsc(act)}\\(`).exec(l);
         if (!m) return l;
         const k = m.index + m[1].length;
-        return addParam(l, value, k);
+        return addParam(l, (/を押すと/.test(l) && screenValue(i)) || value, k);
       })
       .join("\n");
     if (u !== t) write(f, u);

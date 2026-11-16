@@ -324,6 +324,7 @@ function MessageView(p: { m: { kind: "ok" | "error"; text: string; login?: boole
 export function ActionButton(p: { label: string; action: string; args: () => Record<string, unknown> | null; reload: () => Promise<void>; need?: Need; caps?: string[] | null }) {
   const [m, setM] = useMessage();
   const [busy, setBusy] = React.useState(false);
+  const done = React.useRef(0);
   const onClick = async () => {
     const args = p.args();
     if (args === null) return;
@@ -333,7 +334,9 @@ export function ActionButton(p: { label: string; action: string; args: () => Rec
     try {
       const r = await callApi("POST", "/api/actions/" + enc(p.action), args);
       if (r.ok) {
-        setM({ kind: "ok", text: okText(p.label, r) });
+        // 続けて押したとき、前の知らせと見分けられるように回数を添える(第 11 回評価)
+        done.current++;
+        setM({ kind: "ok", text: okText(p.label, r) + (done.current > 1 ? `(${done.current} 回目)` : "") });
         await p.reload();
       } else setM({ kind: "error", text: errorText(r), login: r.status === 401 });
     } finally {
@@ -468,6 +471,7 @@ export function zonedToIso(local: string, tz: string): string | null {
 export function ActionForm(p: { action: string; fields: Field[]; reload: () => Promise<void>; tz?: string; fixed?: Record<string, unknown> | null; need?: Need; caps?: string[] | null; refs?: Refs; submit?: string }) {
   const [m, setM] = useMessage();
   const [busy, setBusy] = React.useState(false);
+  const done = React.useRef(0);
   const formId = "form-" + p.action;
   const onSubmit = async (ev: any) => {
     ev.preventDefault();
@@ -480,7 +484,8 @@ export function ActionForm(p: { action: string; fields: Field[]; reload: () => P
       // 詳細画面のフォームでは、表示中のデータの ID を自動で入れる(利用者に ID を打たせない)
       const r = await callApi("POST", "/api/actions/" + enc(p.action), { ...v, ...(p.fixed ?? {}) });
       if (r.ok) {
-        setM({ kind: "ok", text: okText(p.action, r) });
+        done.current++;
+        setM({ kind: "ok", text: okText(p.action, r) + (done.current > 1 ? `(${done.current} 回目)` : "") });
         form.reset();
         await p.reload();
       } else setM({ kind: "error", text: errorText(r), login: r.status === 401 });

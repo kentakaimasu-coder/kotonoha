@@ -324,6 +324,28 @@ function addLineForm(kind, name, placeholder, list) {
       onsubmit: async (e) => {
         e.preventDefault();
         if (!input.value.trim()) return;
+        // 画面の足す欄は、上の「日本語で指示する」と同じに読む(例の「「2名で予約」ボタンを足す」がそのまま通らず、
+        // 読めない行が入って ✗ になった。第 11 回評価)。読めない文は入れずに理由と近い書き方を出す
+        if (kind === "screen") {
+          $("ask-result")?.replaceChildren();
+          const j = await post("/api/instruct", { text: input.value, screen: name }, (j) => {
+            if (j.result?.ok) notice = { kind: "ok", text: "✓ " + j.result.done };
+          });
+          const r = j.result;
+          if (r?.ok) {
+            input.value = "";
+            return;
+          }
+          if (msg.isConnected) {
+            const why = j.error || r?.errors?.[0]?.message || r?.message || "この文は読めませんでした";
+            msg.className = "msg err";
+            msg.replaceChildren(
+              el("div", { text: "この文は読めませんでした: " + why }),
+              ...(r?.suggestions?.length ? [el("div", { class: "help", text: "近い書き方(押すと入ります):" }), el("div", { class: "chips" }, ...r.suggestions.map((sg) => el("button", { type: "button", class: "chip", onclick: () => { input.value = sg; input.focus(); } }, sg)))] : []),
+            );
+          }
+          return;
+        }
         const j = await op(kind === "rules" ? { op: "add_rule", text: input.value } : { op: "add_line", kind, name, text: input.value }, msg);
         if (!j.error) input.value = "";
       },
