@@ -1199,6 +1199,16 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     if ((o.decls ?? []).some((x: any) => x.name === to)) return { ok: true, done: `もう「${to}」になっています(前に名前を変えたときに一緒に変わりました)` };
     const toOwners = (o.decls ?? []).filter((d: any) => d.kind === "data" && d.fields.some((f: any) => f.name === to));
     if (toOwners.length) return { ok: true, done: `「${toOwners[0].name}」の項目は、もう「${to}」になっています(前に名前を変えたときに一緒に変わりました)` };
+    // ボタンの文字(「「1名で予約」を「1名予約」に変える」。ソースを書き換えていた。第 11 回評価)
+    {
+      let n = 0;
+      for (const f of srcFiles(o)) {
+        const t = read(f);
+        const u = t.split("\n").map((l) => (/^\s/.test(l) && l.includes(`「${from}」を押すと`) ? (n++, l.replace(`「${from}」を押すと`, `「${to}」を押すと`)) : l)).join("\n");
+        if (u !== t) write(f, u);
+      }
+      if (n) return changed(o, `ボタン「${from}」の文字を「${to}」に変えました(${n} か所)`);
+    }
     // 前に変えた名前を含む項目名(「予約」を「取り置き」に変えた後の「予約者」)は、今の項目名を教える
     for (const [a, b] of renamedWords) {
       const cand = from.split(a).join(b);
@@ -1673,7 +1683,9 @@ function appendCallArg(act: string, value: string, idOf = ""): void {
         const m = new RegExp(`(^|[\\s(、,])${reEsc(act)}\\(`).exec(l);
         if (!m) return l;
         const k = m.index + m[1].length;
-        return addParam(l, (/を押すと/.test(l) && screenValue(i)) || value, k);
+        // ボタンには「…の例」を入れない(押すたびに「アレルギーの例」が記録された。第 11 回評価)。空の文字にする
+        const btn = /を押すと/.test(l);
+        return addParam(l, (btn && screenValue(i)) || (btn && /^"[^"]*の例"$/.test(value) ? '""' : value), k);
       })
       .join("\n");
     if (u !== t) write(f, u);

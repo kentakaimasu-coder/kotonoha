@@ -428,7 +428,7 @@ test("第 8 回評価の途中の修正: 動作の引数の順番(フォーム�
   j = await (await api("/api/instruct", { text: "動作「予約する」に「目的」を追加" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
   assert.match(src(), /動作 予約する\([^)]*目的: 文字列\)/);
-  assert.match(src(), /「1名で予約」を押すと 予約する\(レッスン\.ID, 1, "目的の例"\)/);
+  assert.match(src(), /「1名で予約」を押すと 予約する\(レッスン\.ID, 1, ""\)/);
   assert.match(src(), /花子\(利用者\)が 予約する\(回, 1, "目的の例"\) → 成功/);
   assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
   // 型を変えると、初期データの値も新しい型に合わせる
@@ -665,6 +665,12 @@ test("第 10 回評価の途中の修正: 名前が変わり済みなら伝え�
   j = await (await api("/api/instruct", { text: "貸出を登録できるようにしたい" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
   assert.match(src(), /動作 \S+\(品名: 文字列\)[^\n]*:\n    貸出を登録\(品名: 品名, 借りた人: 本人, 貸出日: 今日\(\)\) を返す/);
+  // ボタンの文字を変える
+  j = await (await api("/api/op", { op: "add_line", kind: "screen", name: "行事詳細", text: "「席を足す」を押すと 増席(行事.ID, 行事.部屋ID)" })).json();
+  assert.equal(j.ok, true, j.error);
+  j = await (await api("/api/instruct", { text: "「席を足す」を「1席ふやす」に変える" })).json();
+  assert.equal(j.result?.ok, true, JSON.stringify(j));
+  assert.match(src(), /「1席ふやす」を押すと 増席\(/);
   // 計算の項目は「を追加」が無くても読む
   j = await (await api("/api/instruct", { text: "データ「受注」を作る(数量: 整数、単価: 金額)" })).json();
   j = await (await api("/api/instruct", { text: "受注に 金額 = 数量 * 単価" })).json();
