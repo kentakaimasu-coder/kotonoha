@@ -159,7 +159,10 @@ export function createWebServer(
     const now = Math.floor(Date.now() / 1000);
     // ソースの役割で入る / 一般の利用者(本人のものだけ)/ 管理者(全件閲覧も)
     const roles = devQuick!.roles ?? {};
-    const caps = role.startsWith("r:") && roles[role.slice(2)] ? roles[role.slice(2)] : role === "admin" ? devQuick!.caps : devQuick!.caps.filter((c) => !c.startsWith("全件閲覧."));
+    // 一般の利用者(役割なし)は、確かめるで役割を省いた人と同じ: 全件閲覧と、役割で名指しした動作は持たない
+    // (店員に動作「発注する」を許可しても、一般の利用者で押せた。第 12 回評価)
+    const named = new Set(Object.values(roles).flat().filter((c) => c.startsWith("動作.")));
+    const caps = role.startsWith("r:") && roles[role.slice(2)] ? roles[role.slice(2)] : role === "admin" ? devQuick!.caps : devQuick!.caps.filter((c) => !c.startsWith("全件閲覧.") && !named.has(c));
     const head = `${b({ alg: "HS256", typ: "JWT" })}.${b({ sub, caps, iat: now, exp: now + 12 * 3600 })}`;
     return `${head}.${createHmac("sha256", devQuick!.secret).update(head).digest("base64url")}`;
   };

@@ -949,12 +949,21 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   //   「申し込む」で電話番号も入力できるようにしたい(読めなかった。第 11 回評価)
   if (
     ((m = cmd(/^(?:動作)?「?(.+?)」?(?:の入力|の引数|の受け取る値)?に(?:入力|引数|受け取る値)?「?(.+?)」?(?:[(（](.+?)[)）])?を(?:追加(?:する)?|足す|加える)$/.exec(text))) ||
-      (m = cmd(/^(?:動作)?「(.+?)」(?:で|の時に|のときに|するとき)、?「?([^「」]+?)」?(?:[(（](.+?)[)）])?(?:も|を)(?:入力|入れ|書け|選べ|受け取れ)(?:できる|られる|る)?ように(?:する|したい|して)?$/.exec(text)))) &&
+      (m = cmd(/^(?:動作)?「(.+?)」(?:で|の時に|のときに|するとき)、?「?([^「」]+?)」?(?:[(（](.+?)[)）])?(?:も|を)(?:入力|入れ|書け|選べ|受け取れ)(?:できる|られる|る)?ように(?:する|したい|して)?$/.exec(text)) ??
+        // 「予約するときにメニューを選べるようにしたい」(かぎかっこ無し。第 12 回評価)
+        /^(?:動作)?(\S+?)(?:の時に|のときに|ときに|時に|とき)、?「?([^「」\s]+?)」?(?:[(（](.+?)[)）])?(?:も|を)(?:入力|入れ|書け|選べ|受け取れ)(?:できる|られる|る)?ように(?:する|したい|して)?$/.exec(text))) &&
+    // 「増席するとき」→ 動作「増席」
+    ((!decl(o, "action", m[1].trim()) && /する$/.test(m[1].trim()) && decl(o, "action", m[1].trim().replace(/する$/, "")) && (m[1] = m[1].trim().replace(/する$/, ""))) || true) &&
     decl(o, "action", m[1].trim()) &&
     !decl(o, "data", m[1].trim())
   ) {
+    // データの名前(「メニュー」)なら、そのデータを選ぶ欄(メニューID)にする
+    if (decl(o, "data", m[2].trim()) && !m[3]) m[2] = `${m[2].trim()}ID`;
     const at = apply({ op: "add_param", action: m[1].trim(), name: m[2], type: m[3] ?? "" });
-    return checked(at, `動作「${m[1].trim()}」に受け取る値「${m[2].trim()}」を足しました(ボタン・確かめるの呼び出しにも仮の値を入れました)`, o, text);
+    // ボタンでは選べない値(画面に出ていないデータの ID・文字)を足したときは、フォームに変える方法を伝える(第 12 回評価)
+    const btns = srcFiles(outline()).flatMap((f) => read(f).split("\n")).filter((l) => /を押すと/.test(l) && l.includes(`${m![1].trim()}(`) && /, ""\)\s*$/.test(l));
+    const hint = btns.length ? `。ボタンからは「${m[2].trim()}」を入れられないので空になります。入れさせるなら、ボタンを消して「${m[1].trim()}のフォームを表示」にします` : "";
+    return checked(at, `動作「${m[1].trim()}」に受け取る値「${m[2].trim()}」を足しました(ボタン・確かめるの呼び出しにも仮の値を入れました)${hint}`, o, text);
   }
   // 画面を役割だけにする: この画面は店長だけ / 画面「管理」は店長だけ(上の欄では読めなかった。第 8 回評価)
   {
@@ -2008,7 +2017,11 @@ function registration(o: any, ctx: { screen?: string }, text: string, D: any, ac
   const at = apply({ op: "add_action", name: act, params, body: [`${D.name}を登録(${args.join(", ")}) を返す`] });
   const sc = (ctx.screen && decl(outline(), "screen", ctx.screen)) || null;
   if (sc) apply({ op: "add_line", kind: "screen", name: sc.name, text: `${act}のフォームを表示` });
-  return checked(at, `動作「${act}」を作りました${sc ? `(画面「${sc.name}」にフォームを出しました)` : "。画面を選んでから「" + act + "のフォームを表示」と書くとフォームが出ます"}`, o, text);
+  // 役割があるのに、だれも作成の権限を持たないときは知らせる(店長にメニュー.作成が無く、フォームが出なかった。第 12 回評価)
+  const roles = (o.decls ?? []).filter((d: any) => d.kind === "role");
+  const lack = roles.filter((r: any) => !(r.caps ?? []).includes(`${D.name}.作成`)).map((r: any) => r.name);
+  const capNote = roles.length && lack.length === roles.length ? `。役割の人(${lack.join("・")})には ${D.name}.作成 が無いので、このフォームが出ません。「${lack[0]}に${D.name}の作成を許可する」と書くと出ます` : "";
+  return checked(at, `動作「${act}」を作りました${sc ? `(画面「${sc.name}」にフォームを出しました)` : "。画面を選んでから「" + act + "のフォームを表示」と書くとフォームが出ます"}${capNote}`, o, text);
 }
 /** D の詳細画面(「D の…を表示」がある画面)を探す。無くて、D を一覧表示している画面があれば作る
  *  (詳細の画面が無いうちに動作を作ると、ボタンがどこにも出なかった。第 10 回評価で 5 人)。

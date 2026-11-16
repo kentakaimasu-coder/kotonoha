@@ -687,6 +687,10 @@ test("第 10 回評価の途中の修正: 名前が変わり済みなら伝え�
   j = await (await api("/api/instruct", { text: "データ「見守り」を作る(様子: 文字列、訪問日: 日付)" })).json();
   j = await (await api("/api/instruct", { text: "見守りを登録できるようにしたい" })).json();
   assert.match(src(), /動作 \S+\(様子: 文字列, 訪問日: 日付\)/);
+  // 「増席するときに部屋を選べるようにしたい」: データの名前なら ID の欄にする
+  j = await (await api("/api/instruct", { text: "増席するときに備品を選べるようにしたい" })).json();
+  assert.equal(j.result?.ok, true, JSON.stringify(j));
+  assert.match(src(), /動作 増席\([^)]*備品ID: 識別子\)/);
   // 計算の項目は「を追加」が無くても読む
   j = await (await api("/api/instruct", { text: "データ「受注」を作る(数量: 整数、単価: 金額)" })).json();
   j = await (await api("/api/instruct", { text: "受注に 金額 = 数量 * 単価" })).json();
