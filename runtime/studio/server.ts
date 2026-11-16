@@ -945,7 +945,13 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   const cmd = (m: RegExpExecArray | null) => m;
   let m: RegExpExecArray | null;
   // 動作に受け取る値を足す: 動作「予約する」に「目的」を追加(第 8 回評価: 読めず、ソースと確かめるを手で直した)
-  if ((m = cmd(/^(?:動作)?「?(.+?)」?(?:の入力|の引数|の受け取る値)?に(?:入力|引数|受け取る値)?「?(.+?)」?(?:[(（](.+?)[)）])?を(?:追加(?:する)?|足す|加える)$/.exec(text))) && decl(o, "action", m[1].trim()) && !decl(o, "data", m[1].trim())) {
+  //   「申し込む」で電話番号も入力できるようにしたい(読めなかった。第 11 回評価)
+  if (
+    ((m = cmd(/^(?:動作)?「?(.+?)」?(?:の入力|の引数|の受け取る値)?に(?:入力|引数|受け取る値)?「?(.+?)」?(?:[(（](.+?)[)）])?を(?:追加(?:する)?|足す|加える)$/.exec(text))) ||
+      (m = cmd(/^(?:動作)?「(.+?)」(?:で|の時に|のときに|するとき)、?「?([^「」]+?)」?(?:[(（](.+?)[)）])?(?:も|を)(?:入力|入れ|書け|選べ|受け取れ)(?:できる|られる|る)?ように(?:する|したい|して)?$/.exec(text)))) &&
+    decl(o, "action", m[1].trim()) &&
+    !decl(o, "data", m[1].trim())
+  ) {
     const at = apply({ op: "add_param", action: m[1].trim(), name: m[2], type: m[3] ?? "" });
     return checked(at, `動作「${m[1].trim()}」に受け取る値「${m[2].trim()}」を足しました(ボタン・確かめるの呼び出しにも仮の値を入れました)`, o, text);
   }
@@ -1329,6 +1335,10 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     decl(o, "data", m[1].trim())
   ) {
     m[3] = m[3].replace(/×/g, "*").replace(/÷/g, "/");
+    {
+      const D0 = decl(o, "data", m[1].trim());
+      if (D0.fields.some((f: any) => f.name === m![2].trim()) || (D0.computed ?? []).some((f: any) => f.name === m![2].trim())) throw new Error(`「${D0.name}」に「${m[2].trim()}」は既にあります`);
+    }
     const at = apply({ op: "add_line", kind: "data", name: m[1].trim(), text: `${okName(m[2], "計算項目の名前")} = ${m[3].trim()}` });
     return checked(at, `「${m[1].trim()}」に計算項目「${m[2].trim()}」を足しました`, o, text);
   }

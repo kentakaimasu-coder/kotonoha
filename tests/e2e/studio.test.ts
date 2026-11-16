@@ -678,6 +678,12 @@ test("第 10 回評価の途中の修正: 名前が変わり済みなら伝え�
   j = await (await api("/api/instruct", { text: "受注の倍数は 数量 × 2" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
   assert.match(src(), /    金額 = 数量 \* 単価\n    倍数 = 数量 \* 2\n/);
+  j = await (await api("/api/instruct", { text: "受注に 金額 = 数量 * 単価" })).json();
+  assert.match(j.error ?? "", /既にあります/);
+  // 「…」で〜も入力できるようにしたい: 動作に受け取る値を足す
+  j = await (await api("/api/instruct", { text: "「増席」で備考も入力できるようにしたい" })).json();
+  assert.equal(j.result?.ok, true, JSON.stringify(j));
+  assert.match(src(), /動作 増席\([^)]*備考: 文字列\)/);
   // 役割を作ると、その役割では出ないボタン(動作)を知らせる
   j = await (await api("/api/instruct", { text: "役割「見学者」を作る" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
