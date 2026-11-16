@@ -65,3 +65,47 @@ test("画面の足す欄: 例として出している文をそのまま入れる
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test("ひな形「予約受付」のまま「予約者」を「参加者」に変えられる(課題の項目名。第 12 回評価で通らなかった)", async () => {
+  const token = /name="studio-token" content="([0-9a-f]+)"/.exec(await (await fetch(url + "/")).text())![1];
+  const r: any = await (await fetch(url + "/api/instruct", { method: "POST", headers: { "Content-Type": "application/json", "X-Studio-Token": token }, body: JSON.stringify({ text: "予約の「予約者」を「参加者」に変える" }) })).json();
+  assert.equal(r.result?.ok, true, JSON.stringify(r));
+  assert.match(src(), /予約のうち参加者が本人のものを一覧表示/);
+  assert.doesNotMatch(src().replace(/#.*$/gm, ""), /予約者/);
+  assert.equal(r.outline.ok, true, JSON.stringify(r.outline.diagnostics));
+});
+
+test("課題 A の道筋(ペルソナがする順): 名前を変える・項目を足す・ボタン・集計・項目の順番。どの一歩でも検査が ✗ にならない", async () => {
+  const d2 = join(tmp("studio-ui-a"), "イベント受付");
+  execFileSync(KOTO, ["init", d2, "--template", "予約受付"], { stdio: "pipe" });
+  const port = await freePort();
+  const u2 = `http://127.0.0.1:${port}`;
+  const p2 = spawn(KOTO, ["-C", d2, "studio", "--port", String(port)], { stdio: ["ignore", "pipe", "pipe"] });
+  try {
+    await waitHttp(u2 + "/", 60000);
+    const token = /name="studio-token" content="([0-9a-f]+)"/.exec(await (await fetch(u2 + "/")).text())![1];
+    const say = async (text: string, screen?: string) => {
+      const r: any = await (await fetch(u2 + "/api/instruct", { method: "POST", headers: { "Content-Type": "application/json", "X-Studio-Token": token }, body: JSON.stringify({ text, screen }) })).json();
+      assert.equal(r.result?.ok, true, `${text}: ${JSON.stringify(r.error ?? r.result)}`);
+      assert.equal(r.outline.ok, true, `${text}: ${JSON.stringify(r.outline.diagnostics)}`);
+      return r;
+    };
+    await say("「枠」を「イベント」に変える");
+    await say("予約の「予約者」を「参加者」に変える");
+    await say("「受付係」を「主催者」に変える");
+    await say("「イベントを追加」を「イベント登録」に変える");
+    await say("イベントに「会場」を追加");
+    await say("イベントに「参加費」を追加");
+    await say("「2名で予約」ボタンを足す", "イベント詳細");
+    await say("イベントの項目を 名前・会場・開始日時・参加費・定員・予約数 の順にする");
+    await say("分析「会場別の予約状況」を作る(イベントの予約数と定員を会場ごとに合計)");
+    const s = readFileSync(join(d2, "src/app.koto"), "utf8");
+    assert.match(s, /データ イベント:\n    ID: 識別子\n    名前: 文字列\n    会場: 文字列\n    開始日時: 日時\n    参加費: 金額/);
+    assert.match(s, /動作 イベント登録\(名前: 文字列, 会場: 文字列, 開始日時: 日時, 参加費: 金額/);
+    assert.match(s, /「2名で予約」を押すと 予約する\(イベント\.ID, 2\)/);
+    assert.match(s, /参加者: 本人/);
+    assert.doesNotMatch(s.replace(/#.*$/gm, ""), /予約者|受付係|枠/);
+  } finally {
+    p2.kill();
+  }
+});

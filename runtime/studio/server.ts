@@ -240,7 +240,8 @@ function addLine(d: any, text: string): { file: string; line: number } {
 // ---- 名前の変更・まとめて消す・空でもよい項目(第 5 回評価で多かった要望) ----
 const reEsc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // 項目名の前後に来てよい文字(日本語は空白で区切らないので、助詞・記号で区切りを見る)
-const FIELD_BEFORE = "(?<=^|[\\s.(,、「のとはが\\[])";
+// 「予約のうち予約者が本人の…」「…かつ状態が…」の「うち」「かつ」の後も項目の始まり(予約者を変えられなかった。第 12 回評価)
+const FIELD_BEFORE = "(?<=^|[\\s.(,、「のとはが\\[]|うち|かつ)";
 const FIELD_AFTER = "(?=$|[\\s:：)\\],、.」をがのはでにと順ご+\\-*/=<>!])";
 function srcFiles(o: any): string[] {
   return [...new Set<string>([...(o.files ?? []), ...(o.decls ?? []).map((x: any) => x.file)].filter(Boolean))];
