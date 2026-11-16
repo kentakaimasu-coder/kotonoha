@@ -1337,7 +1337,19 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       return changed(o, `動作 ${acts.map((a: any) => a.name).join("・")} の入力「${fn}」を空でもよい欄にしました`);
     }
     const done = makeOptional(o, m[1]?.trim(), fn);
-    if (done.length === 0) return { ok: true, done: `「${m[2].trim()}」は既に空でもよい項目です` };
+    if (done.length === 0) {
+      // データの項目は空でもよいのに、動作の入力(フォームの欄)が必須のままのときは、そちらも空でもよくする
+      // (「既に空でもよい」と出たのにフォームでは必須のままだった。第 12 回評価)
+      const acts = (o.decls ?? []).filter((d: any) => d.kind === "action" && (d.params ?? []).some((p: any) => p.name === fn && !/^選択</.test(p.type)));
+      for (const a of acts) {
+        const al = lines(a.file);
+        const p = a.params.find((x: any) => x.name === fn);
+        al[a.line - 1] = al[a.line - 1].replace(new RegExp(`([(,]\\s*${reEsc(fn)}\\s*:\\s*)${reEsc(p.type)}(?=\\s*[,)])`), `$1選択<${p.type}>`);
+        write(a.file, al.join("\n"));
+      }
+      if (acts.length) return changed(o, `「${fn}」は既に空でもよい項目でした。動作 ${acts.map((a: any) => a.name).join("・")} の入力欄も空でもよくしました`);
+      return { ok: true, done: `「${m[2].trim()}」は既に空でもよい項目です` };
+    }
     return changed(o, `${done.join("・")}を空でもよい項目にしました(入力欄の「必須」が外れます)`);
   }
   // 動作「X」を作る(項目、…): 項目をすべて持つデータがあれば、その登録の動作にする
