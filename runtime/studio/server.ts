@@ -1311,7 +1311,14 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     return checked(at, `列挙「${m[1].trim()}」に「${m[2].trim()}」を足しました`, o, text);
   }
   // 計算項目: 「枠に「残席 = 定員 - 予約数」を追加」(ADR-0136)
-  if ((m = cmd(/^(.+?)に(?:計算項目)?「?(.+?)\s*=\s*(.+?)」?を(?:追加(?:する)?|足す|加える)$/.exec(text))) && decl(o, "data", m[1].trim())) {
+  //   「受注に 金額 = 数量 * 単価」「受注の金額は 数量 * 単価」のように、「を追加」が無くても読む(第 11 回評価)
+  if (
+    ((m = cmd(/^(.+?)に(?:計算項目)?「?(.+?)\s*=\s*(.+?)」?を(?:追加(?:する)?|足す|加える)$/.exec(text))) ||
+      (m = cmd(/^(.+?)に\s*(?:計算項目)?「?([^\s=「」]+?)\s*=\s*([^「」]+?)」?$/.exec(text))) ||
+      (m = cmd(/^(.+?)の([^\s=「」]+?)は\s*([^「」]*[-+*/×÷][^「」]*?)(?:で(?:計算(?:する)?|出す))?$/.exec(text)))) &&
+    decl(o, "data", m[1].trim())
+  ) {
+    m[3] = m[3].replace(/×/g, "*").replace(/÷/g, "/");
     const at = apply({ op: "add_line", kind: "data", name: m[1].trim(), text: `${okName(m[2], "計算項目の名前")} = ${m[3].trim()}` });
     return checked(at, `「${m[1].trim()}」に計算項目「${m[2].trim()}」を足しました`, o, text);
   }
