@@ -192,3 +192,10 @@ test("「枠一覧に、枠のうち開始日時が今日のものを一覧表�
   assert.match(src(), /画面 枠一覧:\n    枠のうち開始日時が今日のものを一覧表示\n/);
   assert.equal((src().match(/\n    枠(を|のうち)[^\n]*一覧表示\n/g) ?? []).length, 1);
 });
+
+test("項目の名前を変えると、失敗の名前「人数不正」もそろえる", async () => {
+  const r = await ok("予約の「人数」を「使う棚」に変える");
+  assert.match(r.done, /「人数不正」も「使う棚不正」にしました/);
+  assert.doesNotMatch(src(), /人数不正/);
+  assert.match(src(), /失敗\("使う棚不正"\)/);
+});

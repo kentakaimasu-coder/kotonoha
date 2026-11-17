@@ -1468,7 +1468,16 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     // 「枠」を「イベント」に変えると「枠ID」も「イベントID」に変わる。その後の「枠ID」を「イベントID」に変える は、もう済んでいると伝える(第 10 回評価)
     if (!has(m[2].trim()) && has(m[3].trim())) return { ok: true, done: `「${D.name}」の項目は、もう「${m[3].trim()}」になっています(前に名前を変えたときに一緒に変わりました)` };
     renameField(o, m[1].trim(), m[2].trim(), m[3].trim());
-    return changed(o, `「${m[1].trim()}」の項目「${m[2].trim()}」を「${m[3].trim()}」に変えました`);
+    // 失敗の名前「人数不正」も「使う棚不正」にそろえる(「人数不正」のまま残った。第 15 回評価)
+    let failNote = "";
+    const o2 = outline();
+    for (const E of (o2.decls ?? []).filter((d: any) => d.kind === "enum" && (d.values ?? []).includes(`${m![2].trim()}不正`) && !(d.values ?? []).includes(`${m![3].trim()}不正`))) {
+      try {
+        instruct(`列挙「${E.name}」の「${m[2].trim()}不正」を「${m[3].trim()}不正」に変える`, {});
+        failNote = `。失敗の名前「${m[2].trim()}不正」も「${m[3].trim()}不正」にしました`;
+      } catch {}
+    }
+    return changed(o, `「${m[1].trim()}」の項目「${m[2].trim()}」を「${m[3].trim()}」に変えました${failNote}`);
   }
   if (
     (m = cmd(/^(?:データ|画面|動作|役割|列挙|確かめる)?「?(.+?)」?の名前を「?(.+?)」?に(?:変える|かえる|変更(?:する)?|直す|する)$/.exec(text))) ||
