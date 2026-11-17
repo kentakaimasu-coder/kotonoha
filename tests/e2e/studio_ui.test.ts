@@ -3,7 +3,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { KOTO, tmp, freePort, waitHttp } from "./helpers.ts";
 import { chromium, type Browser } from "playwright";
@@ -121,4 +121,19 @@ test("課題 A の道筋(ペルソナがする順): 名前を変える・項目�
   } finally {
     p2.kill();
   }
+});
+
+test("ADR-0140: 役割のあるアプリでは、確かめるで役割を書かない人は、どの役割にも書いていない権限だけを持つ(本番と同じ)", async () => {
+  const d3 = join(tmp("adr0140"), "受付");
+  execFileSync(KOTO, ["init", d3, "--template", "予約受付"], { stdio: "pipe" });
+  const p = join(d3, "src/app.koto");
+  const s = readFileSync(p, "utf8").replace(" → 成功(回)\n", " → 成功(回)\n    次郎が 予約する(回, 1) → 成功\n");
+  writeFileSync(p, s);
+  let out = "";
+  try {
+    out = execFileSync(KOTO, ["-C", d3, "test"], { stdio: "pipe", encoding: "utf8" });
+  } catch (e: any) {
+    out = String(e.stdout ?? "") + String(e.stderr ?? "");
+  }
+  assert.match(out, /✗ 次郎が 予約する\(回, 1\) → 成功.*役割を書かない人は、どの役割にも書いていない権限だけを持ちます/);
 });

@@ -147,7 +147,7 @@ const b64u = (b: Buffer) => b.toString("base64url");
 
 export function createWebServer(
   app: WebApp,
-  opts: { backendUrl: string; root: string; secureCookie: boolean; tz: string; oidc?: OidcConfig | null; devLogin?: boolean; devQuick?: { secret: string; caps: string[]; roles?: Record<string, string[]> } | null },
+  opts: { backendUrl: string; root: string; secureCookie: boolean; tz: string; oidc?: OidcConfig | null; devLogin?: boolean; devQuick?: { secret: string; caps: string[]; roles?: Record<string, string[]>; general?: string[] } | null },
 ) {
   const backend = new URL(opts.backendUrl);
   const oidc = opts.oidc ?? null;
@@ -161,8 +161,8 @@ export function createWebServer(
     const roles = devQuick!.roles ?? {};
     // 一般の利用者(役割なし)は、確かめるで役割を省いた人と同じ: 全件閲覧と、役割で名指しした動作は持たない
     // (店員に動作「発注する」を許可しても、一般の利用者で押せた。第 12 回評価)
-    const named = new Set(Object.values(roles).flat().filter((c) => c.startsWith("動作.")));
-    const caps = role.startsWith("r:") && roles[role.slice(2)] ? roles[role.slice(2)] : role === "admin" ? devQuick!.caps : devQuick!.caps.filter((c) => !c.startsWith("全件閲覧.") && !named.has(c));
+    // 一般の利用者(役割なし)は、確かめるで役割を書かない人と同じ(役割に関わらない操作の権限だけ。ADR-0140)
+    const caps = role.startsWith("r:") && roles[role.slice(2)] ? roles[role.slice(2)] : role === "admin" ? devQuick!.caps : (devQuick!.general ?? devQuick!.caps.filter((c) => !c.startsWith("全件閲覧.")));
     const head = `${b({ alg: "HS256", typ: "JWT" })}.${b({ sub, caps, iat: now, exp: now + 12 * 3600 })}`;
     return `${head}.${createHmac("sha256", devQuick!.secret).update(head).digest("base64url")}`;
   };

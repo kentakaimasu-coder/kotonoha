@@ -366,6 +366,34 @@ fn ja_cap(c: &str) -> String {
     c.to_string()
 }
 
+/// 役割を書かない人(開発用の「一般の利用者」・確かめるで役割を省いた人)の権限(ADR-0140)。
+/// 役割に関わらない操作(必要な権限も動作の許可も、どの役割にも書いていない)の権限と許可だけ。全件閲覧は持たない。
+/// runtime/backend/scenarios.ts と同じ決め方
+fn general_caps(api: &serde_json::Value) -> Vec<String> {
+    let role_caps: std::collections::BTreeSet<&str> = api["roles"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .flat_map(|(_, cs)| cs.as_array().into_iter().flatten().filter_map(|c| c.as_str()))
+        .collect();
+    let mut out = std::collections::BTreeSet::new();
+    for e in api["endpoints"].as_array().into_iter().flatten() {
+        let a = &e["access"];
+        let caps: Vec<&str> = a["capabilities"].as_array().into_iter().flatten().filter_map(|c| c.as_str()).collect();
+        let grant = a["grant"].as_str();
+        let restricted = caps.iter().any(|c| role_caps.contains(c)) || grant.is_some_and(|g| role_caps.contains(g));
+        for c in &caps {
+            if !c.starts_with("全件閲覧.") && !role_caps.contains(c) {
+                out.insert(c.to_string());
+            }
+        }
+        if let Some(g) = grant.filter(|_| !restricted) {
+            out.insert(g.to_string());
+        }
+    }
+    out.into_iter().collect()
+}
+
 /// 公開前の点検: だれが何を見られる・できるかを、API の言葉を使わずに書く(第 9 回評価)
 fn plain_access(api: &serde_json::Value) -> String {
     let mut s = String::new();
@@ -413,7 +441,7 @@ fn plain_access(api: &serde_json::Value) -> String {
     // 役割の書いてある人は、本番では認証基盤の役割で決まる。開発中の「一般の利用者(役割なし)」・確かめるで役割を省いた人は
     // それより広く試せるので、食い違って見える(第 12 回評価。ADR-0140)
     if api["roles"].as_object().is_some_and(|r| !r.is_empty()) {
-        s.push_str("\n※「ログインした ○○ の人」は、本番では認証基盤でその役割が付いた人です。役割の付いていない人は、上で「ログインした人」「だれでも」と書いた所だけ使えます。\n  開発中の「一般の利用者(役割なし)」と、確かめるで役割を書かなかった人は、試しやすいように、役割で名指しした動作と全件閲覧のほかは全部できます(本番とは違います)。\n");
+        s.push_str("\n※「ログインした ○○ の人」は、認証基盤でその役割が付いた人です。役割の付いていない人は、上で「ログインした人」「だれでも」と書いた所だけ使えます。\n  開発中の「一般の利用者(役割なし)」と、確かめるで役割を書かなかった人も同じです(本番と同じ。ADR-0140)。\n");
     }
     s
 }
@@ -1487,6 +1515,7 @@ fn dev_once(o: &mut Opts, port: u16, no_start: bool, ever_started: &mut bool) ->
         .env("KOTONOHA_DEV_JWT_SECRET", &secret)
         .env("KOTONOHA_DEV_CAPS", caps.join(","))
         .env("KOTONOHA_DEV_ROLES", serde_json::to_string(&api["roles"]).unwrap_or_else(|_| "{}".into()))
+        .env("KOTONOHA_DEV_GENERAL_CAPS", general_caps(&api).join(","))
         .env("KOTONOHA_EXIT_WITH_PARENT", std::process::id().to_string())
         .current_dir(&web)
         .spawn()
