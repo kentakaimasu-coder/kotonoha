@@ -1859,6 +1859,19 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       if (failEnum && !failEnum.values.includes("取消済み")) apply({ op: "add_line", kind: "enum", name: fe, text: "取消済み" });
       if (!failEnum) apply({ op: "add_enum", name: fe, values: ["取消済み"] });
     }
+    // 「すでに…」で断る失敗の名前(失敗の列挙に足す)
+    let alreadyFail = "";
+    const borrowLike = /借り|貸出|貸し出|使用|確保|押さえ|持ち出/.test(act);
+    if (!cancelLike && decl(o, "data", dn) && !decl(o, "action", act)) {
+      const f0 = decl(o, "data", dn).fields.find((x: any) => x.name === fn);
+      if (f0 && (f0.type === "真偽" ? /^(はい|真|済|オン)$/.test(v) : borrowLike)) {
+        const msg = `すでに${f0.type === "真偽" ? fn : v}`;
+        const failEnum = (o.decls ?? []).find((d: any) => d.kind === "enum" && /失敗$/.test(d.name) && (d.values ?? []).length);
+        alreadyFail = failEnum?.name ?? `${act}の失敗`;
+        if (failEnum && !failEnum.values.includes(msg)) apply({ op: "add_line", kind: "enum", name: alreadyFail, text: msg });
+        if (!failEnum) apply({ op: "add_enum", name: alreadyFail, values: [msg] });
+      }
+    }
     return actionTemplate(o, text, act, dn, (D) => {
       const f = D.fields.find((x: any) => x.name === fn);
       if (!f) throw new Error(`データ「${dn}」に項目「${fn}」はありません(項目: ${D.fields.map((x: any) => x.name).join("、")})`);
@@ -1887,9 +1900,11 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
         const qty = D.fields.find((x: any) => /^(人数|数量|数|個数|台数|冊数|段数)$/.test(x.name))?.name;
         if (P && cnt && qty) extra.push(`親 = ${P.name}を取得(件.${parent})`, `親.${cnt} = 親.${cnt} - 件.${qty}`);
       }
-      const guard = cancelLike ? extra.splice(0, 1) : [];
+      // もうその値なら「すでに…」で断る(貸出中の本をもう一度借りられた。第 15 回評価)。取り消しは上で「取消済み」にしている
+      const already = alreadyFail ? [`件.${fn} != ${lit} を確認 または 失敗("すでに${f.type === "真偽" ? fn : v}")`] : [];
+      const guard = cancelLike ? extra.splice(0, 1) : already;
       return [`件 = ${dn}を取得(${dn}ID)`, ...guard, `件.${fn} = ${lit}`, ...extra, `${dn}ID を返す`];
-    }, seqWhen(o, dn, fn, v) || (cancelLike ? `${dn}の${fn}が${v}でないとき` : ""), fe);
+    }, seqWhen(o, dn, fn, v) || (cancelLike ? `${dn}の${fn}が${v}でないとき` : ""), fe || alreadyFail);
   }
   // 取り消し: 予約を取り消せるようにしたい(第 9 回評価: 読めず、取り消しを作れなかった)
   //   状態の項目(取消・キャンセルの値を持つ列挙)が無ければ作る。登録の動作には最初の値を入れる。

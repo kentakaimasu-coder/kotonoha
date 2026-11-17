@@ -653,7 +653,7 @@ test("第 10 回評価の途中の修正: 名前が変わり済みなら伝え�
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
   j = await (await api("/api/instruct", { text: "「借りる」で備品の貸出状況を「貸出中」にする" })).json();
   assert.equal(j.result.ok, true, JSON.stringify(j.result));
-  assert.match(src(), /動作 借りる\(備品ID: 識別子\)[^\n]*:\n    件 = 備品を取得\(備品ID\)\n    件\.貸出状況 = "貸出中"\n    件\.借りた人 = 本人\n    件\.貸出日時 = 現在日時\(\)\n/);
+  assert.match(src(), /動作 借りる\(備品ID: 識別子\)[^\n]*:\n    件 = 備品を取得\(備品ID\)\n    件\.貸出状況 != "貸出中" を確認 または 失敗\("すでに貸出中"\)\n    件\.貸出状況 = "貸出中"\n    件\.借りた人 = 本人\n    件\.貸出日時 = 現在日時\(\)\n/);
   j = await (await api("/api/instruct", { text: "「返す」で備品の貸出状況を「在庫あり」にする" })).json();
   assert.match(src(), /動作 返す\(備品ID: 識別子\)[^\n]*:\n    件 = 備品を取得\(備品ID\)\n    件\.貸出状況 = "在庫あり"\n    備品ID を返す/);
   assert.equal(j.outline.ok, true, JSON.stringify(j.outline.diagnostics));
