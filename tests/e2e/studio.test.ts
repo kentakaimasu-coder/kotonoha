@@ -380,8 +380,22 @@ test("集計を画面のフォームで作る(記号を書かない)・項目の
   await page.fill('input[aria-label="集計の名前"]', "会場別の予約状況");
   await page.selectOption('select[aria-label="集計するデータ"]', "レッスン");
   await page.selectOption('select[aria-label="まとめる項目"]', "会場");
+  // チェックを付けた順に列になる(第 13 回評価)
+  {
+    const boxes = await page.locator('#editor input[type="checkbox"]').all();
+    const vals = await Promise.all(boxes.map((b) => b.getAttribute("value")));
+    // (チェックを外すと行が動くので、値で選ぶ)
+    for (const v of vals) await page.locator(`#editor input[type="checkbox"][value="${v}"]`).uncheck();
+    if (vals.length >= 2) {
+      await page.locator(`#editor input[type="checkbox"][value="${vals[vals.length - 1]}"]`).check();
+      await page.locator(`#editor input[type="checkbox"][value="${vals[0]}"]`).check();
+      assert.equal(await page.inputValue('input[aria-label="3 列目の名前"]'), vals[vals.length - 1]);
+      assert.equal(await page.inputValue('input[aria-label="4 列目の名前"]'), vals[0]);
+      for (const v of vals) await page.locator(`#editor input[type="checkbox"][value="${v}"]`).uncheck();
+    }
+  }
   // 合計は予約数だけにする
-  for (const box of await page.locator('#editor input[type="checkbox"]').all()) if ((await box.getAttribute("value")) !== "予約数") await box.uncheck();
+  await page.locator('#editor input[type="checkbox"][value="予約数"]').check();
   await page.fill('input[aria-label="2 列目の名前"]', "イベント数");
   await page.click('#editor button:has-text("作る")');
   await page.waitForSelector('h2:has-text("集計「会場別の予約状況」")');

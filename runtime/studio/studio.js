@@ -452,7 +452,16 @@ function analysisForm() {
       ...fs
         .filter((f) => /^(選択<)?(整数|金額)/.test(f.type))
         .map((f) => {
-          const row = el("div", { class: "line" }, el("label", {}, el("input", { type: "checkbox", value: f.name, checked: !/^(選択<)?金額/.test(f.type), onchange: renderCols }), ` ${f.name}`));
+          // チェックを付けた順に列になる(付けた項目は、チェック済みの項目の後ろへ動かす。列の順を ↑ で何度も直した。第 13 回評価)
+          const onchange = (e) => {
+            const rows = [...sums.children].filter((r) => r !== row);
+            const lastChecked = rows.filter((r) => r.querySelector("input")?.checked).pop();
+            if (lastChecked) lastChecked.after(row);
+            else sums.prepend(row);
+            void e;
+            renderCols();
+          };
+          const row = el("div", { class: "line" }, el("label", {}, el("input", { type: "checkbox", value: f.name, checked: !/^(選択<)?金額/.test(f.type), onchange }), ` ${f.name}`));
           row.append(el("button", { type: "button", class: "small ghost", "aria-label": `${f.name}の列を左へ`, onclick: () => move(row, -1) }, "↑"), el("button", { type: "button", class: "small ghost", "aria-label": `${f.name}の列を右へ`, onclick: () => move(row, 1) }, "↓"));
           return row;
         }),
@@ -486,7 +495,7 @@ function analysisForm() {
     el("label", { class: "row" }, el("span", { text: "集計の名前" }), name),
     el("label", { class: "row" }, el("span", { text: "どのデータを" }), data),
     el("label", { class: "row" }, el("span", { text: "何ごとにまとめる" }), unit),
-    el("h3", { text: "合計する項目(選ばなければ件数だけ。↑↓ で列の順番)" }),
+    el("h3", { text: "合計する項目(選ばなければ件数だけ。チェックを付けた順に列になります。↑↓ でも並べ替えられます)" }),
     sums,
     el("h3", { text: "列の名前(左から順に。決まった名前があれば書き換える)" }),
     cols,
