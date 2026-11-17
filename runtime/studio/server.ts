@@ -1295,9 +1295,11 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     const an = okName(m[1], "分析の名前");
     let [sentence, colsPart] = m[2].split(/[、,]\s*列[::]\s*/);
     sentence = sentence.trim();
-    const mm = /^(.+?)(?:のうち(.+?)のもの)?(?:の(.+?)を(.+?)ごとに合計|を(.+?)ごとに集計)$/.exec(sentence);
+    // データの名前に「の」があっても(「月謝の支払い」)、いちばん長く合うデータの名前で区切る(「月謝」で切れて作れなかった。第 15 回評価)
+    const dn0 = (o.decls ?? []).filter((d: any) => d.kind === "data").map((d: any) => d.name).sort((a: string, b: string) => b.length - a.length).find((n: string) => sentence.startsWith(n) && /^(の|を)/.test(sentence.slice(n.length)));
+    const mm = /^(.+?)(?:のうち(.+?)のもの)?(?:の(.+?)を(.+?)ごとに合計|を(.+?)ごとに集計)$/.exec(dn0 ? "\u0001" + sentence.slice(dn0.length) : sentence);
     if (!mm) throw new Error("集計の文は「イベントの予約数と定員を会場ごとに合計」か「予約を会場ごとに集計」の形で書きます");
-    const dn = mm[1].trim();
+    const dn = dn0 && mm[1] === "\u0001" ? dn0 : mm[1].trim();
     const D = decl(o, "data", dn);
     if (!D) throw new Error(`データ「${dn}」はありません`);
     const unit = (mm[4] ?? mm[5]).trim();
