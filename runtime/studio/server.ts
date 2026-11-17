@@ -2573,7 +2573,13 @@ function registration(o: any, ctx: { screen?: string }, text: string, D: any, ac
       args.push(`${f.name}: ${f.name}`);
     }
   }
-  const at = apply({ op: "add_action", name: act, params, body: [`${D.name}を登録(${args.join(", ")}) を返す`] });
+  // ほかのデータを指す値(メニューID)は、そのデータが本当にあるかを取り出して確かめる(無ければ「見つからない」で止まる)
+  //   (存在しないトラックIDでも配車が登録できた。第 14・16 回評価)
+  const refs = params
+    .map((p: any) => p.name)
+    .filter((n: string) => n.endsWith("ID") && n !== "ID" && decl(o, "data", n.slice(0, -2)) && n.slice(0, -2) !== D.name)
+    .map((n: string) => `${n.slice(0, -2)} = ${n.slice(0, -2)}を取得(${n})`);
+  const at = apply({ op: "add_action", name: act, params, body: [...refs, `${D.name}を登録(${args.join(", ")}) を返す`] });
   let sc = (ctx.screen && decl(outline(), "screen", ctx.screen)) || null;
   // 画面を選んでいなければ「…の登録」の画面を作ってフォームを置く(フォームがどの画面にも出なかった。第 13 回評価)
   if (!sc && !decl(outline(), "screen", `${D.name}の登録`)) {

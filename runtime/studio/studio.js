@@ -428,9 +428,10 @@ function analysisForm() {
   const cols = el("div", { class: "rows" });
   const colNames = () => {
     const D = datas.find((d) => d.name === data.value);
-    const picked = [...sums.querySelectorAll("input:checked")].map((x) => x.value);
-    return [unit.value, `${D?.name ?? ""}数`, ...picked];
+    return [unit.value, `${D?.name ?? ""}数`, ...order];
   };
+  // チェックを付けた順(行は動かさない。付けると行が上に動き、押し間違えた。第 16 回評価)
+  let order = [];
   const renderCols = () => {
     // 書き換えた列の名前は、同じ列が残っている間は保つ(選び直した列は元の名前にする)
     const kept = new Map([...cols.querySelectorAll("input")].filter((x) => x.dataset.edited).map((x) => [x.dataset.base, x.value]));
@@ -447,30 +448,40 @@ function analysisForm() {
     const fs = (D?.fields ?? []).filter((f) => f.name !== "ID");
     unit.replaceChildren(...fs.filter((f) => !/^(整数|金額)/.test(f.type)).map((f) => el("option", { value: f.name }, f.name)));
     // 合計の列の順番も選べる(列の順が課題と違った。第 8 回評価)
-    const move = (row, dir) => {
-      const sib = dir < 0 ? row.previousElementSibling : row.nextElementSibling;
-      if (!sib) return;
-      if (dir < 0) sums.insertBefore(row, sib);
-      else sums.insertBefore(sib, row);
+    order = [];
+    // 列の番号を行の横に出す(どの順で列になるかが見える)
+    const marks = new Map();
+    const refresh = () => {
+      for (const [n, m] of marks) m.textContent = order.includes(n) ? `${order.indexOf(n) + 3} 列目` : "";
       renderCols();
+    };
+    // ↑↓ は列の順(付けた順)の中で 1 つ前・後ろへ
+    const move = (name, dir) => {
+      const k = order.indexOf(name);
+      const t = k + dir;
+      if (k < 0 || t < 0 || t >= order.length) return;
+      [order[k], order[t]] = [order[t], order[k]];
+      refresh();
     };
     sums.replaceChildren(
       ...fs
         .filter((f) => /^(選択<)?(整数|金額)/.test(f.type))
         .map((f) => {
-          // チェックを付けた順に列になる(付けた項目は、チェック済みの項目の後ろへ動かす。列の順を ↑ で何度も直した。第 13 回評価)
-          // 外したときは動かさない(外すと並びが入れ替わって迷った。第 14 回評価)
           const onchange = (e) => {
-            if (!e.target.checked) return renderCols();
-            const rows = [...sums.children].filter((r) => r !== row);
-            const lastChecked = rows.filter((r) => r.querySelector("input")?.checked).pop();
-            if (lastChecked) lastChecked.after(row);
-            else sums.prepend(row);
-            renderCols();
+            order = order.filter((n) => n !== f.name);
+            if (e.target.checked) order.push(f.name);
+            refresh();
           };
-          const row = el("div", { class: "line" }, el("label", {}, el("input", { type: "checkbox", value: f.name, onchange }), ` ${f.name}`));
-          row.append(el("button", { type: "button", class: "small ghost", "aria-label": `${f.name}の列を左へ`, title: "上へ(表の列が左へ)", onclick: () => move(row, -1) }, "↑"), el("button", { type: "button", class: "small ghost", "aria-label": `${f.name}の列を右へ`, title: "下へ(表の列が右へ)", onclick: () => move(row, 1) }, "↓"));
-          return row;
+          const mark = el("span", { class: "help" });
+          marks.set(f.name, mark);
+          return el(
+            "div",
+            { class: "line" },
+            el("label", {}, el("input", { type: "checkbox", value: f.name, onchange }), ` ${f.name} `),
+            mark,
+            el("button", { type: "button", class: "small ghost", "aria-label": `${f.name}の列を左へ`, title: "列を左へ", onclick: () => move(f.name, -1) }, "←"),
+            el("button", { type: "button", class: "small ghost", "aria-label": `${f.name}の列を右へ`, title: "列を右へ", onclick: () => move(f.name, 1) }, "→"),
+          );
         }),
     );
     renderCols();
@@ -480,7 +491,7 @@ function analysisForm() {
   fill();
   const go = async () => {
     const D = datas.find((d) => d.name === data.value);
-    const picked = [...sums.querySelectorAll("input:checked")].map((x) => x.value);
+    const picked = order;
     const names = [...cols.querySelectorAll("input")].map((x) => x.value.trim());
     const sentence = picked.length ? `${D.name}の${picked.join("と")}を${unit.value}ごとに合計` : `${D.name}を${unit.value}ごとに集計`;
     const text = `分析「${name.value.trim()}」を作る(${sentence}、列: ${names.join("・")})`;
@@ -502,7 +513,7 @@ function analysisForm() {
     el("label", { class: "row" }, el("span", { text: "集計の名前" }), name),
     el("label", { class: "row" }, el("span", { text: "どのデータを" }), data),
     el("label", { class: "row" }, el("span", { text: "何ごとにまとめる" }), unit),
-    el("h3", { text: "合計する項目(選ばなければ件数だけ。チェックを付けた順に列になります。↑↓ でも並べ替えられます。初めは何も付いていません)" }),
+    el("h3", { text: "合計する項目(選ばなければ件数だけ。チェックを付けた順に列になり、横に何列目かが出ます。← → で列の順を入れ替えられます)" }),
     sums,
     el("h3", { text: "列の名前(左から順に。決まった名前があれば書き換える)" }),
     cols,
