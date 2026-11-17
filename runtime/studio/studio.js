@@ -208,8 +208,40 @@ async function saveSeed() {
   renderRun();
 }
 $("seed-save").addEventListener("click", saveSeed);
+// seed.json のような JSON({"データ名": [{…}, …]} か [{…}, …])をそのまま貼っても入れる
+// (表の形に書き直していた。第 10〜13 回評価で 6 人以上)
+async function pasteJson(pasted) {
+  let j;
+  try {
+    j = JSON.parse(pasted);
+  } catch (e) {
+    return { error: `JSON として読めませんでした(${e.message})。Excel の表なら、1 行目に項目名を入れて貼り付けます` };
+  }
+  const sets = Array.isArray(j) ? [[seedRows?.data, j]] : Object.entries(j ?? {});
+  const known = (S?.seed ?? []).map((d) => d.data);
+  const bad = sets.filter(([k, v]) => !known.includes(k) || !Array.isArray(v)).map(([k]) => k);
+  if (bad.length) return { error: `データ「${bad.join("」「")}」はありません(データ: ${known.join("・")})。先に名前をそろえてから貼り付けます` };
+  let n = 0;
+  for (const [k, rows] of sets) {
+    const r = await post("/api/seed", { data: k, rows });
+    if (r.error) return { error: `「${k}」: ${r.error}` };
+    n += rows.length;
+  }
+  return { ok: `✓ JSON から ${n} 行入れました(${sets.map(([k, v]) => `${k} ${v.length} 行`).join("・")})。動いているアプリに入れ直します` };
+}
 $("seed-paste-apply").addEventListener("click", async () => {
   const pasted = $("seed-paste").value;
+  if (/^\s*[[{]/.test(pasted)) {
+    const r = await pasteJson(pasted.trim());
+    $("seed-msg").textContent = r.error ?? r.ok;
+    $("seed-msg").className = "msg " + (r.error ? "err" : "ok");
+    if (!r.error) {
+      $("seed-paste").value = "";
+      seedRows = null;
+      renderRun();
+    }
+    return;
+  }
   const lines = pasted.split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) {
     $("seed-msg").textContent = "1 行目に項目名、2 行目から値を貼り付けてください";

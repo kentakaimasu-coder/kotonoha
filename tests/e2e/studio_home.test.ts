@@ -72,6 +72,15 @@ test("空のフォルダで開くと「新しいアプリを作る」。ひな�
   await page.click("#seed-paste-apply");
   await page.waitForFunction(() => /には項目「枠ID」「予約者」「人数」がありません.*「予約」に切り替えて/.test(document.querySelector("#seed-msg")?.textContent ?? ""));
   assert.match(readFileSync(join(dir, "seed.json"), "utf8"), /"夜の回"/, "前の行は残る");
+  // seed.json のような JSON をそのまま貼っても入る(表に書き直していた。第 13 回評価)
+  await page.fill("#seed-paste", JSON.stringify({ 枠: [{ ID: "j1", 名前: "JSON の回", 開始日時: "2026-12-07T10:00:00+09:00", 定員: 5, 予約数: 0 }] }));
+  await page.click("#seed-paste-apply");
+  await page.waitForFunction(() => /JSON から 1 行入れました/.test(document.querySelector("#seed-msg")?.textContent ?? ""));
+  assert.match(readFileSync(join(dir, "seed.json"), "utf8"), /"JSON の回"/);
+  // 無いデータの名前の JSON は入れない
+  await page.fill("#seed-paste", JSON.stringify({ 会員: [{ 名前: "x" }] }));
+  await page.click("#seed-paste-apply");
+  await page.waitForFunction(() => /データ「会員」はありません/.test(document.querySelector("#seed-msg")?.textContent ?? ""));
   // 列の数が合わない行は断る。タブ区切りなら「1,200」のカンマで列がずれない
   await page.fill("#seed-paste", "名前\t定員\nずれ\t3\t余分");
   await page.click("#seed-paste-apply");
