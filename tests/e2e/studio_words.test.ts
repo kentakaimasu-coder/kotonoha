@@ -241,3 +241,24 @@ test("「受付係にすべてのデータの登録と更新を許可する」: 
   const line = /役割 受付係:\n    権限 = \[([^\]]*)\]/.exec(src())![1];
   for (const c of ["枠.作成", "枠.更新", "品書き.作成", "品書き.更新"]) assert.ok(line.includes(c), line);
 });
+
+test("担当者は登録した本人(入力欄にしない)", async () => {
+  await ok("データ「商談」を作る(顧客名: 文字列、担当者)");
+  assert.match(src(), /データ 商談:\n    ID: 識別子\n    顧客名: 文字列\n    担当者: 識別子\n/);
+  await ok("商談を登録できるようにしたい");
+  assert.match(src(), /動作 商談を追加\(顧客名: 文字列\)[^\n]*:\n    商談を登録\(顧客名: 顧客名, 担当者: 本人\)/);
+});
+
+test("「…するときに〜を1減らす」も読む(前のテストで「予約」は「内見取り置き」、「回数券」は「受付票」に変わっている)", async () => {
+  const before = (src().match(/\.残り回数 = [^\n]*\.残り回数 - 1/g) ?? []).length;
+  await ok("内見取り置きするときに受付票の残り回数を1減らす");
+  assert.equal((src().match(/\.残り回数 = [^\n]*\.残り回数 - 1/g) ?? []).length, before + 1);
+});
+
+test("詳細の画面に表示する項目を増やすと、前の表示の行を置き換える(二重に出さない)", async () => {
+  // 今の表示の行と同じ項目を並べ替えた行(前の行の項目を全部含む)を入れる
+  const cur = /\n    (枠の(\S+)を表示)\n/.exec(src())!;
+  const r = await ok(`枠の${cur[2].split("と").reverse().join("と")}を表示`, { screen: "枠詳細" });
+  assert.match(r.done, /置き換えました/);
+  assert.equal((src().match(/\n    枠の[^\n]*を表示\n/g) ?? []).length, 1);
+});

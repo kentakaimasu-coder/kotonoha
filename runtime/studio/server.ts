@@ -138,7 +138,7 @@ function guessType(name: string, o: any): string {
   // (電話番号・営業時間は文字のまま)
   if (/(人数|数$|数量|定員|回数|点数|年齢|順番|積載|重量|距離|作業時間|所要時間|勤務時間|在庫|件数)/.test(n)) return "整数";
   // 操作をした人(連絡者・予約者・記入者など)は、ログインした人の ID(連絡者が文字の欄になった。第 9 回評価)
-  if (/(予約|申込|記入|送信|作成|登録|注文|依頼|連絡|投稿|報告|記録|受付|回答|訪問|発行|発券|入力|提出|申請|発注|購入|相談|応募|点検|貸出|借用)者$/.test(n) || /^(借りた人|借り手|借主|利用者|使用者)$/.test(n)) return "識別子";
+  if (/(予約|申込|記入|送信|作成|登録|注文|依頼|連絡|投稿|報告|記録|受付|回答|訪問|発行|発券|入力|提出|申請|発注|購入|相談|応募|点検|貸出|借用)者$/.test(n) || /^(借りた人|借り手|借主|利用者|使用者|担当|担当者|営業担当)$/.test(n)) return "識別子";
   if (/メール/.test(n)) return "メール";
   if (o.enums && n in o.enums) return n;
   // 「状態」を足すとき、列挙「予約状態」「状態」があればそれにする(文字列になって登録が誤りになった。第 6 回評価)
@@ -1370,7 +1370,12 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     if (ds.length === 1) {
       const D = ds[0];
       const acts = (o.decls ?? []).filter((a: any) => a.kind === "action" && (a.params ?? []).some((p: any) => p.name === fn) && lines(a.file).slice(a.line, a.end).join("\n").includes(`${D.name}を登録(`));
-      if (acts.length === 0) throw new Error(`「${D.name}」を登録する動作で「${fn}」を入力しているものがありません(もう本人が入っているか、登録の動作がありません)`);
+      if (acts.length === 0) {
+        // もう本人が入っているなら、そのまま済んだと伝える(担当者は初めから本人が入る。第 16 回評価)
+        const done = (o.decls ?? []).some((a: any) => a.kind === "action" && new RegExp(`${reEsc(D.name)}を登録\\([^\\n]*${reEsc(fn)}\\s*:\\s*本人`).test(lines(a.file).slice(a.line, a.end).join("\n")));
+        if (done) return { ok: true, done: `「${D.name}」の「${fn}」には、もう登録した本人が入ります` };
+        throw new Error(`「${D.name}」を登録する動作で「${fn}」を入力しているものがありません(登録の動作を作るには「${D.name}を登録できるようにしたい」と書きます)`);
+      }
       for (const a0 of acts) {
         const a = decl(outline(), "action", a0.name);
         const idx = (a.params ?? []).findIndex((p: any) => p.name === fn);
@@ -2052,7 +2057,7 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   //   どの 1 件かは、動作が受け取る「データ名ID」で決める。減らすときは足りなければ「…不足」で止める
   // 「予約したら回数券を1減らす」「予約したら回数券の残り回数を1減らす」: 動作「予約する」、項目は数の項目が 1 つならそれ(読めなかった。第 14 回評価)
   {
-    const sm = /^「?([^「」\s]+?)」?(?:したら|すると|したとき|したときに|する時)、?([^「」\s]+?)(?:の([^「」\s]+?))?を(\d*)(増やす|減らす)$/.exec(text);
+    const sm = /^「?([^「」\s]+?)」?(?:したときに|したとき|したら|するときに|するとき|する時に|する時|すると)、?([^「」\s]+?)(?:の([^「」\s]+?))?を(\d*)(増やす|減らす)$/.exec(text);
     if (sm) {
       const act = [sm[1], `${sm[1]}する`, sm[1].replace(/し$/, "する")].find((a) => decl(o, "action", a));
       const D = decl(o, "data", sm[2]);
@@ -2192,6 +2197,22 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   }
   if (!target) return { ok: false, need: "screen", screens, message: "どの画面に入れますか? 下の画面の名前を押すと、そこに入れます" };
   // 同じデータ・同じ絞り込みの一覧があるなら、並び方だけを変える(一覧が 2 つになった。第 7 回評価)
+  // 「注文の品名と数量と状態を表示」: 同じデータの項目を表示する行があれば置き換える(古い行が残り、二重に出た。第 16 回評価)
+  {
+    const fl = (t: string) => /^(\S+?)の(\S+)を表示$/.exec(t);
+    const nf = fl(text);
+    if (nf && decl(o, "data", nf[1]) && !/(フォーム|一覧)/.test(text)) {
+      // 前の行の項目を全部含む(項目を増やした)ときだけ置き換える
+      const fs = (t: string) => fl(t)![2].split("と");
+      const old = (target.lines ?? []).find((l: any) => fl(l.text)?.[1] === nf[1] && l.text !== text && fs(l.text).every((x) => fs(text).includes(x)));
+      if (old) {
+        const ls = lines(target.file);
+        ls[old.line - 1] = ls[old.line - 1].replace(old.text, text);
+        write(target.file, ls.join("\n"));
+        return checked({ file: target.file, line: old.line }, `画面「${target.name}」の表示を「${text}」に変えました(前の「${old.text}」と置き換えました)`, o, text);
+      }
+    }
+  }
   const listOf = (t: string) => /^(.+?)(?:のうち(.+?)のもの)?を(?:.+?順に)?一覧表示$/.exec(t);
   const nl = listOf(text);
   if (nl) {
@@ -2540,7 +2561,8 @@ function changed(before: any, done: string): any {
 function autoValue(o: any, name: string, type: string): string | null {
   const VERB = "予約|申込|申し込み|記入|送信|作成|登録|注文|依頼|連絡|投稿|報告|記録|受付|出品|回答|訪問|発行|発券|入力|提出|申請|発注|購入|相談|応募|点検|実施|貸出|借用";
   // 操作をした人(お客様・利用者など、データを登録する本人を表す名前も。お客様が入力欄になった。第 9 回評価)
-  const actor = new RegExp(`(${VERB})者$|^(本人|記入者|送信者|作成者|お客様|お客さん|客|利用者|会員|患者|申込者|参加者|借りた人|借り手|借主|使用者)$`).test(name);
+  const actor = new RegExp(`(${VERB})者$|^(本人|記入者|送信者|作成者|お客様|お客さん|客|利用者|会員|患者|申込者|参加者|借りた人|借り手|借主|使用者|担当|担当者|営業担当)$`).test(name);
+  // (担当者は登録した本人。入力欄になりソースで「担当者: 本人」に直した。第 16 回評価)
   if (type === "識別子" && actor && !(o.decls ?? []).some((d: any) => d.kind === "data" && `${d.name}ID` === name)) return "本人";
   if (type === "日時" && new RegExp(`(${VERB})(日時|時刻)$`).test(name)) return "現在日時()";
   // 貸出日・受付日のような「した日」は今日(借りた人・貸出日が入力欄になった。第 11 回評価)
