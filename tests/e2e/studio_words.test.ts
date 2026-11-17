@@ -163,3 +163,9 @@ test("「「3個で予約」…」: 数え方や「で」の有無が違うボ�
   assert.match(r.done, /「1名で予約」をまねて 3 にしました/);
   assert.match(src(), /「3個予約」を押すと 予約する\(枠\.ID, 3/);
 });
+
+test("「予約の人数は1以上にする」: 受け取る動作で、外れたら「人数不正」で止める", async () => {
+  const before = (src().match(/人数 >= 1 を確認/g) ?? []).length;
+  await ok("予約の人数は1以上にする");
+  assert.equal((src().match(/人数 >= 1 を確認 または 失敗\("人数不正"\)/g) ?? []).length, before + 1);
+});
