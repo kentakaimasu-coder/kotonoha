@@ -1189,6 +1189,17 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   ) {
     const [dn, fn] = [m[1]?.trim(), m[2].trim()];
     const ds = (o.decls ?? []).filter((d: any) => d.kind === "data" && (!dn || d.name === dn) && d.fields.some((f: any) => f.name === fn));
+    // まだ無い項目で、型(列挙など)の名前が書いてあれば、その型の項目を足す(「備品の「状態」を「備品状態」にする」が読めなかった。第 13 回評価)
+    if (ds.length === 0 && dn && decl(o, "data", dn)) {
+      let t = "";
+      try {
+        t = okType(m[3], o);
+      } catch {}
+      if (t) {
+        const at = apply({ op: "add_field", data: dn, name: fn, type: t });
+        return checked(at, `「${dn}」に項目「${fn}」(${t})を足しました`, o, text);
+      }
+    }
     let typeOk = true;
     try {
       // 今と同じ型なら型の変更ではない(「人数」を「数」にする は名前の変更)

@@ -273,6 +273,8 @@ $("seed-paste-apply").addEventListener("click", async () => {
   seedRows.dirty = true;
   $("seed-paste").value = "";
   await saveSeed();
+  // 貼り付けはそのまま保存まで済む(「初期データを保存する」も押すのか迷った。第 13 回評価)
+  if (!$("seed-msg").className.includes("err")) $("seed-msg").textContent += "(貼り付けは保存まで済んでいます。「初期データを保存する」を押さなくて大丈夫です)";
   // 入れられなかったときは、貼り付けた表と元の行を戻す
   if ($("seed-msg").className.includes("err")) {
     if (!$("seed-paste").value) $("seed-paste").value = pasted;
