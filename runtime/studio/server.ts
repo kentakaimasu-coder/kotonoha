@@ -1693,6 +1693,47 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     const errs = (after.diagnostics ?? []).filter((x: any) => x.severity === "error").length;
     return { ok: true, done: `「${name}」を消しました${errs ? `(使っている所が ${errs} か所エラーになりました。「取り消す」で戻せます)` : ""}` };
   }
+  // 既にある動作で、ほかのデータの項目を変える: 「借りる」で備品の状態を「貸出中」にする / 「返す」で備品の状態を「貸出可」にする
+  //   (貸出を登録する動作で備品の状態を変える処理を、ソースに書いていた。第 14 回評価)
+  //   どの 1 件かは、動作が受け取る「データ名ID」か、動作で取り出したデータの「データ名ID」の項目で決める
+  if ((m = cmd(/^「(.+?)」で(.+?)の(.+?)を「?(.+?)」?に(?:する|変える)$/.exec(text))) && decl(o, "action", m[1].trim()) && decl(o, "data", m[2].trim())) {
+    const [, act, dn, fn, val] = m.map((x) => x?.trim());
+    const A = decl(o, "action", act);
+    const D = decl(o, "data", dn);
+    const f = D.fields.find((x: any) => x.name === fn);
+    if (!f) throw new Error(`データ「${dn}」に項目「${fn}」はありません(項目: ${D.fields.map((x: any) => x.name).join("、")})`);
+    const ft = f.type.replace(/^選択<(.+)>$/, "$1");
+    const ev: string[] | undefined = o.enums?.[ft];
+    if (ev && !ev.includes(val)) throw new Error(`「${val}」は ${dn}の${fn}(${ft})の値にありません(値: ${ev.join("、")})。足すなら「${ft}に「${val}」を追加」と書きます`);
+    const lit = /^(整数|金額)/.test(ft) ? val : ft === "真偽" ? (/^(はい|真|済|オン)$/.test(val) ? "真" : "偽") : `"${val}"`;
+    const body = lines(A.file).slice(A.line, A.end);
+    // 既に取り出していれば、それを使う
+    let v = body.map((l) => new RegExp(`^\\s*(\\S+)\\s*=\\s*${reEsc(dn)}を取得\\(`).exec(l)?.[1]).find(Boolean);
+    if (!v) {
+      const used = new Set(body.map((l) => /^\s*(\S+)\s*=/.exec(l)?.[1]).filter(Boolean));
+      const nv = ["対象", "対象2", "対象3"].find((x) => !used.has(x))!;
+      let from = "";
+      if ((A.params ?? []).some((p: any) => p.name === `${dn}ID`)) from = `${dn}ID`;
+      else {
+        // 「返す(貸出ID)」: 取り出した貸出の「備品ID」から
+        for (const l of body) {
+          const g = /^\s*(\S+)\s*=\s*(\S+?)を取得\(/.exec(l);
+          const X = g && decl(o, "data", g[2]);
+          if (X && X.fields.some((x: any) => x.name === `${dn}ID`)) {
+            from = `${g![1]}.${dn}ID`;
+            break;
+          }
+        }
+      }
+      if (!from) throw new Error(`動作「${act}」では、どの${dn}かが決まりません(「${dn}ID」を受け取らず、${dn}IDを持つデータも取り出していません)。先に「「${act}」で${dn}を選べるようにしたい」と書きます`);
+      // 取り出すのは、その値を使う行より後(「件 = 貸出を取得(…)」の次)
+      const at0 = from.includes(".") ? body.findIndex((l) => new RegExp(`^\\s*${reEsc(from.split(".")[0])}\\s*=`).test(l)) : -1;
+      insertAfter(A.file, A.line + (at0 >= 0 ? at0 + 1 : 0), [`    ${nv} = ${dn}を取得(${from})`]);
+      v = nv;
+    }
+    const at = addLine(decl(outline(), "action", act), `${v}.${fn} = ${lit}`);
+    return checked(at, `動作「${act}」で、${dn}の${fn}を「${val}」にするようにしました`, o, text);
+  }
   // 動作のひな形(第 5 回評価: 日本語で動作を作れない が最も多かった)
   // 「呼び出す」で整理券の状態を呼出中にする
   if ((m = cmd(/^「(.+?)」で(.+?)の(.+?)を「?(.+?)」?に(?:する|変える)$/.exec(text)))) {
