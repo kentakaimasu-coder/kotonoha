@@ -563,6 +563,36 @@ function roleGapNote(roleName: string): string {
     note += `${note ? "。" : ""}確かめるで役割を書いていない ${[...who].slice(0, 3).join("・")} は、役割があるアプリでは役割に関わらない操作しかできません。✗ になったら「${[...who][0]}(${r.name})が …」のように役割を書きます`;
   return note;
 }
+/** 確かめるで役割を書いていない人(「花子が …」「花子から …」)を「花子(役割)」にする。権限で断られるのを確かめる行の人と、ログインしていない人はそのまま */
+function giveRoleToScenarioActors(role: string): string[] {
+  const o = outline();
+  const moved = new Set<string>();
+  for (const sc of (o.decls ?? []).filter((d: any) => d.kind === "scenario")) {
+    const ls = lines(sc.file);
+    const who = new Set<string>();
+    const keep = new Set<string>();
+    for (let k = sc.line; k < sc.end; k++) {
+      const mm = /^\s+([^\s(（「」]+?)が\s*\S+\(/.exec(ls[k] ?? "") ?? /^\s+([^\s(（「」]+?)から\s+\S+が\s*\d+\s*件見える/.exec(ls[k] ?? "");
+      if (!mm || /ログインしていない/.test(mm[1])) continue;
+      if (/(→|->)\s*権限がない/.test(ls[k])) keep.add(mm[1]);
+      else who.add(mm[1]);
+    }
+    let changed = false;
+    for (const w of who) {
+      if (keep.has(w)) continue;
+      for (let k = sc.line; k < sc.end; k++) {
+        const re = new RegExp(`^(\\s+)${reEsc(w)}(が|から)(?=\\s)`);
+        if (re.test(ls[k] ?? "")) {
+          ls[k] = ls[k].replace(re, `$1${w}(${role})$2`);
+          changed = true;
+          moved.add(w);
+        }
+      }
+    }
+    if (changed) write(sc.file, ls.join("\n"));
+  }
+  return [...moved];
+}
 function roleLessCallers(act: string): string[] {
   const o = outline();
   const out = new Set<string>();
@@ -734,8 +764,14 @@ function apply(op: Op): { file: string; line: number } | null {
       if (decl(o, "role", name)) throw new Error(`役割「${name}」は既にあります`);
       const caps = (op.caps ?? []).map((c: string) => c.trim()).filter(Boolean);
       if (caps.length === 0) throw new Error("権限を 1 つ以上選びます");
+      const first = !(o.decls ?? []).some((d: any) => d.kind === "role");
       const at = addDecl(o, ["role"], [`役割 ${name}:`, `    権限 = [${caps.join(", ")}]`]);
-      return { ...at, note: roleGapNote(name) };
+      // 最初の役割を作ったときは、確かめるで役割を書いていない人をその役割の人にする
+      // (役割を作ると、役割の無い人は役割に関わらない操作しかできず(ADR-0140)、ひな形の確かめるが ✗ になった。第 13・14 回評価で 10 人)
+      const moved = first ? giveRoleToScenarioActors(name) : [];
+      const mnote = moved.length ? `確かめるで役割を書いていなかった ${moved.slice(0, 3).join("・")} を「${name}」の人にしました(${moved[0]}(${name})が …)` : "";
+      const gap = first && moved.length ? roleGapNote(name).replace(/(。)?確かめるで役割を書いていない[^]*$/, "") : roleGapNote(name);
+      return { ...at, note: [gap, mnote].filter(Boolean).join("。") };
     }
     case "set_role_caps": {
       const d = decl(o, "role", op.name);
