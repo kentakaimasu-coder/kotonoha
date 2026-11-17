@@ -727,14 +727,15 @@ function apply(op: Op): { file: string; line: number } | null {
       // (状態が空でもよい項目になり、新しい予約の状態が空でボタンが出なかった。第 10 回評価)
       if (!/^選択</.test(t) && !autoValue(o, name, t)) {
         const srcAll = srcFiles(o).map((f) => read(f)).join("\n");
-        const blocked = (o.decls ?? []).some((a: any) => {
+        const blocked = (o.decls ?? []).find((a: any) => {
           if (a.kind !== "action") return false;
           const body = lines(a.file).slice(a.line - 1, a.end).join("\n");
           return body.includes(`${d.name}を登録(`) && srcAll.includes(`を押すと ${a.name}(`);
         });
         if (blocked) {
           t = `選択<${t}>`;
-          optionalNote = `(ボタンで登録しているので、空でもよい項目にしました)`;
+          // 入力させる言い方も添える(空でもよい項目になり、入力欄が出なかった。第 15 回評価)
+          optionalNote = `(ボタンで登録しているので、空でもよい項目にしました。入力させるなら「${blocked.name}で「${name}」も入力できるようにしたい」と書き、画面のボタンを「${blocked.name}のフォームを表示」に替えます)`;
         }
       }
       const at = addLine(d, `${name}: ${t}`);
@@ -1093,7 +1094,7 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
         // 「予約するときにメニューを選べるようにしたい」(かぎかっこ無し。第 12 回評価)
         /^(?:動作)?(\S+?)(?:の時に|のときに|ときに|時に|とき)、?「?([^「」\s]+?)」?(?:[(（](.+?)[)）])?(?:も|を)(?:入力|入れ|書け|選べ|受け取れ)(?:できる|られる|る)?ように(?:する|したい|して)?$/.exec(text) ??
         // 「予約するで電話番号も入れられるようにしたい」(かぎかっこ無しの「…で」。第 14 回評価)
-        /^(?:動作)?(\S+?)で、?「?([^「」\s]+?)」?(?:[(（](.+?)[)）])?(?:も|を)(?:入力|入れ|書け|選べ|受け取れ)(?:できる|られる|る)?ように(?:する|したい|して)?$/.exec(text))) &&
+        /^(?:動作)?(\S+?)(?:で|の)、?「?([^「」\s]+?)」?(?:[(（](.+?)[)）])?(?:も|を)(?:入力|入れ|書け|選べ|受け取れ)(?:できる|られる|る)?ように(?:する|したい|して)?$/.exec(text))) &&
     // 「増席するとき」→ 動作「増席」
     ((!decl(o, "action", m[1].trim()) && /する$/.test(m[1].trim()) && decl(o, "action", m[1].trim().replace(/する$/, "")) && (m[1] = m[1].trim().replace(/する$/, ""))) || true) &&
     decl(o, "action", m[1].trim()) &&
@@ -1103,8 +1104,18 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     if (decl(o, "data", m[2].trim()) && !m[3]) m[2] = `${m[2].trim()}ID`;
     const at = apply({ op: "add_param", action: m[1].trim(), name: m[2], type: m[3] ?? "" });
     // ボタンでは選べない値(画面に出ていないデータの ID・文字)を足したときは、フォームに変える方法を伝える(第 12 回評価)
-    const btns = srcFiles(outline()).flatMap((f) => read(f).split("\n")).filter((l) => /を押すと/.test(l) && l.includes(`${m![1].trim()}(`) && /, ""\)\s*$/.test(l));
-    const hint = btns.length ? `。ボタンからは「${m[2].trim()}」を入れられないので空になります。入れさせるなら、ボタンを消して「${m[1].trim()}のフォームを表示」にします` : "";
+    // ボタンでは入れられない値なら、ボタンのある画面に入力できるフォームも足す(ボタンは残す)
+    //   (ボタンのままで入力欄が無く、ソースで直した・ボタンを消してフォームに替えた。第 15 回評価で 3 人)
+    const act = m[1].trim();
+    const forms: string[] = [];
+    for (const sc of (outline().decls ?? []).filter((d: any) => d.kind === "screen")) {
+      const ls = lines(sc.file).slice(sc.line, sc.end);
+      const hasBtn = ls.some((l) => /を押すと/.test(l) && l.includes(` ${act}(`) && /, ""\)\s*$/.test(l));
+      if (!hasBtn || ls.some((l) => l.trim() === `${act}のフォームを表示`)) continue;
+      apply({ op: "add_line", kind: "screen", name: sc.name, text: `${act}のフォームを表示` });
+      forms.push(sc.name);
+    }
+    const hint = forms.length ? `。ボタンからは「${m[2].trim()}」を入れられないので、画面「${forms.join("」「")}」に入力できるフォームも足しました(ボタンはそのままです。いらなければボタンの行を消します)` : "";
     return checked(at, `動作「${m[1].trim()}」に受け取る値「${m[2].trim()}」を足しました(ボタン・確かめるの呼び出しにも仮の値を入れました)${hint}`, o, text);
   }
   // 画面を役割だけにする: この画面は店長だけ / 画面「管理」は店長だけ(上の欄では読めなかった。第 8 回評価)
