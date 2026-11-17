@@ -781,7 +781,20 @@ function apply(op: Op): { file: string; line: number } | null {
       const ls = (op.lines ?? []).map((l: string) => l.trim()).filter(Boolean);
       if (ls.length === 0) throw new Error("画面に出すものを 1 つ以上書きます(例: 注文を一覧表示)");
       lastScreen = name;
-      return addDecl(o, ["screen"], [`画面 ${name}:`, ...ls.map((l: string) => "    " + l)]);
+      // 1 件を出す画面(「注文の…を表示」)なら、その 1 件を扱う動作で、まだどの画面にもボタンが無いもののボタンも出す
+      // (詳細の画面を後から作ると、ボタンを自分で足す必要があった。第 15 回評価)
+      const one = ls.map((l: string) => /^(\S+?)の\S+を表示$/.exec(l)?.[1]).find((dn: string | undefined) => dn && decl(o, "data", dn));
+      const btns: string[] = [];
+      if (one) {
+        const all = srcFiles(o).map((f) => read(f)).join("\n");
+        for (const a of (o.decls ?? []).filter((d: any) => d.kind === "action")) {
+          const ps = a.params ?? [];
+          if (ps.length !== 1 || ps[0].name !== `${one}ID`) continue;
+          if (new RegExp(`を押すと\\s*${reEsc(a.name)}\\(`).test(all)) continue;
+          btns.push(`「${a.name}」を押すと ${a.name}(${one}.ID)`);
+        }
+      }
+      return addDecl(o, ["screen"], [`画面 ${name}:`, ...[...ls, ...btns].map((l: string) => "    " + l)]);
     }
     case "add_role": {
       const name = okName(op.name, "役割の名前");
