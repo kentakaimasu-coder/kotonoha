@@ -1314,6 +1314,22 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
         if (u !== t) write(f, u);
       }
       if (n) return changed(o, `ボタン「${from}」の文字を「${to}」に変えました(${n} か所)`);
+      // フォームのボタン「送信」(「「送信」を「受付する」に変える」。フォームのボタンを直せなかった。第 13 回評価)
+      if (from === "送信") {
+        let k = 0;
+        for (const f of srcFiles(o)) {
+          const t = read(f);
+          const u = t
+            .split("\n")
+            .map((l) => {
+              const mm = /^(\s+)(\S+?)のフォームを(?:「[^」]*」ボタンで)?表示\s*$/.exec(l);
+              return mm ? (k++, `${mm[1]}${mm[2]}のフォームを「${to}」ボタンで表示`) : l;
+            })
+            .join("\n");
+          if (u !== t) write(f, u);
+        }
+        if (k) return changed(o, `フォームのボタンの文字を「${to}」にしました(${k} か所)`);
+      }
     }
     // 前に変えた名前を含む項目名(「予約」を「取り置き」に変えた後の「予約者」)は、今の項目名を教える
     for (const [a, b] of renamedWords) {

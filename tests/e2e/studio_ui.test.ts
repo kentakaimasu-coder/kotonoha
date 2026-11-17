@@ -106,6 +106,9 @@ test("課題 A の道筋(ペルソナがする順): 名前を変える・項目�
     await say("作業を一覧表示", "イベント一覧");
     await say("「始める」で作業の進みを「作業中」にする");
     assert.match(readFileSync(join(d2, "src/app.koto"), "utf8"), /作業の進みが受付のとき「始める」を押すと 始める\(作業\.ID\)/);
+    // フォームのボタンの文字を変える
+    await say("「送信」を「申し込む」に変える");
+    assert.match(readFileSync(join(d2, "src/app.koto"), "utf8"), /のフォームを「申し込む」ボタンで表示/);
     // まだ無い項目に型を書いたら、その型の項目を足す
     await say("作業の「担当の進み」を「進み」にする");
     assert.match(readFileSync(join(d2, "src/app.koto"), "utf8"), /    担当の進み: 進み\n/);
