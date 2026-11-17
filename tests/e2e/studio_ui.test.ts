@@ -106,6 +106,18 @@ test("課題 A の道筋(ペルソナがする順): 名前を変える・項目�
     await say("作業を一覧表示", "イベント一覧");
     await say("「始める」で作業の進みを「作業中」にする");
     assert.match(readFileSync(join(d2, "src/app.koto"), "utf8"), /作業の進みが受付のとき「始める」を押すと 始める\(作業\.ID\)/);
+    // 項目にログインした本人を入れる
+    await say("データ「商談」を作る(顧客: 文字列、担当: 識別子)");
+    await say("商談を登録できるようにしたい");
+    await say("商談の「担当」を本人にする");
+    {
+      const t = readFileSync(join(d2, "src/app.koto"), "utf8");
+      assert.match(t, /動作 \S+\(顧客: 文字列\)[^\n]*:\n    商談を登録\(顧客: 顧客, 担当: 本人\) を返す/);
+    }
+    // 「商談の状況」のような列挙があれば、項目を足すときにそれを使う
+    await say("列挙「商談の状況」を作る(提案中、受注、失注)");
+    await say("商談に「状況」を追加");
+    assert.match(readFileSync(join(d2, "src/app.koto"), "utf8"), /    状況: 商談の状況\n/);
     // フォームのボタンの文字を変える
     await say("「送信」を「申し込む」に変える");
     assert.match(readFileSync(join(d2, "src/app.koto"), "utf8"), /のフォームを「申し込む」ボタンで表示/);

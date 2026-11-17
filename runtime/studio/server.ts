@@ -657,7 +657,9 @@ function apply(op: Op): { file: string; line: number } | null {
       if (!d) throw new Error(`データ「${op.data}」がありません`);
       const name = okName(op.name, "項目の名前");
       if (d.fields.some((f: any) => f.name === name)) throw new Error(`「${op.data}」に項目「${name}」は既にあります`);
-      let t = okType(op.type, o, name);
+      // 型を書かず、「当番の状態」「当番状態」のような列挙があれば、それを使う(文字の項目になった。第 13 回評価)
+      const ownEnum = !String(op.type ?? "").trim() && [`${op.data}${name}`, `${op.data}の${name}`].find((e) => o.enums?.[e]);
+      let t = ownEnum || okType(op.type, o, name);
       // ボタンで呼んでいる登録の動作は引数を増やせない(ボタンに値が無い)。その項目は空でもよい項目として足す
       // (足すたびに「ほかの所が誤りになりました」が残った。第 6 回評価)
       // 自動で入れる値がある項目(状態 → 最初の値・予約者 → 本人 など)は、ボタンで登録していても必須のままにする
@@ -1181,6 +1183,27 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       if (u !== t) writeRaw(f, u);
     }
     return changed(o, `列挙「${E.name}」の「${from}」を「${to}」に変えました`);
+  }
+  // 項目にログインした本人を入れる: 商談の「担当者」を本人にする(入力欄から外し、登録で本人を入れる。
+  //   日本語の指示では作れず、ソースを書き換えた。第 13 回評価)
+  if ((m = cmd(/^(?:([^「」]+?)の)?「?([^「」]+?)」?を(?:自分|本人|ログインした人|ログインした本人)(?:にする|が入るようにする|で入れる|が自動で入るようにする|にしたい)$/.exec(text)))) {
+    const fn = m[2].trim();
+    const ds = (o.decls ?? []).filter((d: any) => d.kind === "data" && (!m![1] || d.name === m![1].trim()) && d.fields.some((f: any) => f.name === fn));
+    if (ds.length === 1) {
+      const D = ds[0];
+      const acts = (o.decls ?? []).filter((a: any) => a.kind === "action" && (a.params ?? []).some((p: any) => p.name === fn) && lines(a.file).slice(a.line, a.end).join("\n").includes(`${D.name}を登録(`));
+      if (acts.length === 0) throw new Error(`「${D.name}」を登録する動作で「${fn}」を入力しているものがありません(もう本人が入っているか、登録の動作がありません)`);
+      for (const a0 of acts) {
+        const a = decl(outline(), "action", a0.name);
+        const idx = (a.params ?? []).findIndex((p: any) => p.name === fn);
+        const al = lines(a.file);
+        al[a.line - 1] = al[a.line - 1].replace(new RegExp(`(\\(\\s*)${reEsc(fn)}\\s*:\\s*[^,)]+(?:,\\s*)?|,\\s*${reEsc(fn)}\\s*:\\s*[^,)]+`), (x, open) => (open ? open : ""));
+        for (let k = a.line; k < a.end; k++) if (al[k].includes(`${D.name}を登録(`)) al[k] = al[k].replace(new RegExp(`([(,]\\s*${reEsc(fn)}\\s*:\\s*)${reEsc(fn)}(?=\\s*[,)])`), "$1本人");
+        write(a.file, al.join("\n"));
+        dropScenarioArg(a.name, idx);
+      }
+      return changed(o, `「${D.name}」の「${fn}」には、登録したときにログインした本人が入るようにしました(${acts.map((a: any) => a.name).join("・")} の入力欄から外しました)`);
+    }
   }
   // 項目の型を変える: 予約の「状態」を「予約状態」にする / 「家賃」の型を金額にする
   if (
