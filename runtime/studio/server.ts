@@ -707,6 +707,7 @@ function apply(op: Op): { file: string; line: number } | null {
       if (decl(o, "screen", name)) throw new Error(`画面「${name}」は既にあります`);
       const ls = (op.lines ?? []).map((l: string) => l.trim()).filter(Boolean);
       if (ls.length === 0) throw new Error("画面に出すものを 1 つ以上書きます(例: 注文を一覧表示)");
+      lastScreen = name;
       return addDecl(o, ["screen"], [`画面 ${name}:`, ...ls.map((l: string) => "    " + l)]);
     }
     case "add_role": {
@@ -972,6 +973,8 @@ function parseFields(s: string): { name: string; type: string }[] {
     return m ? { name: m[1].trim(), type: m[2].trim() } : { name: x, type: "" };
   });
 }
+/** この Studio で最後に作った画面(画面を選ばずに「この画面は…」と書いたときの入れ先) */
+let lastScreen = "";
 function instruct(text0: string, ctx: { screen?: string; scenario?: string }): any {
   let text = text0.trim().replace(/[。.]$/, "");
   if (!text) throw new Error("指示を書いてください");
@@ -1047,7 +1050,8 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   {
     const mm = /^(?:画面「(.+?)」は|この画面は|(.+?)の画面は)「?(.+?)」?だけ(?:にする|が使える|が見られる)?$/.exec(text);
     if (mm) {
-      const sname = (mm[1] ?? mm[2])?.trim() ?? ctx.screen;
+      // 画面を選んでいないときの「この画面は…」は、今作った画面にする(作った画面が候補に出ず迷った。第 14 回評価)
+      const sname = (mm[1] ?? mm[2])?.trim() ?? ctx.screen ?? (lastScreen && decl(o, "screen", lastScreen) ? lastScreen : undefined);
       const roles = mm[3].split(/[と、・,]/).map((r) => r.trim()).filter(Boolean);
       const missing = roles.filter((r) => !decl(o, "role", r));
       if (missing.length) throw new Error(`役割「${missing.join("・")}」がありません(役割: ${(o.decls ?? []).filter((d: any) => d.kind === "role").map((d: any) => d.name).join("、") || "なし"})。先に 役割「${missing[0]}」を作る と書きます`);
