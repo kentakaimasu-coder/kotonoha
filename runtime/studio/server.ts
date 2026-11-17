@@ -545,7 +545,19 @@ function roleGapNote(roleName: string): string {
     const lack = [...need].filter((c) => decl(o, "data", c.split(".")[0]) && !caps.includes(c));
     if (lack.length) gaps.push(`${a.name}(${lack.join("・")} が要る)`);
   }
-  return gaps.length ? `役割「${r.name}」の人には、次の動作のボタン・フォームが出ません: ${gaps.slice(0, 4).join("、")}${gaps.length > 4 ? " ほか" : ""}。使わせるときは権限にチェックを付けます` : "";
+  let note = gaps.length ? `役割「${r.name}」の人には、次の動作のボタン・フォームが出ません: ${gaps.slice(0, 4).join("、")}${gaps.length > 4 ? " ほか" : ""}。使わせるときは権限にチェックを付けます` : "";
+  // 確かめるで役割を書いていない人は、役割があるアプリでは役割に関わらない操作しかできない(ADR-0140)。
+  // 役割を作ると ✗ になる行を先に知らせる(役割を作ったら、ひな形の確かめるが ✗ になった。第 13 回評価)
+  const who = new Set<string>();
+  for (const sc of (o.decls ?? []).filter((d: any) => d.kind === "scenario")) {
+    for (const l of lines(sc.file).slice(sc.line, sc.end)) {
+      const mm = /^\s+([^\s(（「」]+?)が\s*\S+\(/.exec(l);
+      if (mm && !/ログインしていない/.test(mm[1]) && !/(→|->)\s*権限がない/.test(l)) who.add(mm[1]);
+    }
+  }
+  if (who.size)
+    note += `${note ? "。" : ""}確かめるで役割を書いていない ${[...who].slice(0, 3).join("・")} は、役割があるアプリでは役割に関わらない操作しかできません。✗ になったら「${[...who][0]}(${r.name})が …」のように役割を書きます`;
+  return note;
 }
 function roleLessCallers(act: string): string[] {
   const o = outline();
@@ -1540,6 +1552,24 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     m[1] = m[1].trim().replace(/[\s　]+/g, "");
     const ls = m[2] ? m[2].split(/[、;；]/).map((x) => x.trim()).filter(Boolean) : [];
     if (ls.length === 0) throw new Error(`画面に出すものも書いてください(例: 画面「${m[1]}」を作る(注文を新しい順に一覧表示))`);
+    // かっこの中が「絵本を登録できるようにしたい」なら、登録の動作を作ってその画面にフォームを置く(読めなかった。第 13 回評価)
+    {
+      const rg = ls.length === 1 && /^(.+?)を(?:登録|追加)(?:できるように(?:する|したい)?|したい)$/.exec(ls[0]);
+      if (rg && decl(o, "data", rg[1].trim())) {
+        const dn = rg[1].trim();
+        const reg = (o.decls ?? []).find((a: any) => a.kind === "action" && lines(a.file).slice(a.line, a.end).join("\n").includes(`${dn}を登録(`));
+        if (reg) {
+          const at = apply({ op: "add_screen", name: m[1], lines: [`${reg.name}のフォームを表示`] });
+          return checked(at, `画面「${m[1]}」を作り、動作「${reg.name}」のフォームを置きました`, o, text);
+        }
+        const before = outline();
+        const r = instruct(ls[0], {});
+        if (!r.ok) return r;
+        const auto = decl(outline(), "screen", `${dn}の登録`);
+        if (auto && m[1].trim() !== auto.name && !decl(before, "screen", `${dn}の登録`)) renameDecl(outline(), auto.name, m[1].trim());
+        return { ...r, done: `${r.done}(画面「${m[1].trim()}」に置きました)` };
+      }
+    }
     const at = apply({ op: "add_screen", name: m[1], lines: ls });
     return checked(at, `画面「${m[1]}」を作りました`, o, text);
   }

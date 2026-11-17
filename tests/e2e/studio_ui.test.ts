@@ -118,6 +118,10 @@ test("課題 A の道筋(ペルソナがする順): 名前を変える・項目�
     await say("列挙「商談の状況」を作る(提案中、受注、失注)");
     await say("商談に「状況」を追加");
     assert.match(readFileSync(join(d2, "src/app.koto"), "utf8"), /    状況: 商談の状況\n/);
+    // 画面を作るとき、かっこの中に登録の指示を書いてもよい
+    await say("データ「絵本」を作る(題名: 文字列)");
+    await say("画面「絵本の受付」を作る(絵本を登録できるようにしたい)");
+    assert.match(readFileSync(join(d2, "src/app.koto"), "utf8"), /画面 絵本の受付:\n    \S+のフォームを表示/);
     // フォームのボタンの文字を変える
     await say("「送信」を「申し込む」に変える");
     assert.match(readFileSync(join(d2, "src/app.koto"), "utf8"), /のフォームを「申し込む」ボタンで表示/);
