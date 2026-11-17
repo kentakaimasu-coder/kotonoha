@@ -785,7 +785,7 @@ function apply(op: Op): { file: string; line: number } | null {
       // (詳細の画面を後から作ると、ボタンを自分で足す必要があった。第 15 回評価)
       const one = ls.map((l: string) => /^(\S+?)の\S+を表示$/.exec(l)?.[1]).find((dn: string | undefined) => dn && decl(o, "data", dn));
       const btns: string[] = [];
-      if (one) {
+      if (one && !op.noButtons) {
         const all = srcFiles(o).map((f) => read(f)).join("\n");
         for (const a of (o.decls ?? []).filter((d: any) => d.kind === "action")) {
           const ps = a.params ?? [];
@@ -1185,6 +1185,14 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   if (btnScreen && decl(o, "screen", btnScreen[1].trim())) {
     ctx = { ...ctx, screen: btnScreen[1].trim() };
     text = text.slice(btnScreen[0].length - 1);
+  }
+  // 「受付票一覧に、受付票のうち状態が終了でないものを一覧表示」: 画面の名前から書いた画面の文は、その画面に入れる(読めなかった。第 15 回評価)
+  {
+    const sp = /^(?:画面)?「?([^「」、,\s]+?)」?(?:の画面)?に[、,\s]*(.+(?:一覧表示|を表示|へ|のフォームを表示))$/.exec(text);
+    if (sp && decl(o, "screen", sp[1].trim()) && !/^「/.test(sp[2])) {
+      ctx = { ...ctx, screen: sp[1].trim() };
+      text = sp[2].trim();
+    }
   }
   if ((m = cmd(/^「(.+?)」(?:の)?ボタンを(?:足す|付ける|つける|追加(?:する)?|作る)$/.exec(text) ?? /^(?:画面に)?ボタン「(.+?)」を(?:足す|付ける|つける|追加(?:する)?|作る)$/.exec(text)))) {
     const label = m[1].trim();
@@ -2160,6 +2168,15 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       const ol = listOf(l.text);
       return ol && ol[1] === nl[1] && (ol[2] ?? "") === (nl[2] ?? "") && l.text !== text;
     });
+    // 同じデータの一覧が 1 つだけなら、絞り込みが違っても置き換える(古い一覧の行が残り、手で消した。第 15 回評価)
+    const same = (target.lines ?? []).filter((l: any) => listOf(l.text)?.[1] === nl[1] && l.text !== text);
+    const old2 = old ?? (same.length === 1 ? same[0] : null);
+    if (old2 && !old) {
+      const ls = lines(target.file);
+      ls[old2.line - 1] = ls[old2.line - 1].replace(old2.text, text);
+      write(target.file, ls.join("\n"));
+      return checked({ file: target.file, line: old2.line }, `画面「${target.name}」の一覧を「${text}」に変えました(前の一覧「${old2.text}」と置き換えました。両方出すなら「1 つ前に戻す」で戻してから、画面の足す欄に入れます)`, o, text);
+    }
     if (old) {
       const ls = lines(target.file);
       ls[old.line - 1] = ls[old.line - 1].replace(old.text, text);
@@ -2561,7 +2578,7 @@ function detailScreen(dn: string): { d: any; made: boolean } | null {
   for (let k = 2; decl(o, "screen", name); k++) name = `${dn}詳細${k}`;
   const shown = D.fields.map((f: any) => f.name).filter((n: string) => n !== "ID" && !/ID$/.test(n)).slice(0, 5);
   if (!shown.length) return null;
-  apply({ op: "add_screen", name, lines: [`${dn}の${shown.join("と")}を表示`] });
+  apply({ op: "add_screen", name, lines: [`${dn}の${shown.join("と")}を表示`], noButtons: true });
   const d = decl(outline(), "screen", name);
   return d ? { d, made: true } : null;
 }
