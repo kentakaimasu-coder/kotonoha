@@ -507,7 +507,8 @@ export function ActionForm(p: { action: string; fields: Field[]; reload: () => P
       const r = await callApi("POST", "/api/actions/" + enc(p.action), { ...v, ...(p.fixed ?? {}) });
       if (r.ok) {
         done.current++;
-        setM({ kind: "ok", text: okText(p.action, r) + (done.current > 1 ? `(${done.current} 回目)` : "") });
+        // ボタンの文字を変えたフォームは、知らせもその文字で(「内見を申し込む」を押して「予約する: 完了しました」と出た。第 14 回評価)
+        setM({ kind: "ok", text: okText(p.submit && p.submit !== "送信" ? p.submit : p.action, r) + (done.current > 1 ? `(${done.current} 回目)` : "") });
         form.reset();
         await p.reload();
       } else setM({ kind: "error", text: errorText(r), login: r.status === 401 });

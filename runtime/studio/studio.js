@@ -98,16 +98,22 @@ const srcLines = (file) => (S?.sources?.[file] ?? "").split("\n");
 const diagsAt = (file, line) => (S?.outline?.diagnostics ?? []).filter((d) => d.file === file && d.span?.line === line);
 const typeChoices = () => [...(S?.outline?.types ?? []), ...Object.keys(S?.outline?.enums ?? {})];
 
-// ---- 全体 ----
-function renderAll() {
-  if (!S) return;
-  $("app-name").textContent = S.outline?.app ?? "";
+// 上の「検査に合格」の表示。確かめるの結果はあとから届くので、届いたときにも描き直す
+// (役割を作って確かめるが ✗ になっても「✓ 検査に合格」のままだった。第 14 回評価)
+function renderStatus() {
   const errs = (S.outline?.diagnostics ?? []).filter((d) => d.severity === "error").length;
   const st = $("status");
   // 確かめるが ✗ のときは、検査に合格でもそう出す(「✓ 検査に合格」のままで迷った。第 7 回評価)
   const ng = errs === 0 && S.checks?.ok === false ? (S.checks.lines ?? []).filter((l) => l.trim().startsWith("✗")).length : 0;
   st.textContent = errs > 0 ? `✗ 問題 ${errs} 件` : ng > 0 ? `✓ 検査に合格・確かめる ✗ ${ng} 件` : "✓ 検査に合格";
   st.className = "pill " + (errs > 0 ? "err" : ng > 0 ? "warn" : "ok");
+}
+
+// ---- 全体 ----
+function renderAll() {
+  if (!S) return;
+  $("app-name").textContent = S.outline?.app ?? "";
+  renderStatus();
   $("undo").disabled = !S.canUndo;
   $("ask-target").textContent = sel.kind === "screen" ? `(入れ先: 画面「${sel.name}」)` : sel.kind === "scenario" ? `(入れ先: 確かめる「${sel.name}」)` : "";
   renderTree();
@@ -227,7 +233,7 @@ async function pasteJson(pasted) {
     if (r.error) return { error: `「${k}」: ${r.error}` };
     n += rows.length;
   }
-  return { ok: `✓ JSON から ${n} 行入れました(${sets.map(([k, v]) => `${k} ${v.length} 行`).join("・")})。動いているアプリに入れ直します` };
+  return { ok: `✓ JSON から ${n} 行入れました(${sets.map(([k, v]) => `${k} ${v.length} 行`).join("・")})。動いているアプリに入れ直します(貼り付けは保存まで済んでいます。「初期データを保存する」を押さなくて大丈夫です)` };
 }
 $("seed-paste-apply").addEventListener("click", async () => {
   const pasted = $("seed-paste").value;
@@ -453,16 +459,17 @@ function analysisForm() {
         .filter((f) => /^(選択<)?(整数|金額)/.test(f.type))
         .map((f) => {
           // チェックを付けた順に列になる(付けた項目は、チェック済みの項目の後ろへ動かす。列の順を ↑ で何度も直した。第 13 回評価)
+          // 外したときは動かさない(外すと並びが入れ替わって迷った。第 14 回評価)
           const onchange = (e) => {
+            if (!e.target.checked) return renderCols();
             const rows = [...sums.children].filter((r) => r !== row);
             const lastChecked = rows.filter((r) => r.querySelector("input")?.checked).pop();
             if (lastChecked) lastChecked.after(row);
             else sums.prepend(row);
-            void e;
             renderCols();
           };
-          const row = el("div", { class: "line" }, el("label", {}, el("input", { type: "checkbox", value: f.name, checked: !/^(選択<)?金額/.test(f.type), onchange }), ` ${f.name}`));
-          row.append(el("button", { type: "button", class: "small ghost", "aria-label": `${f.name}の列を左へ`, onclick: () => move(row, -1) }, "↑"), el("button", { type: "button", class: "small ghost", "aria-label": `${f.name}の列を右へ`, onclick: () => move(row, 1) }, "↓"));
+          const row = el("div", { class: "line" }, el("label", {}, el("input", { type: "checkbox", value: f.name, onchange }), ` ${f.name}`));
+          row.append(el("button", { type: "button", class: "small ghost", "aria-label": `${f.name}の列を左へ`, title: "上へ(表の列が左へ)", onclick: () => move(row, -1) }, "↑"), el("button", { type: "button", class: "small ghost", "aria-label": `${f.name}の列を右へ`, title: "下へ(表の列が右へ)", onclick: () => move(row, 1) }, "↓"));
           return row;
         }),
     );
@@ -495,7 +502,7 @@ function analysisForm() {
     el("label", { class: "row" }, el("span", { text: "集計の名前" }), name),
     el("label", { class: "row" }, el("span", { text: "どのデータを" }), data),
     el("label", { class: "row" }, el("span", { text: "何ごとにまとめる" }), unit),
-    el("h3", { text: "合計する項目(選ばなければ件数だけ。チェックを付けた順に列になります。↑↓ でも並べ替えられます)" }),
+    el("h3", { text: "合計する項目(選ばなければ件数だけ。チェックを付けた順に列になります。↑↓ でも並べ替えられます。初めは何も付いていません)" }),
     sums,
     el("h3", { text: "列の名前(左から順に。決まった名前があれば書き換える)" }),
     cols,
@@ -988,6 +995,7 @@ setInterval(async () => {
     const changed = JSON.stringify(j.checks) !== JSON.stringify(S?.checks) || j.previewPort !== S?.previewPort || j.running !== S?.running;
     S = { ...j };
     if (changed) {
+      renderStatus();
       renderSide();
       renderLook();
       renderRunStatus();

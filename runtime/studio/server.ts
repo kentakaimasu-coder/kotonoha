@@ -986,6 +986,24 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       text = `${nm![1].trim()}${nm![2] ? `のうち${nm![2]}のもの` : ""}を${f.name}の${nm![3]}順に一覧表示`;
     }
   }
+  // 「原稿を締切日の順に並べる」「原稿を締切日が遅い順に並べたい」: 一覧の並び方を変える(読めず、画面の行を直した。第 14 回評価)
+  {
+    const so = /^(.+?)(?:のうち(.+?)のもの)?を「?([^「」\s]+?)」?(?:の|が)?(早い|近い|古い|小さい|少ない|安い|昇|新しい|遅い|大きい|多い|高い|降)?順(?:番)?に(?:並べる|並べたい|並べ替える|並べかえる|並べて|する|したい)$/.exec(text);
+    const D = so && decl(o, "data", so[1].trim());
+    const F = D && D.fields.find((x: any) => x.name === so![3].trim());
+    if (D && F) {
+      const desc = /^(新しい|遅い|大きい|多い|高い|降)$/.test(so![4] ?? "");
+      text = `${D.name}${so![2] ? `のうち${so![2]}のもの` : ""}を${F.name}${desc ? "の新しい" : ""}順に一覧表示`;
+    }
+  }
+  // 「イベント一覧に会場別の予約状況を表示」: 画面の名前が書いてあれば、その画面に集計を出す(どの画面かを聞かれ、選ぶと読めなかった。第 14 回評価)
+  {
+    const sa = /^(?:画面)?「?([^「」]+?)」?に(?:集計|分析)?「?([^「」]+?)」?を(?:表示|出す|出したい|表示したい|載せる)(?:する)?$/.exec(text);
+    if (sa && decl(o, "analysis", sa[2].trim()) && decl(o, "screen", sa[1].trim())) {
+      ctx = { ...ctx, screen: sa[1].trim() };
+      text = `${sa[2].trim()}を表示`;
+    } else if (sa && decl(o, "analysis", sa[2].trim()) && ctx.screen) text = `${sa[2].trim()}を表示`;
+  }
   // Excel の表(タブ区切りの何行か)を指示の欄に貼ったとき: 初期データの貼り付け欄を案内する(第 9 回評価)
   if (text0.includes("\t") && text0.trim().split("\n").length >= 2) {
     const head = text0.trim().split("\n")[0].split("\t").map((x) => x.trim());
@@ -1009,7 +1027,9 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     ((m = cmd(/^(?:動作)?「?(.+?)」?(?:の入力|の引数|の受け取る値)?に(?:入力|引数|受け取る値)?「?(.+?)」?(?:[(（](.+?)[)）])?を(?:追加(?:する)?|足す|加える)$/.exec(text))) ||
       (m = cmd(/^(?:動作)?「(.+?)」(?:で|の時に|のときに|するとき)、?「?([^「」]+?)」?(?:[(（](.+?)[)）])?(?:も|を)(?:入力|入れ|書け|選べ|受け取れ)(?:できる|られる|る)?ように(?:する|したい|して)?$/.exec(text)) ??
         // 「予約するときにメニューを選べるようにしたい」(かぎかっこ無し。第 12 回評価)
-        /^(?:動作)?(\S+?)(?:の時に|のときに|ときに|時に|とき)、?「?([^「」\s]+?)」?(?:[(（](.+?)[)）])?(?:も|を)(?:入力|入れ|書け|選べ|受け取れ)(?:できる|られる|る)?ように(?:する|したい|して)?$/.exec(text))) &&
+        /^(?:動作)?(\S+?)(?:の時に|のときに|ときに|時に|とき)、?「?([^「」\s]+?)」?(?:[(（](.+?)[)）])?(?:も|を)(?:入力|入れ|書け|選べ|受け取れ)(?:できる|られる|る)?ように(?:する|したい|して)?$/.exec(text) ??
+        // 「予約するで電話番号も入れられるようにしたい」(かぎかっこ無しの「…で」。第 14 回評価)
+        /^(?:動作)?(\S+?)で、?「?([^「」\s]+?)」?(?:[(（](.+?)[)）])?(?:も|を)(?:入力|入れ|書け|選べ|受け取れ)(?:できる|られる|る)?ように(?:する|したい|して)?$/.exec(text))) &&
     // 「増席するとき」→ 動作「増席」
     ((!decl(o, "action", m[1].trim()) && /する$/.test(m[1].trim()) && decl(o, "action", m[1].trim().replace(/する$/, "")) && (m[1] = m[1].trim().replace(/する$/, ""))) || true) &&
     decl(o, "action", m[1].trim()) &&
@@ -1166,7 +1186,7 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     const at = addDecl(o, ["action", "data"], [`分析 ${an}() -> 一覧<記録{${cols.map(([n, t]) => `${n}: ${t}`).join(", ")}}>:`, `    集計 = "${sentence}"`]);
     const sc = (ctx.screen && decl(outline(), "screen", ctx.screen)) || null;
     if (sc) apply({ op: "add_line", kind: "screen", name: sc.name, text: `${an}を表示` });
-    return checked(at, `分析「${an}」を作りました(列: ${cols.map((c) => c[0]).join("・")})${sc ? `。画面「${sc.name}」に出しました` : "。画面を選んでから「" + an + "を表示」と書くと画面に出ます"}`, o, text);
+    return checked(at, `分析「${an}」を作りました(列: ${cols.map((c) => c[0]).join("・")})${sc ? `。画面「${sc.name}」に出しました` : `。「${(o.decls ?? []).find((d: any) => d.kind === "screen")?.name ?? "画面の名前"}に${an}を表示」と書くと画面に出ます`}`, o, text);
   }
   // 列挙の値の名前を変える: 列挙「状況」の「受付」を「受付中」に変える
   if ((m = cmd(/^(?:列挙)?「?(.+?)」?の(?:値)?「(.+?)」を「(.+?)」に(?:変える|する|直す)$/.exec(text))) && decl(o, "enum", m[1].trim())) {
@@ -1484,6 +1504,39 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     const at = apply({ op: "add_data", name: m[1], fields: m[2] ? parseFields(m[2]) : [{ name: "名前", type: "文字列" }] });
     return { ok: true, done: `データ「${m[1]}」を作りました`, at };
   }
+  // 列挙の値を消す: 「状況から「対応中」を消す」「選択肢の「対応中」を消す」「「対応中」を消す」(日本語では消せなかった。第 14 回評価)
+  {
+    const ev =
+      /^(?!選択肢の)(?:列挙)?「?([^「」]+?)」?(?:から|の)(?:値|選択肢)?「([^「」]+?)」を(?:消す|削除(?:する)?|なくす|取る|外す)$/.exec(text) ??
+      /^(?:選択肢|列挙)?の?「([^「」]+?)」を(?:消す|削除(?:する)?|なくす|取る|外す)$/.exec(text);
+    const named = ev && ev.length === 3 && ev[2] !== undefined;
+    const value = ev ? (named ? ev[2] : ev[1]).trim() : "";
+    const Es = ev ? (o.decls ?? []).filter((d: any) => d.kind === "enum" && (!named || d.name === ev[1].trim()) && (d.values ?? []).includes(value)) : [];
+    const other = ev && !named && (o.decls ?? []).some((d: any) => d.name === value || (d.fields ?? []).some((f: any) => f.name === value) || (d.lines ?? []).some((l: any) => l.text.trim() === value && d.kind !== "enum"));
+    if (Es.length === 1 && !other) {
+      const E = Es[0];
+      if ((E.values ?? []).length <= 1) throw new Error(`列挙「${E.name}」の値は「${value}」だけなので消せません(消すなら列挙ごと消します)`);
+      const ls = lines(E.file);
+      let inE = false;
+      const at = ls.findIndex((l) => {
+        if (/^\S/.test(l)) inE = l.startsWith(`列挙 ${E.name}:`);
+        return inE && l.trim() === value;
+      });
+      if (at >= 0) {
+        ls.splice(at, 1);
+        write(E.file, ls.join("\n"));
+        // 使っている所が残っていて誤りになるなら、消さずにその場所を知らせる
+        const errs = (x: any) => (x.diagnostics ?? []).filter((d: any) => d.severity === "error").length;
+        const after = outline();
+        if (errs(after) > errs(o)) {
+          const d = (after.diagnostics ?? []).find((x: any) => x.severity === "error");
+          undo();
+          throw new Error(`「${value}」は ${d?.file ?? ""}:${d?.span?.line ?? ""} で使っているので消せません(${d?.message_ja ?? ""})。先にその行を直すか消してから、もう一度消します`);
+        }
+        return checked({ file: E.file, line: Math.max(1, at) }, `列挙「${E.name}」から「${value}」を消しました`, o, text);
+      }
+    }
+  }
   // 列挙に値を足す: 「列挙「状況」に「保留」を追加」/「状況に「保留」を追加」
   if ((m = cmd(/^(?:列挙)?「?(.+?)」?に(?:値)?「?(.+?)」?を(?:追加(?:する)?|足す|加える)$/.exec(text))) && decl(o, "enum", m[1].trim())) {
     const at = apply({ op: "add_line", kind: "enum", name: m[1].trim(), text: okName(m[2], "値") });
@@ -1612,6 +1665,15 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   // 「呼び出す」で整理券の状態を呼出中にする
   if ((m = cmd(/^「(.+?)」で(.+?)の(.+?)を「?(.+?)」?に(?:する|変える)$/.exec(text)))) {
     const [, act, dn, fn, v] = m.map((x) => x?.trim());
+    const cancelLike = /取消|取り消し|キャンセル/.test(v);
+    // 取り消す値にする動作は、2 回目を「取消済み」で断る。失敗の理由の列挙に「取消済み」を入れる(「…を取り消せるようにしたい」と同じ)
+    let fe = "";
+    if (cancelLike && decl(o, "data", dn) && !decl(o, "action", act)) {
+      const failEnum = (o.decls ?? []).find((d: any) => d.kind === "enum" && /失敗$/.test(d.name) && (d.values ?? []).length);
+      fe = failEnum?.name ?? `${act}の失敗`;
+      if (failEnum && !failEnum.values.includes("取消済み")) apply({ op: "add_line", kind: "enum", name: fe, text: "取消済み" });
+      if (!failEnum) apply({ op: "add_enum", name: fe, values: ["取消済み"] });
+    }
     return actionTemplate(o, text, act, dn, (D) => {
       const f = D.fields.find((x: any) => x.name === fn);
       if (!f) throw new Error(`データ「${dn}」に項目「${fn}」はありません(項目: ${D.fields.map((x: any) => x.name).join("、")})`);
@@ -1631,15 +1693,18 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       }
       // 取り消す値(取消・キャンセル)にするときは、親の予約数を戻す(「「取り消す」で予約の状態を「取消」にする」で
       //   予約数が戻らなかった。第 13 回評価で 3 人)。「…を取り消せるようにしたい」と同じ決め方
-      if (/取消|取り消し|キャンセル/.test(v)) {
+      if (cancelLike) {
+        // 2 回目は断る(2 回押すと予約数が -1 になった。第 14 回評価)
+        extra.unshift(`件.${fn} != ${lit} を確認 または 失敗("取消済み")`);
         const parent = D.fields.map((x: any) => x.name).find((n: string) => n.endsWith("ID") && n !== "ID" && decl(o, "data", n.slice(0, -2)));
         const P = parent && decl(o, "data", parent.slice(0, -2));
         const cnt = P?.fields.find((x: any) => /(予約数|申込数|人数の合計|使用数|貸出数|参加数|受付数)$/.test(x.name))?.name;
         const qty = D.fields.find((x: any) => /^(人数|数量|数|個数|台数|冊数|段数)$/.test(x.name))?.name;
         if (P && cnt && qty) extra.push(`親 = ${P.name}を取得(件.${parent})`, `親.${cnt} = 親.${cnt} - 件.${qty}`);
       }
-      return [`件 = ${dn}を取得(${dn}ID)`, `件.${fn} = ${lit}`, ...extra, `${dn}ID を返す`];
-    }, seqWhen(o, dn, fn, v));
+      const guard = cancelLike ? extra.splice(0, 1) : [];
+      return [`件 = ${dn}を取得(${dn}ID)`, ...guard, `件.${fn} = ${lit}`, ...extra, `${dn}ID を返す`];
+    }, seqWhen(o, dn, fn, v) || (cancelLike ? `${dn}の${fn}が${v}でないとき` : ""), fe);
   }
   // 取り消し: 予約を取り消せるようにしたい(第 9 回評価: 読めず、取り消しを作れなかった)
   //   状態の項目(取消・キャンセルの値を持つ列挙)が無ければ作る。登録の動作には最初の値を入れる。
@@ -1783,6 +1848,9 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       vis = mm[2] === "誰でも見られる" ? `${dn}は誰でも閲覧可` : mm[2] === "ログインした人だけ" ? `${dn}はログインした人だけ閲覧可` : `${dn}は${owner.name}が本人のものだけ閲覧可`;
     }
     if (vis) {
+      // 役割のあるアプリでは、ログインしても役割の無い人は読めない(ADR-0140)。先に知らせる(役割なしで 403 になり迷った。第 14 回評価)
+      const rs = (o.decls ?? []).filter((d: any) => d.kind === "role").map((d: any) => d.name);
+      const vnote = /ログインした人だけ/.test(vis) && rs.length ? `。役割があるので、見られるのは役割(${rs.join("・")})の付いた人です。役割の無い人にも見せるなら、役割を作ってその人に付けます` : "";
       // 前の約束の行をその場で置き換える(先に消すと、約束がその 1 行だけのとき中身の無い「約束:」が残った。第 7 回評価)
       const R = decl(o, "rules");
       if (R) {
@@ -1793,11 +1861,11 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
           ls[hits[0]] = ls[hits[0]].replace(re, `$1${vis}`);
           const out = ls.filter((_l, k) => !hits.slice(1).includes(k));
           write(R.file, out.join("\n"));
-          return checked({ file: R.file, line: hits[0] + 1 }, `約束を「${vis}」にしました(前の見られる人の約束と置き換えました)`, o, text);
+          return checked({ file: R.file, line: hits[0] + 1 }, `約束を「${vis}」にしました(前の見られる人の約束と置き換えました)${vnote}`, o, text);
         }
       }
       const at = apply({ op: "add_rule", text: vis });
-      return checked(at, `約束を「${vis}」にしました`, o, text);
+      return checked(at, `約束を「${vis}」にしました${vnote}`, o, text);
     }
   }
   // 文: 約束・確かめる・画面
@@ -1814,6 +1882,17 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   }
   // 確かめるの文: 「→」のある文に加えて、「連絡(連1)の状況は 確認済み」「花子から 連絡が 1件見える」も、
   // 確かめるを選んでいるときの文も、確かめるに入れる(上の欄に書くと読めなかった。第 10・11 回評価)
+  // 「確かめる 記録の流れ: 花子(見守り隊)が … → 成功」のように見出しごと 1 行で書いたとき: 見出しは確かめるの名前にし、
+  // 残りを手順の行にする(見出しまで 1 行の中に入り、ソースで直した。第 14 回評価)
+  const sh = /^確かめる\s*「?([^\s「」::]+?)」?\s*[::]\s*(.*)$/.exec(text);
+  if (sh) {
+    const steps = sh[2].split(/。/).map((s) => s.trim()).filter(Boolean);
+    const sc0 = decl(o, "scenario", sh[1]);
+    let at: any = null;
+    if (sc0) for (const s of steps) at = apply({ op: "add_line", kind: "scenario", name: sc0.name, text: s });
+    else at = apply({ op: "add_scenario", name: sh[1], lines: steps.length ? steps : [] });
+    return checked(at, sc0 ? `確かめる「${sh[1]}」に ${steps.length} 行入れました` : `確かめる「${sh[1]}」を作りました${steps.length ? `(${steps.length} 行)` : ""}`, o, text);
+  }
   if (/(→|->)/.test(text) || /^\S+[(（]\S+[)）]の\S+は\s*\S+$/.test(text) || /^\S+から\s*\S+が\s*\d+\s*件見える$/.test(text) || (ctx.scenario && decl(o, "scenario", ctx.scenario))) {
     const sc = (ctx.scenario && decl(o, "scenario", ctx.scenario)) || decl(o, "scenario");
     const at = sc ? apply({ op: "add_line", kind: "scenario", name: sc.name, text }) : apply({ op: "add_scenario", name: "動きの確認", lines: [text] });
@@ -1837,7 +1916,12 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   let guessed = false;
   if (!target) {
     const dn = (o.decls ?? []).filter((d: any) => d.kind === "data").map((d: any) => d.name).sort((a: string, b: string) => b.length - a.length).find((n: string) => text.startsWith(n));
-    const cands = dn ? (o.decls ?? []).filter((d: any) => d.kind === "screen" && (d.lines ?? []).some((l: any) => l.text.startsWith(dn))) : [];
+    let cands = dn ? (o.decls ?? []).filter((d: any) => d.kind === "screen" && (d.lines ?? []).some((l: any) => l.text.startsWith(dn))) : [];
+    // 一覧の文なら、そのデータの一覧がある画面にしぼる(「枠を開始日時の順に並べる」で、詳細の画面もあって聞き返された。第 14 回評価)
+    if (dn && cands.length > 1 && /一覧表示$/.test(text)) {
+      const lc = cands.filter((d: any) => (d.lines ?? []).some((l: any) => new RegExp(`^${reEsc(dn)}(?:のうち.+?のもの)?を(?:.+?順に)?一覧表示$`).test(l.text)));
+      if (lc.length === 1) cands = lc;
+    }
     if (cands.length === 1) {
       target = cands[0];
       guessed = true;
@@ -2258,15 +2342,18 @@ function detailScreen(dn: string): { d: any; made: boolean } | null {
   return d ? { d, made: true } : null;
 }
 /** 「…」で D の…: データ D の 1 件を ID で受け取る動作を作り、D の詳細画面にボタンを出す */
-function actionTemplate(o: any, text: string, act: string, dn: string, body: (D: any) => string[], when = ""): any {
+function actionTemplate(o: any, text: string, act: string, dn: string, body: (D: any) => string[], when = "", fail = ""): any {
   const D = decl(o, "data", dn);
   if (!D) throw new Error(`データ「${dn}」はありません(データ: ${(o.decls ?? []).filter((d: any) => d.kind === "data").map((d: any) => d.name).join("、")})`);
-  const at = apply({ op: "add_action", name: act, params: [{ name: `${dn}ID`, type: "識別子" }], body: body(D) });
+  const at = apply({ op: "add_action", name: act, params: [{ name: `${dn}ID`, type: "識別子" }], body: body(D), ...(fail ? { fail } : {}) });
+  // 役割の人に D.更新 が無ければボタンが出ないので知らせる(取消ボタンが出ず、理由が分からなかった。第 14 回評価)
+  const lack = (outline().decls ?? []).filter((d: any) => d.kind === "role" && !(d.caps ?? []).includes(`${dn}.更新`)).map((d: any) => d.name);
+  const capNote = lack.length ? `。役割「${lack.join("・")}」の人には ${dn}.更新 が無いので、このボタンが出ません。「${lack[0]}に${dn}の更新を許可する」と書くと出ます` : "";
   // 詳細画面(「D の…を表示」がある画面)にボタンを出す。無ければ作る
   const ds = detailScreen(dn);
   const detail = ds?.d;
   if (detail) apply({ op: "add_line", kind: "screen", name: detail.name, text: `${when}「${act}」を押すと ${act}(${dn}.ID)` });
-  return checked(at, `動作「${act}」を作りました${when ? `(${when.replace(/とき$/, "")}ときだけボタンを出します)` : ""}${detail ? `(${ds!.made ? `詳細の画面「${detail.name}」を作り、` : `画面「${detail.name}」に`}ボタンを出しました)` : `。ボタンを出すには、${dn}の詳細の画面を作ります(画面「${dn}詳細」を作る(${dn}の…を表示))`}`, o, text);
+  return checked(at, `動作「${act}」を作りました${when ? `(${when.replace(/とき$/, "")}ときだけボタンを出します)` : ""}${detail ? `(${ds!.made ? `詳細の画面「${detail.name}」を作り、` : `画面「${detail.name}」に`}ボタンを出しました)` : `。ボタンを出すには、${dn}の詳細の画面を作ります(画面「${dn}詳細」を作る(${dn}の…を表示))`}${capNote}`, o, text);
 }
 
 /** 詳細画面の「表示する X がどれか決まりません」: X を一覧表示している画面に「X を選ぶと 詳細画面 へ」を足す

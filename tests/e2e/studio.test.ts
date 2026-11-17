@@ -384,6 +384,8 @@ test("集計を画面のフォームで作る(記号を書かない)・項目の
   {
     const boxes = await page.locator('#editor input[type="checkbox"]').all();
     const vals = await Promise.all(boxes.map((b) => b.getAttribute("value")));
+    // 初めは何も付いていない(付いていると、付けた順に並ぶことと合わなかった。第 14 回評価)
+    for (const b of boxes) assert.equal(await b.isChecked(), false);
     // (チェックを外すと行が動くので、値で選ぶ)
     for (const v of vals) await page.locator(`#editor input[type="checkbox"][value="${v}"]`).uncheck();
     if (vals.length >= 2) {

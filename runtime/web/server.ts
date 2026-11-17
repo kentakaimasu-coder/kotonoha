@@ -384,6 +384,14 @@ export function createWebServer(
           return res.end(page(`${def.name} - ${app.appName}`, html, jsonForScript(init)));
         }
       }
+      // 1 件を出す画面(詳細)を ID なしで開いたとき: 一覧から選んで開く画面だと伝える
+      // (Studio の見た目の確認で詳細の画面を選ぶと「見つかりません」だけが出た。第 14 回評価)
+      if (segs[0] === "s" && segs.length === 2 && app.screens[segs[1]] && app.screens[segs[1]].input !== null) {
+        const from = Object.values(app.screens).filter((d) => d.input === null).map((d) => d.name);
+        const links = from.map((n) => `<li><a href="/s/${encodeURIComponent(n)}">${escHtml(n)}</a></li>`).join("");
+        res.writeHead(404, securityHeaders({ "Content-Type": "text/html; charset=utf-8" }));
+        return res.end(page(`${segs[1]} - ${app.appName}`, `<section class="page"><h1>${escHtml(segs[1])}</h1><p>この画面は、一覧から 1 件を選ぶと開きます。下の画面から選んでください。</p><ul>${links}</ul><a href="/">トップへ</a></section>`, null));
+      }
       res.writeHead(404, securityHeaders({ "Content-Type": "text/html; charset=utf-8" }));
       // 画面の URL は /s/画面名(入力のある画面は /s/画面名/ID)。迷ったときのために入口の画面を並べる
       const links = app.nav.map((n) => `<li><a href="/s/${encodeURIComponent(n)}">${escHtml(n)}</a></li>`).join("");
