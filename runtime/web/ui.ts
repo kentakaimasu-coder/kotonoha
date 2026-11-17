@@ -162,6 +162,8 @@ export function okText(prefix: string, r: LoadResult): string {
   // ID(自動採番の UUID・初期データの u2 など)は利用者に意味が無いので出さない(第 5 回評価)
   if (typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return `${prefix}: 完了しました`;
   if (typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v)) return `${prefix}: 完了しました`;
+  // 初期データの貼り付けで付く ID(「受注2」)も出さない(「結果: 受注2」が何か分からなかった。第 13 回評価)
+  if (typeof v === "string" && /^[^\s]{1,40}\d+$/.test(v)) return `${prefix}: 完了しました`;
   if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return `${prefix}: 完了しました(結果: ${String(v)})`;
   return `${prefix}: 完了しました`;
 }
