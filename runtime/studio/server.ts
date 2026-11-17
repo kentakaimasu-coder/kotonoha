@@ -662,7 +662,15 @@ function apply(op: Op): { file: string; line: number } | null {
     case "add_data": {
       const name = okName(op.name, "データの名前");
       if (decl(o, "data", name)) throw new Error(`データ「${name}」は既にあります`);
-      const fields = (op.fields ?? []).filter((f: any) => (f.name ?? "").trim()).map((f: any) => `    ${okName(f.name, "項目の名前")}: ${okType(f.type, o, f.name)}`);
+      // 項目の名前がほかのデータの名前(「現場」)で型が文字か書いていないなら、そのデータを選ぶ「現場ID」にする
+      // (文字の欄になり ID を打つしかなかった。第 14 回評価)
+      const refName = (f: any) => {
+        const n = String(f.name ?? "").trim();
+        return decl(o, "data", n) && (!String(f.type ?? "").trim() || /^(文字列|文字|識別子)$/.test(String(f.type).trim())) ? `${n}ID` : "";
+      };
+      const fields = (op.fields ?? [])
+        .filter((f: any) => (f.name ?? "").trim())
+        .map((f: any) => (refName(f) ? `    ${refName(f)}: 識別子` : `    ${okName(f.name, "項目の名前")}: ${okType(f.type, o, f.name)}`));
       if (fields.length === 0) throw new Error("項目を 1 つ以上書きます(例: 名前: 文字列)");
       const at = addDecl(o, ["data"], [`データ ${name}:`, "    ID: 識別子", ...fields]);
       grantReadToRoles(name);
@@ -671,7 +679,14 @@ function apply(op: Op): { file: string; line: number } | null {
     case "add_field": {
       const d = decl(o, "data", op.data);
       if (!d) throw new Error(`データ「${op.data}」がありません`);
-      const name = okName(op.name, "項目の名前");
+      let name = okName(op.name, "項目の名前");
+      // 「日報に「現場」を追加」: 現場というデータがあれば「現場ID」(登録のフォームで現場を選べる)にする(第 14 回評価)
+      const asRef = decl(o, "data", name) && name !== op.data && (!String(op.type ?? "").trim() || /^(文字列|文字|識別子)$/.test(String(op.type).trim()));
+      if (asRef) {
+        name = `${name}ID`;
+        op = { ...op, type: "識別子" };
+        optionalNote = `(データ「${name.slice(0, -2)}」を選ぶ項目「${name}」にしました。フォームでは${name.slice(0, -2)}を名前で選べます)`;
+      }
       if (d.fields.some((f: any) => f.name === name)) throw new Error(`「${op.data}」に項目「${name}」は既にあります`);
       // 型を書かず、「当番の状態」「当番状態」のような列挙があれば、それを使う(文字の項目になった。第 13 回評価)
       const ownEnum = !String(op.type ?? "").trim() && [`${op.data}${name}`, `${op.data}の${name}`].find((e) => o.enums?.[e]);
@@ -1636,7 +1651,8 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     optionalNote = "";
     const at = apply({ op: "add_field", data: m[1].trim(), name: m[2], type: m[3] ?? "" });
     const D2 = decl(outline(), "data", m[1].trim());
-    const f = D2?.fields.find((x: any) => x.name === m![2].trim());
+    const f = D2?.fields.find((x: any) => x.name === m![2].trim()) ?? D2?.fields.find((x: any) => x.name === `${m![2].trim()}ID`);
+    if (f && f.name !== m[2].trim()) m[2] = f.name;
     // 「残り」「残席」は、ほかの項目から計算で出すことが多い。その書き方を添える(文字の項目になった。第 10 回評価)
     const ints = (D2?.fields ?? []).filter((x: any) => /^(整数|金額)/.test(x.type)).map((x: any) => x.name);
     const calcHint = /^(残り|残席|残数|残量|在庫残|空き)/.test(m[2].trim()) && ints.length >= 2 ? `。計算で出すなら「1 つ前に戻す」を押してから「${m[1].trim()}に「${m[2].trim()} = ${ints[0]} - ${ints[1]}」を追加」と書きます` : "";

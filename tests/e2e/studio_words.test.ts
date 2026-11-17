@@ -144,3 +144,12 @@ test("「予約したら回数券を1減らす」: 動作と数の項目を決�
   const chk = body.indexOf(".残り回数 >= 1 を確認");
   assert.ok(def >= 0 && chk > def, body);
 });
+
+test("「日報に「現場」を追加」: ほかのデータの名前の項目は、そのデータを選ぶ「現場ID」にする", async () => {
+  await ok("データ「現場」を作る(名前: 文字列)");
+  const r = await ok("予約に「現場」を追加");
+  assert.match(r.done, /項目「現場ID」\((選択<)?識別子>?\)/);
+  assert.match(src(), /    現場ID: (選択<)?識別子>?\n/);
+  await ok("データ「日報」を作る(現場、内容: 文字列)");
+  assert.match(src(), /データ 日報:\n    ID: 識別子\n    現場ID: 識別子\n    内容: 文字列\n/);
+});
