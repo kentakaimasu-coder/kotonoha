@@ -487,6 +487,27 @@ function makeOptional(o: any, dn: string | undefined, fn: string): string[] {
 }
 /** 動作をある役割だけにしたとき、確かめるでその動作を役割の無い人が呼んでいる行を探す
  *  (役割の無い人のままで 403 になり、✗ の理由が分からなかった。第 7 回評価)。ソースは変えずに、直し方を伝える */
+/** 順番の約束「D の F は A → B → C の順」があれば、V にするボタンを前の値のときだけ出す条件(全部のボタンがいつも出た。第 13 回評価) */
+function seqWhen(o: any, dn: string, fn: string, v: string): string {
+  for (const r of (o.decls ?? []).filter((d: any) => d.kind === "rules")) {
+    for (const l of r.lines ?? []) {
+      const mm = new RegExp(`^${reEsc(dn)}の${reEsc(fn)}は\\s*(.+?)\\s*の順`).exec(String(l.text).trim());
+      if (!mm) continue;
+      const vals = mm[1].split(/\s*(?:→|->)\s*/).map((x: string) => x.trim());
+      const k = vals.indexOf(v);
+      if (k > 0) return `${dn}の${fn}が${vals[k - 1]}のとき`;
+    }
+  }
+  return "";
+}
+/** 役割があれば、どの役割にもデータ D の読取を足す(役割を作った後に足したデータを、役割の人が見られなかった。第 13 回評価) */
+function grantReadToRoles(dn: string): void {
+  for (const r of (outline().decls ?? []).filter((d: any) => d.kind === "role")) {
+    const caps: string[] = r.caps ?? [];
+    if (caps.includes(`${dn}.読取`)) continue;
+    apply({ op: "set_role_caps", name: r.name, caps: [...caps, `${dn}.読取`] });
+  }
+}
 /** 役割の権限では使えない動作(ボタン・フォームが出ない)を、動作の中の文から見積もって知らせる
  *  (役割を作ると見るだけになり、ボタンが黙って出なかった。第 10 回評価で 4 人) */
 function roleGapNote(roleName: string): string {
@@ -613,7 +634,9 @@ function apply(op: Op): { file: string; line: number } | null {
       if (decl(o, "data", name)) throw new Error(`データ「${name}」は既にあります`);
       const fields = (op.fields ?? []).filter((f: any) => (f.name ?? "").trim()).map((f: any) => `    ${okName(f.name, "項目の名前")}: ${okType(f.type, o, f.name)}`);
       if (fields.length === 0) throw new Error("項目を 1 つ以上書きます(例: 名前: 文字列)");
-      return addDecl(o, ["data"], [`データ ${name}:`, "    ID: 識別子", ...fields]);
+      const at = addDecl(o, ["data"], [`データ ${name}:`, "    ID: 識別子", ...fields]);
+      grantReadToRoles(name);
+      return at;
     }
     case "add_field": {
       const d = decl(o, "data", op.data);
@@ -678,7 +701,11 @@ function apply(op: Op): { file: string; line: number } | null {
     }
     case "add_rule": {
       const d = decl(o, "rules");
-      return d ? addLine(d, op.text) : addDecl(o, ["role", "screen"], ["約束:", "    " + op.text.trim()]);
+      const at = d ? addLine(d, op.text) : addDecl(o, ["role", "screen"], ["約束:", "    " + op.text.trim()]);
+      // 「回覧はログインした人だけ閲覧可」: 役割の人も見られるように、役割に読取を足す(役割の人には見えなかった。第 13 回評価)
+      const lm = /^(\S+?)はログインした人だけ閲覧可/.exec(String(op.text).trim());
+      if (lm && decl(outline(), "data", lm[1])) grantReadToRoles(lm[1]);
+      return at;
     }
     case "add_action": {
       const name = okName(op.name, "動作の名前");
@@ -1509,7 +1536,7 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
         }
       }
       return [`件 = ${dn}を取得(${dn}ID)`, `件.${fn} = ${lit}`, ...extra, `${dn}ID を返す`];
-    });
+    }, seqWhen(o, dn, fn, v));
   }
   // 取り消し: 予約を取り消せるようにしたい(第 9 回評価: 読めず、取り消しを作れなかった)
   //   状態の項目(取消・キャンセルの値を持つ列挙)が無ければ作る。登録の動作には最初の値を入れる。
@@ -2096,8 +2123,12 @@ function registration(o: any, ctx: { screen?: string }, text: string, D: any, ac
     }
   }
   const at = apply({ op: "add_action", name: act, params, body: [`${D.name}を登録(${args.join(", ")}) を返す`] });
-  const sc = (ctx.screen && decl(outline(), "screen", ctx.screen)) || null;
-  if (sc) apply({ op: "add_line", kind: "screen", name: sc.name, text: `${act}のフォームを表示` });
+  let sc = (ctx.screen && decl(outline(), "screen", ctx.screen)) || null;
+  // 画面を選んでいなければ「…の登録」の画面を作ってフォームを置く(フォームがどの画面にも出なかった。第 13 回評価)
+  if (!sc && !decl(outline(), "screen", `${D.name}の登録`)) {
+    apply({ op: "add_screen", name: `${D.name}の登録`, lines: [`${act}のフォームを表示`] });
+    sc = decl(outline(), "screen", `${D.name}の登録`);
+  } else if (sc) apply({ op: "add_line", kind: "screen", name: sc.name, text: `${act}のフォームを表示` });
   // 役割があるのに、だれも作成の権限を持たないときは知らせる(店長にメニュー.作成が無く、フォームが出なかった。第 12 回評価)
   const roles = (o.decls ?? []).filter((d: any) => d.kind === "role");
   const lack = roles.filter((r: any) => !(r.caps ?? []).includes(`${D.name}.作成`)).map((r: any) => r.name);
@@ -2124,15 +2155,15 @@ function detailScreen(dn: string): { d: any; made: boolean } | null {
   return d ? { d, made: true } : null;
 }
 /** 「…」で D の…: データ D の 1 件を ID で受け取る動作を作り、D の詳細画面にボタンを出す */
-function actionTemplate(o: any, text: string, act: string, dn: string, body: (D: any) => string[]): any {
+function actionTemplate(o: any, text: string, act: string, dn: string, body: (D: any) => string[], when = ""): any {
   const D = decl(o, "data", dn);
   if (!D) throw new Error(`データ「${dn}」はありません(データ: ${(o.decls ?? []).filter((d: any) => d.kind === "data").map((d: any) => d.name).join("、")})`);
   const at = apply({ op: "add_action", name: act, params: [{ name: `${dn}ID`, type: "識別子" }], body: body(D) });
   // 詳細画面(「D の…を表示」がある画面)にボタンを出す。無ければ作る
   const ds = detailScreen(dn);
   const detail = ds?.d;
-  if (detail) apply({ op: "add_line", kind: "screen", name: detail.name, text: `「${act}」を押すと ${act}(${dn}.ID)` });
-  return checked(at, `動作「${act}」を作りました${detail ? `(${ds!.made ? `詳細の画面「${detail.name}」を作り、` : `画面「${detail.name}」に`}ボタンを出しました)` : `。ボタンを出すには、${dn}の詳細の画面を作ります(画面「${dn}詳細」を作る(${dn}の…を表示))`}`, o, text);
+  if (detail) apply({ op: "add_line", kind: "screen", name: detail.name, text: `${when}「${act}」を押すと ${act}(${dn}.ID)` });
+  return checked(at, `動作「${act}」を作りました${when ? `(${when.replace(/とき$/, "")}ときだけボタンを出します)` : ""}${detail ? `(${ds!.made ? `詳細の画面「${detail.name}」を作り、` : `画面「${detail.name}」に`}ボタンを出しました)` : `。ボタンを出すには、${dn}の詳細の画面を作ります(画面「${dn}詳細」を作る(${dn}の…を表示))`}`, o, text);
 }
 
 /** 詳細画面の「表示する X がどれか決まりません」: X を一覧表示している画面に「X を選ぶと 詳細画面 へ」を足す

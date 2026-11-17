@@ -55,6 +55,21 @@ test("ひな形 → koto dev → 名前を入れてすぐ入る → 予約 → �
   await ctx.close();
 });
 
+test("ADR-0140: 一般の利用者(役割なし)には、予約のボタンの代わりに使える役割を知らせる", async () => {
+  const ctx = await browser.newContext({ locale: "ja-JP" });
+  const page = await ctx.newPage();
+  await page.goto(url + "/login");
+  assert.match((await page.textContent("main"))!, /一般の利用者\(役割なし\)は役割に関わらない操作だけができます/);
+  await page.fill("#dev-name", "次郎");
+  await page.click("text=一般の利用者(役割なし)として入る");
+  await page.waitForURL(/\/s\//);
+  await page.click("text=午後の回");
+  await page.waitForSelector("dl");
+  assert.match((await page.textContent("main"))!, /「1名で予約」は、利用者の役割の人が使えます/);
+  assert.equal(await page.locator('button:has-text("1名で予約")').count(), 0);
+  await ctx.close();
+});
+
 test("1 つのポートで API も使える(誰でも見られるデータ)・開発ログインは他サイトから使えない", async () => {
   const r = await fetch(`${url}/api/data/${enc("枠")}`);
   assert.equal(r.status, 200);

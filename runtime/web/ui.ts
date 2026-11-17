@@ -77,6 +77,8 @@ export interface Init {
   loggedIn?: boolean;
   /** ログイン中の人の権限(表示の出し分けだけ) */
   caps?: string[] | null;
+  /** 役割ごとの権限(使えないボタンの代わりに「○○の役割の人が使えます」と出すため。認可は backend が行う) */
+  roles?: Record<string, string[]>;
 }
 
 export function enc(s: string): string {
@@ -323,6 +325,16 @@ function MessageView(p: { m: { kind: "ok" | "error"; text: string; login?: boole
 
 /** ログイン中か(画面を描くたびに App が入れる。認証基盤のログインでは権限が分からず caps が null になるため、caps とは別に持つ) */
 let loggedIn = false;
+/** 役割ごとの権限(画面を描くたびに App が入れる) */
+let roleCaps: Record<string, string[]> = {};
+/** ログインしているのに権限が足りないとき、使える役割を知らせる(黙ってボタンを隠すと理由が分からなかった。第 13 回評価) */
+function RoleNotice(p: { what: string; need?: Need }) {
+  const names = Object.entries(roleCaps)
+    .filter(([, cs]) => canUse(cs, p.need))
+    .map(([r]) => r);
+  if (names.length === 0) return null;
+  return h("p", { className: "notice" }, `「${p.what}」は、${names.join("・")}の役割の人が使えます(いまログインしている人は使えません)。`);
+}
 function LoginNotice(p: { what: string }) {
   return h("p", { className: "notice" }, `「${p.what}」は、ログインすると使えます。`, h("a", { href: "/login" }, "ログイン"));
 }
@@ -349,7 +361,7 @@ export function ActionButton(p: { label: string; action: string; args: () => Rec
       setBusy(false);
     }
   };
-  if (!canUse(p.caps ?? null, p.need)) return null;
+  if (!canUse(p.caps ?? null, p.need)) return h(RoleNotice, { what: p.label, need: p.need });
   // ログインしていない人には、押しても失敗する欄を出さずに、ログインの案内を出す(第 11 回評価)
   if (p.caps === null && !loggedIn) return h(LoginNotice, { what: p.label });
   return h("div", { className: "action" }, h("button", { type: "button", onClick, disabled: busy }, p.label), h(MessageView, { m }));
@@ -505,7 +517,7 @@ export function ActionForm(p: { action: string; fields: Field[]; reload: () => P
   const onKeyDown = (ev: any) => {
     if (ev.key === "Enter" && (ev.nativeEvent?.isComposing || ev.keyCode === 229)) ev.preventDefault();
   };
-  if (!canUse(p.caps ?? null, p.need)) return null;
+  if (!canUse(p.caps ?? null, p.need)) return h(RoleNotice, { what: p.action, need: p.need });
   if (p.caps === null && !loggedIn) return h(LoginNotice, { what: p.action });
   return h(
     "form",
@@ -565,6 +577,7 @@ export function App(p: { init: Init; screens: Record<string, ScreenDef> }) {
     setData(next);
   };
   loggedIn = !!p.init.loggedIn;
+  roleCaps = p.init.roles ?? {};
   return h(
     "div",
     { className: "app" },

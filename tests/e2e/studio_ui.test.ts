@@ -99,6 +99,16 @@ test("課題 A の道筋(ペルソナがする順): 名前を変える・項目�
     await say("「2名で予約」ボタンを足す", "イベント詳細");
     await say("「3つで予約」ボタンを足す", "イベント詳細");
     await say("イベントの項目を 名前・会場・開始日時・参加費・定員・予約数 の順にする");
+    // 順番の約束があれば、状態を進めるボタンは前の状態のときだけ出す
+    await say("列挙「進み」を作る(受付、作業中、完了)");
+    await say("データ「作業」を作る(名前: 文字列、進み: 進み)");
+    await say("作業の進みは 受付 → 作業中 → 完了 の順");
+    await say("作業を一覧表示", "イベント一覧");
+    await say("「始める」で作業の進みを「作業中」にする");
+    assert.match(readFileSync(join(d2, "src/app.koto"), "utf8"), /作業の進みが受付のとき「始める」を押すと 始める\(作業\.ID\)/);
+    // 役割を作った後に足したデータも、役割の人が読める
+    await say("データ「回覧」を作る(題名: 文字列)");
+    assert.match(readFileSync(join(d2, "src/app.koto"), "utf8"), /役割 利用者:\n    権限 = \[[^\]]*回覧\.読取/);
     // 最初に出る画面を変える
     await say("最初の画面を「自分の予約」にする");
     assert.ok(readFileSync(join(d2, "src/app.koto"), "utf8").indexOf("画面 自分の予約:") < readFileSync(join(d2, "src/app.koto"), "utf8").indexOf("画面 イベント一覧:"));
