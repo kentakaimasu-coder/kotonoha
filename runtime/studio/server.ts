@@ -1186,7 +1186,8 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
         const oldNum = /(\d+)/.exec(mm[3])?.[1];
         // 数だけ違うボタン(1名で予約 → 2名で予約)
         // 数え方が違ってもよい(「1名で予約」をまねて「3つで予約」。読めなかった。第 12 回評価)
-        const norm = (x: string) => x.replace(/\d+\s*(名|人|つ|個|枚|段|台|本|冊|席|件|皿|杯)?/, "#");
+        // 「1名で取り置き」をまねて「2個取り置き」(「で」の有無も違ってよい。第 15 回評価)
+        const norm = (x: string) => x.replace(/\d+\s*(名|人|つ|個|枚|段|台|本|冊|席|件|皿|杯|回|口|食)?\s*(で|ずつ)?/, "#");
         if (num && oldNum && (mm[3].replace(oldNum, num) === label || norm(mm[3]) === norm(label))) {
           const args = mm[5].split(",").map((x) => x.trim());
           const ai = args.findIndex((x) => x === oldNum);
