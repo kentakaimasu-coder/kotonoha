@@ -397,7 +397,7 @@ function inputFor(f: Field, id: string, refs?: Refs) {
     case "int":
     case "money":
       // type="number" は全角数字を受け付けないブラウザがあるため、text + inputMode で受けて正規化する
-      return h("input", { ...common, type: "text", inputMode: "numeric", autoComplete: "off", pattern: "[-－−ー]?[0-9０-９,、 ]+", placeholder: base.kind === "money" ? "例: 1,000(円)" : "例: 3" });
+      return h("input", { ...common, type: "text", inputMode: "numeric", autoComplete: "off", pattern: "[\\-－−ー]?[0-9０-９,、 ]+" /* 「-」は v フラグ(pattern 属性の正規表現)では \- と書く(ブラウザが警告を出していた。第 14 回評価) */, placeholder: base.kind === "money" ? "例: 1,000(円)" : "例: 3" });
     case "bool":
       return h("input", { id, name: f.name, type: "checkbox" });
     case "enum":

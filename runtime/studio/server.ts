@@ -199,6 +199,10 @@ function addLine(d: any, text: string): { file: string; line: number } {
     ls = lines(D3.file);
     let k = D3.line;
     while (k < D3.end && /^\s+\S+\s*=\s*\S+を取得\(/.test(ls[k] ?? "")) k++;
+    // 確認で使う値(「券.残り回数」の「券」)を取り出す行より後に入れる(上に入り「券 は定義されていません」になった。第 14 回評価)
+    for (const u of new Set([...text.matchAll(/([^\s.()!=<>]+)\./g)].map((x) => x[1]))) {
+      for (let j = D3.line; j < D3.end; j++) if (new RegExp(`^\\s+${reEsc(u)}\\s*=`).test(ls[j] ?? "") && j + 1 > k) k = j + 1;
+    }
     insertAfter(D3.file, k, ["    " + text.trim()]);
     return { file: D3.file, line: k + 1 };
   }
@@ -1121,6 +1125,16 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   }
   // 入力の確認: 「注文する」で数量が0以下なら「数量不正」で止める(第 9 回評価: 読めず、ソースで書いた)
   //   「数量が1より少ないときは断る」「数量が0以下なら止める」(失敗の名前を書かないときは「数量不正」。第 12 回評価)
+  // 裏返しの言い方: 「注文するで数量が1以上でなければ失敗」「金額は0より大きくないとだめにする」(読めなかった。第 14 回評価)
+  {
+    const ng = /^(?:動作)?(?:「?([^「」\s]+?)」?で)?(\S+?)(?:が|は)(-?\d+)(以上|以下|未満|より大きく|より小さく|より多く|より少なく)(?:で)?(?:なければ|ないと|ないときは|ない場合は|じゃないと|でないと)、?(?:「?([^「」]+?)」?(?:で|として|と出して))?(?:止める|失敗|失敗にする|断る|エラー|エラーにする|だめ|だめにする|ダメ|ダメにする|いけない)$/.exec(text);
+    if (ng) {
+      const okc = ({ 以上: "以上", 以下: "以下", 未満: "未満", より大きく: "より大きい", より小さく: "より小さい", より多く: "より大きい", より少なく: "より小さい" } as Record<string, string>)[ng[4]];
+      // 通ってよい条件の反対を「…なら止める」にして、下の決め方に渡す
+      const flip = ({ 以上: "未満", 以下: "より大きい", 未満: "以上", より大きい: "以下", より小さい: "以上" } as Record<string, string>)[okc];
+      text = `${ng[1] ? `「${ng[1]}」で` : ""}${ng[2]}が${ng[3]}${flip}なら${ng[5] ? `「${ng[5]}」で` : ""}止める`;
+    }
+  }
   if ((m = cmd(/^(?:動作)?(?:「(.+?)」で)?(.+?)が(-?\d+)(以下|未満|以上|より大きい|より小さい|より少ない|より多い|を超える|を超えた)(?:なら|のとき|ときは|とき|場合は|の場合)、?(?:「?([^「」]+?)」?(?:で|として|と出して))?(?:止める|失敗|失敗にする|断る|エラー|エラーにする)$/.exec(text)))) {
     const [, act0, fld, n, cmp0, val0] = m.map((x) => x?.trim());
     const cmp = ({ より少ない: "より小さい", より多い: "より大きい" } as Record<string, string>)[cmp0] ?? cmp0;
@@ -1731,8 +1745,11 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       insertAfter(A.file, A.line + (at0 >= 0 ? at0 + 1 : 0), [`    ${nv} = ${dn}を取得(${from})`]);
       v = nv;
     }
+    // 選択肢の項目は、もうその値なら「すでに…」で断る(貸出中の物を借りられないようにする処理をソースに書いていた。第 14 回評価)
+    const guard = ev ? `すでに${val}` : "";
+    if (guard) addLine(decl(outline(), "action", act), `${v}.${fn} != ${lit} を確認 または 失敗("${guard}")`);
     const at = addLine(decl(outline(), "action", act), `${v}.${fn} = ${lit}`);
-    return checked(at, `動作「${act}」で、${dn}の${fn}を「${val}」にするようにしました`, o, text);
+    return checked(at, `動作「${act}」で、${dn}の${fn}を「${val}」にするようにしました${guard ? `(もう「${val}」なら「${guard}」で断ります)` : ""}`, o, text);
   }
   // 動作のひな形(第 5 回評価: 日本語で動作を作れない が最も多かった)
   // 「呼び出す」で整理券の状態を呼出中にする
@@ -1871,6 +1888,17 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   // 既にある動作で、ほかのデータの数を増やす・減らす: 「予約する」で回数券の残り回数を1減らす
   //   (予約で回数券を減らす・納品で在庫を増やす・返すで貸出数を戻す を、ソースに書いていた。第 7〜12 回評価で多かった)
   //   どの 1 件かは、動作が受け取る「データ名ID」で決める。減らすときは足りなければ「…不足」で止める
+  // 「予約したら回数券を1減らす」「予約したら回数券の残り回数を1減らす」: 動作「予約する」、項目は数の項目が 1 つならそれ(読めなかった。第 14 回評価)
+  {
+    const sm = /^「?([^「」\s]+?)」?(?:したら|すると|したとき|したときに|する時)、?([^「」\s]+?)(?:の([^「」\s]+?))?を(\d*)(増やす|減らす)$/.exec(text);
+    if (sm) {
+      const act = [sm[1], `${sm[1]}する`, sm[1].replace(/し$/, "する")].find((a) => decl(o, "action", a));
+      const D = decl(o, "data", sm[2]);
+      const nums = D ? D.fields.filter((x: any) => /^(整数|金額)/.test(x.type)) : [];
+      const fld = sm[3] ?? (nums.length === 1 ? nums[0].name : nums.find((x: any) => /^残り|残数|回数/.test(x.name))?.name);
+      if (act && D && fld) text = `「${act}」で${D.name}の${fld}を${sm[4]}${sm[5]}`;
+    }
+  }
   if ((m = cmd(/^「(.+?)」で(.+?)の(.+?)を(\d*)(増やす|減らす)$/.exec(text))) && decl(o, "action", m[1].trim()) && decl(o, "data", m[2].trim())) {
     const [, act, dn, fn, n0, dir] = m.map((x) => x?.trim());
     const n = n0 || "1";
