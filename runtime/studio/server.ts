@@ -259,12 +259,15 @@ function renameDecl(o: any, from: string, to: string): string {
   const dup = (o.decls ?? []).find((x: any) => x.name === to && x.kind !== "app");
   if (dup) throw new Error(`「${to}」は既にあります(${({ data: "データ", screen: "画面", action: "動作", role: "役割", enum: "列挙", scenario: "確かめる", analysis: "集計" } as any)[dup.kind] ?? ""}の名前)。別の名前にします`);
   // 直後がひらがな(助詞を除く)なら変えない(「問い合わせる」→「お迎え連絡る」になった。第 6 回評価)
-  const re = new RegExp(reEsc(from) + "(?!(?![をのはがにでとへかもや])[ぁ-ゖ])", "g");
+  // 新しい名前が古い名前を含むとき(「予約」→「内見予約」)、もう新しい名前になっている所は変えない(「内見内見予約」になった。第 16 回評価)
+  const pre = to.endsWith(from) && to !== from ? `(?<!${reEsc(to.slice(0, to.length - from.length))})` : "";
+  const post = to.startsWith(from) && to !== from ? `(?!${reEsc(to.slice(from.length))})` : "";
+  const re = new RegExp(pre + reEsc(from) + post + "(?!(?![をのはがにでとへかもや])[ぁ-ゖ])", "g");
   for (const f of srcFiles(o)) {
     const t = read(f);
     // 注釈(# …)の行も古い名前をそろえる(説明書きに「受付係」が残って迷った。第 10・12 回評価)。
-    // ただし名前の変え方の例(「「枠」を「イベント」に変える」)を書いた行は変えない
-    const u = t.split("\n").map((l) => (l.trim().startsWith("#") && /に変える|koto rename/.test(l) ? l : l.replace(re, to))).join("\n");
+    // ただし名前の変え方の例(「「枠」を「イベント」に変える」)を書いた行と、アプリの名前の行は変えない
+    const u = t.split("\n").map((l) => ((l.trim().startsWith("#") && /に変える|koto rename/.test(l)) || /^アプリ「/.test(l) ? l : l.replace(re, to))).join("\n");
     if (u !== t) write(f, u);
   }
   if (d.kind === "data") renameSeed(from, to);
