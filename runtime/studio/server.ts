@@ -528,6 +528,20 @@ function grantReadToRoles(dn: string): void {
 }
 /** 役割の権限では使えない動作(ボタン・フォームが出ない)を、動作の中の文から見積もって知らせる
  *  (役割を作ると見るだけになり、ボタンが黙って出なかった。第 10 回評価で 4 人) */
+/** 動作に要る権限(登録 → 作成・削除 → 削除・取り出したデータの書き換え → 更新)を、動作の中の文から見積もる */
+function actionNeeds(a: any): Set<string> {
+  const need = new Set<string>();
+  const vars = new Map<string, string>();
+  for (const l of lines(a.file).slice(a.line, a.end)) {
+    let mm = /^\s*(\S+)\s*=\s*(\S+?)を取得\(/.exec(l);
+    if (mm) vars.set(mm[1], mm[2]);
+    for (const g of l.matchAll(/(\S+?)を登録\(/g)) need.add(`${g[1].replace(/^.*[\s(=]/, "")}.作成`);
+    for (const g of l.matchAll(/(\S+?)を削除\(/g)) need.add(`${g[1].replace(/^.*[\s(=]/, "")}.削除`);
+    mm = /^\s*(\S+)\.\S+\s*=[^=]/.exec(l);
+    if (mm && vars.has(mm[1])) need.add(`${vars.get(mm[1])}.更新`);
+  }
+  return need;
+}
 function roleGapNote(roleName: string): string {
   const o = outline();
   const r = decl(o, "role", roleName);
@@ -536,16 +550,7 @@ function roleGapNote(roleName: string): string {
   const gaps: string[] = [];
   for (const a of (o.decls ?? []).filter((x: any) => x.kind === "action")) {
     if (caps.includes(`動作.${a.name}`)) continue;
-    const need = new Set<string>();
-    const vars = new Map<string, string>();
-    for (const l of lines(a.file).slice(a.line, a.end)) {
-      let mm = /^\s*(\S+)\s*=\s*(\S+?)を取得\(/.exec(l);
-      if (mm) vars.set(mm[1], mm[2]);
-      for (const g of l.matchAll(/(\S+?)を登録\(/g)) need.add(`${g[1].replace(/^.*[\s(=]/, "")}.作成`);
-      for (const g of l.matchAll(/(\S+?)を削除\(/g)) need.add(`${g[1].replace(/^.*[\s(=]/, "")}.削除`);
-      mm = /^\s*(\S+)\.\S+\s*=[^=]/.exec(l);
-      if (mm && vars.has(mm[1])) need.add(`${vars.get(mm[1])}.更新`);
-    }
+    const need = actionNeeds(a);
     const lack = [...need].filter((c) => decl(o, "data", c.split(".")[0]) && !caps.includes(c));
     if (lack.length) gaps.push(`${a.name}(${lack.join("・")} が要る)`);
   }
@@ -577,9 +582,27 @@ function giveRoleToScenarioActors(role: string): string[] {
       if (/(→|->)\s*権限がない/.test(ls[k])) keep.add(mm[1]);
       else who.add(mm[1]);
     }
+    // その役割で、この人の行の動きが変わらないときだけ書き換える(役割「先生」を作ると、保護者の花子まで先生にされて ✗ になった。第 15 回評価)
+    //   ・この人が呼ぶ動作に要る権限(作成・更新・削除。役割にその動作の許可があれば足りる)をすべて持つ
+    //   ・「…から 予約が N件見える」の行があれば、そのデータの読取を持ち、全件閲覧を持たない(件数が変わる)
+    const R = decl(o, "role", role);
+    const caps: string[] = R?.caps ?? [];
+    const fits = (w: string): boolean => {
+      for (let k = sc.line; k < sc.end; k++) {
+        const l = ls[k] ?? "";
+        const call = new RegExp(`^\\s+${reEsc(w)}が\\s*(\\S+?)\\(`).exec(l);
+        if (call) {
+          const A = decl(o, "action", call[1]);
+          if (A && !caps.includes(`動作.${A.name}`) && [...actionNeeds(A)].some((c) => decl(o, "data", c.split(".")[0]) && !caps.includes(c))) return false;
+        }
+        const see = new RegExp(`^\\s+${reEsc(w)}から\\s+(\\S+?)が\\s*\\d+\\s*件見える`).exec(l);
+        if (see && (!caps.includes(`${see[1]}.読取`) || caps.includes(`全件閲覧.${see[1]}`))) return false;
+      }
+      return true;
+    };
     let changed = false;
     for (const w of who) {
-      if (keep.has(w)) continue;
+      if (keep.has(w) || !fits(w)) continue;
       for (let k = sc.line; k < sc.end; k++) {
         const re = new RegExp(`^(\\s+)${reEsc(w)}(が|から)(?=\\s)`);
         if (re.test(ls[k] ?? "")) {
