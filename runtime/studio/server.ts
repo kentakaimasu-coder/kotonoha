@@ -1476,7 +1476,7 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     return deleteField(o, decl(o, "data", m[1].trim()), m[2].trim());
   }
   // 空でもよい項目にする: 「メモ」を空でもよいにする / 予約の要望を任意にする
-  if ((m = cmd(/^(?:(.+?)の)?「?(.+?)」?(?:を|は)(?:空でもよい|空でも良い|空でもいい|空欄でもよい|空欄可|任意|省ける|省略できる|なくてもよい|無くてもよい|必須でない)(?:の)?(?:項目|欄)?(?:に(?:する|したい|して))?$/.exec(text)))) {
+  if ((m = cmd(/^(?:([^「」]+?)の)?「?(.+?)」?(?:を|は)(?:空でもよい|空でも良い|空でもいい|空欄でもよい|空欄可|任意|省ける|省略できる|なくてもよい|無くてもよい|必須でない)(?:の)?(?:項目|欄)?(?:に(?:する|したい|して))?$/.exec(text)))) {
     const fn = m[2].trim();
     const inData = (o.decls ?? []).some((d: any) => d.kind === "data" && (!m![1] || d.name === m![1].trim()) && d.fields.some((f: any) => f.name === fn));
     if (!inData) {

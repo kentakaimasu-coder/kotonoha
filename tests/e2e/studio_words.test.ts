@@ -119,3 +119,10 @@ test("既にある動作で、ほかのデータの状態を変える(借りる�
   assert.notEqual(j.result?.ok, true);
   assert.match(JSON.stringify(j), /備品状態に「修理中」を追加/);
 });
+
+test("「「作品のメモ」を空でもよいにする」: かぎかっこの中の「の」で区切らない", async () => {
+  await ok("予約に「作品のメモ」を追加");
+  const r = await ok("「作品のメモ」を空でもよいにする");
+  assert.match(r.done, /作品のメモ/);
+  assert.match(src(), /    作品のメモ: 選択<文字列>\n/);
+});
