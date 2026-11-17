@@ -477,9 +477,23 @@ function makeOptional(o: any, dn: string | undefined, fn: string): string[] {
         al[a.line - 1] = nh;
         // 「メモ != "" を確認 または 失敗(…)」のように、空でないことを確かめる行は、空でもよくなったので外す
         // (残すと「文字列 が必要ですが 選択<文字列> です」になり、意味が分からなかった。第 9 回評価)
+        const gone: string[] = [];
         for (let k = a.end - 1; k >= a.line; k--)
-          if (new RegExp(`^\\s*(?:${reEsc(fn)}|長さ\\(\\s*${reEsc(fn)}\\s*\\))\\s*(!=|==|>|>=)\\s*(""|0|1)\\s*を確認`).test(al[k] ?? "")) al.splice(k, 1);
+          if (new RegExp(`^\\s*(?:${reEsc(fn)}|長さ\\(\\s*${reEsc(fn)}\\s*\\))\\s*(!=|==|>|>=)\\s*(""|0|1)\\s*を確認`).test(al[k] ?? "")) {
+            const fv = /失敗\(\s*"([^"]+)"\s*\)/.exec(al[k])?.[1];
+            if (fv) gone.push(fv);
+            al.splice(k, 1);
+          }
         write(a.file, al.join("\n"));
+        // 外した確認の失敗を確かめていた行は「→ 成功」にそろえる(確かめるが ✗ になり、理由が分からなかった。第 13 回評価)
+        const still = lines(a.file).slice(a.line, a.end).join("\n");
+        for (const fv of gone.filter((x) => !still.includes(`失敗("${x}")`))) {
+          for (const sf of srcFiles(o)) {
+            const t = read(sf);
+            const u = t.split("\n").map((l) => (/^\s/.test(l) && l.includes(`${a.name}(`) && new RegExp(`(→|->)\\s*失敗\\(\\s*"${reEsc(fv)}"\\s*\\)\\s*$`).test(l) ? l.replace(new RegExp(`(→|->)\\s*失敗\\(\\s*"${reEsc(fv)}"\\s*\\)\\s*$`), "→ 成功") : l)).join("\n");
+            if (u !== t) write(sf, u);
+          }
+        }
       }
     }
   }

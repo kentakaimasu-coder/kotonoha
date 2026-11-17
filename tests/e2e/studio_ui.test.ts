@@ -147,3 +147,51 @@ test("ADR-0140: 役割のあるアプリでは、確かめるで役割を書か�
   }
   assert.match(out, /✗ 次郎が 予約する\(回, 1\) → 成功.*役割を書かない人は、どの役割にも書いていない権限だけを持ちます/);
 });
+
+test("空でもよくすると、外した確認の失敗を確かめていた行は「→ 成功」にそろう(第 13 回評価)", async () => {
+  const d4 = join(tmp("studio-optional"), "受付");
+  execFileSync(KOTO, ["init", d4], { stdio: "pipe" });
+  writeFileSync(
+    join(d4, "src/app.koto"),
+    [
+      "アプリ「受付」",
+      "",
+      "列挙 要望の失敗:",
+      "    内容が空",
+      "",
+      "データ 要望:",
+      "    ID: 識別子",
+      "    内容: 文字列",
+      "",
+      "動作 要望を出す(内容: 文字列) -> 結果<識別子, 要望の失敗>:",
+      '    内容 != "" を確認 または 失敗("内容が空")',
+      "    要望を登録(内容: 内容) を返す",
+      "",
+      "画面 要望一覧:",
+      "    要望を一覧表示",
+      "",
+      "約束:",
+      "    要望は誰でも閲覧可",
+      "",
+      "確かめる 要望の確かめ:",
+      '    花子が 要望を出す("") → 失敗("内容が空")',
+      "",
+    ].join("\n"),
+  );
+  writeFileSync(join(d4, "seed.json"), "{}");
+  const port = await freePort();
+  const u4 = `http://127.0.0.1:${port}`;
+  const p4 = spawn(KOTO, ["-C", d4, "studio", "--port", String(port)], { stdio: ["ignore", "pipe", "pipe"] });
+  try {
+    await waitHttp(u4 + "/", 60000);
+    const token = /name="studio-token" content="([0-9a-f]+)"/.exec(await (await fetch(u4 + "/")).text())![1];
+    const r: any = await (await fetch(u4 + "/api/instruct", { method: "POST", headers: { "Content-Type": "application/json", "X-Studio-Token": token }, body: JSON.stringify({ text: "「内容」を空でもよいにする" }) })).json();
+    assert.equal(r.result?.ok, true, JSON.stringify(r));
+    const s4 = readFileSync(join(d4, "src/app.koto"), "utf8");
+    assert.doesNotMatch(s4, /内容 != ""/);
+    assert.match(s4, /花子が 要望を出す\(""\) → 成功/);
+    assert.equal(r.outline.ok, true, JSON.stringify(r.outline.diagnostics));
+  } finally {
+    p4.kill();
+  }
+});
