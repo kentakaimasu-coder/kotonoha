@@ -1593,6 +1593,11 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     let mm = new RegExp(`^(?:役割)?「?(.+?)」?に(.+?)の((?:${V})(?:(?:と|、|・)(?:${V}))*)(?:の権限)?を?(?:許可|与え|許)(?:する|る|す)?$`).exec(text);
     let caps: string[] = [];
     if (mm && role(mm[1]) && decl(o, "data", mm[2].trim())) caps = [...new Set(mm[3].split(/と|、|・/).map((v) => `${mm![2].trim()}.${CAP[v]}`))];
+    // 「先生にすべてのデータの登録を許可する」: データごとに書かなくてよい(許可の文を何回も書いた。第 16 回評価)
+    if (!caps.length && mm && role(mm[1]) && /^(?:すべて|全て|全部|全)(?:の(?:データ)?)?$/.test(mm[2].trim())) {
+      const all = (o.decls ?? []).filter((d: any) => d.kind === "data").map((d: any) => d.name);
+      caps = [...new Set(all.flatMap((dn: string) => mm![3].split(/と|、|・/).map((v) => `${dn}.${CAP[v]}`)))];
+    }
     if (!caps.length && (mm = /^(?:役割)?「?(.+?)」?(?:は|が)(.+?)を(見|閲覧|作成|登録|追加|更新|変更|削除)(?:でき|られ)る(?:ように(?:する|したい))?$/.exec(text)) && role(mm[1]) && decl(o, "data", mm[2].trim()))
       caps = [`${mm[2].trim()}.${CAP[mm[3] === "見" ? "見る" : mm[3]]}`];
     if (!caps.length && (mm = /^(?:役割)?「?(.+?)」?に(?:動作)?「(.+?)」を(?:許可|許)(?:する|す)?$/.exec(text)) && role(mm[1]) && decl(o, "action", mm[2].trim())) caps = [`動作.${mm[2].trim()}`];

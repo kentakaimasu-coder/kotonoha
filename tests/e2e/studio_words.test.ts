@@ -235,3 +235,9 @@ test("「予約」を「内見予約」に変えても、アプリの名前や�
   assert.doesNotMatch(src(), /内見内見/);
   assert.match(src(), /データ 内見取り置き:/);
 });
+
+test("「受付係にすべてのデータの登録と更新を許可する」: データごとに書かなくてよい", async () => {
+  await ok("受付係にすべてのデータの登録と更新を許可する");
+  const line = /役割 受付係:\n    権限 = \[([^\]]*)\]/.exec(src())![1];
+  for (const c of ["枠.作成", "枠.更新", "品書き.作成", "品書き.更新"]) assert.ok(line.includes(c), line);
+});
