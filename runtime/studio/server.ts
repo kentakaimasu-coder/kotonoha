@@ -255,7 +255,9 @@ function renameDecl(o: any, from: string, to: string): string {
   const d = (o.decls ?? []).find((x: any) => x.name === from && ["data", "screen", "action", "role", "enum", "scenario"].includes(x.kind));
   if (!d) throw new Error(`「${from}」という名前のデータ・画面・動作・役割・列挙はありません`);
   okName(to, "新しい名前");
-  if ((o.decls ?? []).some((x: any) => x.name === to)) throw new Error(`「${to}」は既にあります`);
+  // アプリの名前と同じでもよい(「お迎え連絡」アプリのデータを「お迎え連絡」にできなかった。第 16 回評価)
+  const dup = (o.decls ?? []).find((x: any) => x.name === to && x.kind !== "app");
+  if (dup) throw new Error(`「${to}」は既にあります(${({ data: "データ", screen: "画面", action: "動作", role: "役割", enum: "列挙", scenario: "確かめる", analysis: "集計" } as any)[dup.kind] ?? ""}の名前)。別の名前にします`);
   // 直後がひらがな(助詞を除く)なら変えない(「問い合わせる」→「お迎え連絡る」になった。第 6 回評価)
   const re = new RegExp(reEsc(from) + "(?!(?![をのはがにでとへかもや])[ぁ-ゖ])", "g");
   for (const f of srcFiles(o)) {
@@ -1504,8 +1506,18 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     }
     if ((o.decls ?? []).some((x: any) => x.name === from)) {
       const wasAction = !!decl(o, "action", from);
+      const wasData = !!decl(o, "data", from);
       renameDecl(o, from, to);
       renamedWords.unshift([from, to]);
+      // データの名前を変えたら、「予約する」のような「データ名+する」の動作も「取り置きする」にそろえる(「予約する」が残った。第 16 回評価)
+      if (wasData) {
+        const o2 = outline();
+        if (decl(o2, "action", `${from}する`) && !(o2.decls ?? []).some((x: any) => x.name === `${to}する`)) {
+          renameDecl(o2, `${from}する`, `${to}する`);
+          renamedWords.unshift([`${from}する`, `${to}する`]);
+          note += `(動作「${from}する」も「${to}する」にしました)`;
+        }
+      }
       // 動作の名前を変えたら、その動作を呼ぶボタンの文字の中の古い名前もそろえる(「1個入庫」のまま残った。第 11 回評価)
       if (wasAction) {
         for (const f of srcFiles(o)) {
