@@ -1629,6 +1629,15 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
           else if (t === "日時" && /^(貸出|借用|借りた|貸し出し)(日時|時刻)$/.test(g.name)) extra.push(`件.${g.name} = 現在日時()`);
         }
       }
+      // 取り消す値(取消・キャンセル)にするときは、親の予約数を戻す(「「取り消す」で予約の状態を「取消」にする」で
+      //   予約数が戻らなかった。第 13 回評価で 3 人)。「…を取り消せるようにしたい」と同じ決め方
+      if (/取消|取り消し|キャンセル/.test(v)) {
+        const parent = D.fields.map((x: any) => x.name).find((n: string) => n.endsWith("ID") && n !== "ID" && decl(o, "data", n.slice(0, -2)));
+        const P = parent && decl(o, "data", parent.slice(0, -2));
+        const cnt = P?.fields.find((x: any) => /(予約数|申込数|人数の合計|使用数|貸出数|参加数|受付数)$/.test(x.name))?.name;
+        const qty = D.fields.find((x: any) => /^(人数|数量|数|個数|台数|冊数|段数)$/.test(x.name))?.name;
+        if (P && cnt && qty) extra.push(`親 = ${P.name}を取得(件.${parent})`, `親.${cnt} = 親.${cnt} - 件.${qty}`);
+      }
       return [`件 = ${dn}を取得(${dn}ID)`, `件.${fn} = ${lit}`, ...extra, `${dn}ID を返す`];
     }, seqWhen(o, dn, fn, v));
   }
