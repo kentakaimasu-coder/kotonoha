@@ -105,7 +105,7 @@ function renderStatus() {
   const st = $("status");
   // 確かめるが ✗ のときは、検査に合格でもそう出す(「✓ 検査に合格」のままで迷った。第 7 回評価)
   const ng = errs === 0 && S.checks?.ok === false ? (S.checks.lines ?? []).filter((l) => l.trim().startsWith("✗")).length : 0;
-  st.textContent = errs > 0 ? `✗ 問題 ${errs} 件` : ng > 0 ? `✓ 検査に合格・確かめる ✗ ${ng} 件` : "✓ 検査に合格";
+  st.textContent = errs > 0 ? `✗ 問題 ${errs} 件` : ng > 0 ? `✗ 確かめる ${ng} 件が期待と違う(検査は合格)` : "✓ 検査に合格";
   st.className = "pill " + (errs > 0 ? "err" : ng > 0 ? "warn" : "ok");
 }
 
