@@ -994,9 +994,15 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     const so = /^(.+?)(?:のうち(.+?)のもの)?を「?([^「」\s]+?)」?(?:の|が)?(早い|近い|古い|小さい|少ない|安い|昇|新しい|遅い|大きい|多い|高い|降)?順(?:番)?に(?:並べる|並べたい|並べ替える|並べかえる|並べて|する|したい)$/.exec(text);
     const D = so && decl(o, "data", so[1].trim());
     const F = D && D.fields.find((x: any) => x.name === so![3].trim());
-    if (D && F) {
+    // 「レッスン順」: ほかのデータを指す項目は「レッスンID」(項目「レッスン」は無いと出た。第 14 回評価)
+    const lo = /^(.+?)(?:のうち(.+?)のもの)?を([^「」\s]+?)(の新しい)?順に一覧表示$/.exec(text);
+    const LD = lo && decl(o, "data", lo[1].trim());
+    if (LD && !LD.fields.some((x: any) => x.name === lo![3]) && LD.fields.some((x: any) => x.name === `${lo![3]}ID`))
+      text = `${LD.name}${lo![2] ? `のうち${lo![2]}のもの` : ""}を${lo![3]}ID${lo![4] ?? ""}順に一覧表示`;
+    const F2 = D && !F ? D.fields.find((x: any) => x.name === `${so![3].trim()}ID`) : null;
+    if (D && (F || F2)) {
       const desc = /^(新しい|遅い|大きい|多い|高い|降)$/.test(so![4] ?? "");
-      text = `${D.name}${so![2] ? `のうち${so![2]}のもの` : ""}を${F.name}${desc ? "の新しい" : ""}順に一覧表示`;
+      text = `${D.name}${so![2] ? `のうち${so![2]}のもの` : ""}を${(F ?? F2).name}${desc ? "の新しい" : ""}順に一覧表示`;
     }
   }
   // 「イベント一覧に会場別の予約状況を表示」: 画面の名前が書いてあれば、その画面に集計を出す(どの画面かを聞かれ、選ぶと読めなかった。第 14 回評価)
@@ -1299,8 +1305,30 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
             });
         }
       }
+      // 選択肢の型にしたとき、登録の行に書いてある値が選択肢に無ければ、最初の値にそろえる
+      // (登録で「状態: "貸出可"」が入っていて「貸出の「状態」を「返却状況」にする」が通らなかった。第 14 回評価)
+      let fixedNote = "";
+      const ev: string[] | undefined = o.enums?.[t.replace(/^選択<(.+)>$/, "$1")];
+      if (ev?.length) {
+        for (const a of (outline().decls ?? []).filter((x: any) => x.kind === "action")) {
+          const al = lines(a.file);
+          let hit = false;
+          for (let k = a.line; k < a.end; k++) {
+            const at0 = (al[k] ?? "").indexOf(`${D.name}を登録(`);
+            if (at0 < 0) continue;
+            const re = new RegExp(`([(,]\\s*${reEsc(fn)}\\s*:\\s*)"([^"]*)"`);
+            const mm = re.exec(al[k].slice(at0));
+            if (mm && !ev.includes(mm[2])) {
+              al[k] = al[k].slice(0, at0) + al[k].slice(at0).replace(re, `$1"${ev[0]}"`);
+              fixedNote = `。動作「${a.name}」で入れる値「${mm[2]}」は選択肢に無いので「${ev[0]}」にしました`;
+              hit = true;
+            }
+          }
+          if (hit) write(a.file, al.join("\n"));
+        }
+      }
       convertSeed(o, D.name, fn, t);
-      return changed(o, `「${D.name}」の「${fn}」を ${t} にしました`);
+      return changed(o, `「${D.name}」の「${fn}」を ${t} にしました${fixedNote}`);
     }
   }
   // 名前を変える(第 5 回評価: ひな形の「枠」を自分の言葉にする方法が無かった)

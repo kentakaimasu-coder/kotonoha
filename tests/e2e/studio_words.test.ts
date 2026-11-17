@@ -3,7 +3,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { KOTO, tmp, freePort, waitHttp } from "./helpers.ts";
 
@@ -47,6 +47,9 @@ test("評価で読めなかった言い方が通り、検査が ✗ にならな
   await ok("枠を定員が多い順に並べたい");
   assert.match(src(), /\n    枠を定員の新しい順に一覧表示\n/);
   assert.doesNotMatch(src(), /\n    枠を開始日時順に一覧表示\n/);
+  // 「レッスン順」のように、ほかのデータを指す項目は ID を付けずに書いてもよい
+  await ok("予約のうち予約者が本人のものを枠順に一覧表示", { screen: "自分の予約" });
+  assert.match(src(), /\n    予約のうち予約者が本人のものを枠ID順に一覧表示\n/);
   // 画面の名前を書いて集計を出す
   const r = await ok("分析「枠別」を作る(枠の定員を名前ごとに合計)");
   assert.match(r.done, /「枠一覧に枠別を表示」/);
@@ -82,4 +85,17 @@ test("「「取り消す」で予約の状態を「取消」にする」: 2 回�
   assert.match(r.done, /予約\.更新 が無いので/);
   assert.match(src(), /動作 取り消す\(予約ID: 識別子\) -> 結果<識別子, 予約失敗>:\n    件 = 予約を取得\(予約ID\)\n    件\.状態 != "取消" を確認 または 失敗\("取消済み"\)\n    件\.状態 = "取消"\n    親 = 枠を取得\(件\.枠ID\)\n    親\.予約数 = 親\.予約数 - 件\.人数\n/);
   assert.match(src(), /予約の状態が取消でないとき「取り消す」を押すと 取り消す\(予約\.ID\)/);
+});
+
+test("項目を選択肢の型にすると、登録の行の値が選択肢に無ければ最初の値にそろえる", async () => {
+  // 登録で文字の値を入れている項目(自動で作った登録の行と同じ形)
+  const s0 = src()
+    .replace(/(データ 予約:\n(?:    .+\n)*?    予約日時: 日時\n)/, "$1    区分: 文字列\n")
+    .replace(/予約を登録\((.*)\) を返す/, '予約を登録($1, 区分: "一般") を返す');
+  assert.match(s0, /区分: "一般"/);
+  writeFileSync(join(dir, "src/app.koto"), s0);
+  await ok("列挙「予約区分」を作る(通常、団体)");
+  const r = await ok("予約の「区分」を「予約区分」にする");
+  assert.match(r.done, /「一般」は選択肢に無いので「通常」にしました/);
+  assert.match(src(), /区分: "通常"\) を返す/);
 });
