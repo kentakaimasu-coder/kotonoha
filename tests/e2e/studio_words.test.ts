@@ -262,3 +262,4 @@ test("詳細の画面に表示する項目を増やすと、前の表示の行�
   assert.match(r.done, /置き換えました/);
   assert.equal((src().match(/\n    枠の[^\n]*を表示\n/g) ?? []).length, 1);
 });
+

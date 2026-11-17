@@ -929,8 +929,15 @@ function apply(op: Op): { file: string; line: number } | null {
       if (!a) throw new Error(`動作「${op.action}」が見つかりません`);
       const name = okName(op.name, "受け取る値の名前");
       if ((a.params ?? []).some((p: any) => p.name === name)) throw new Error(`動作「${a.name}」は既に「${name}」を受け取ります`);
-      const t = op.type ? okType(op.type, o) : guessType(name, o);
+      let t = op.type ? okType(op.type, o) : guessType(name, o);
       const al = lines(a.file);
+      // 登録するデータの同じ名前の項目が空でもよい項目なら、受け取る値も空でもよい(フォームで必須のままだった。第 16 回評価)
+      for (let k = a.line; k < a.end; k++) {
+        const mm = /([^\s(=]+)を登録\(/.exec(al[k] ?? "");
+        const f = mm && decl(o, "data", mm[1])?.fields.find((x: any) => x.name === name);
+        if (f && /^選択</.test(f.type)) t = f.type;
+        else if (f && !op.type) t = f.type;
+      }
       al[a.line - 1] = addParam(al[a.line - 1], `${name}: ${t}`);
       // 登録しているデータに同じ名前の項目があれば、登録にも入れる
       for (let k = a.line; k < a.end; k++) {
