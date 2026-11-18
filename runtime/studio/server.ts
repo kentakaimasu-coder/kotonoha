@@ -1538,6 +1538,25 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
           if (hit) write(a.file, al.join("\n"));
         }
       }
+      // 識別子でなくした項目に「本人」を入れていた登録は、入力欄にする(「担当」を文字列にすると「型が一致しません」で断られた。第 17・18 回評価)
+      if (!/識別子/.test(t)) {
+        for (const an of (outline().decls ?? []).filter((x: any) => x.kind === "action").map((x: any) => x.name)) {
+          const a = decl(outline(), "action", an);
+          const al = lines(a.file);
+          const re = new RegExp(`([(,]\\s*${reEsc(fn)}\\s*:\\s*)本人(?=\\s*[,)])`);
+          let hit = false;
+          for (let k = a.line; k < a.end; k++) {
+            if ((al[k] ?? "").includes(`${D.name}を登録(`) && re.test(al[k])) {
+              al[k] = al[k].replace(re, `$1${fn}`);
+              hit = true;
+            }
+          }
+          if (!hit) continue;
+          write(a.file, al.join("\n"));
+          if (!(a.params ?? []).some((p: any) => p.name === fn)) apply({ op: "add_param", action: an, name: fn, type: t });
+          fixedNote += `。動作「${an}」では「${fn}」を入力する欄にしました(前はログインした本人が自動で入っていました)`;
+        }
+      }
       convertSeed(o, D.name, fn, t);
       return changed(o, `「${D.name}」の「${fn}」を ${t} にしました${fixedNote}`);
     }
@@ -2715,6 +2734,8 @@ function changed(before: any, done: string): any {
   return { ok: false, errors: added.slice(0, 3).map((d: any) => ({ code: d.code, message: `${d.file}:${d.span?.line} ${d.message_ja}`, hints: d.hints ?? [] })), suggestions: [] };
 }
 /** 登録のときに自動で入れる値(操作をした人 → 本人、登録日時 → 現在日時()、状況 → 最初の値)。無ければ null */
+/** お店・先生の側の役割らしい名前 */
+const STAFF_ROLE = /(係|店長|店員|スタッフ|先生|講師|管理|主催|指導|監督|院長|会計|役員|運営|ガイド|厨房|部長|編集|事務|職員|担当者?|オーナー|社長|医師|トレーナー|窯係)$/;
 /** 登録した順に振る通し番号の項目の名前 */
 const NUMBER_FIELD = /^(番号|通し番号|整理番号|受付番号|整理券番号|呼出番号|呼び出し番号)$/;
 function autoValue(o: any, name: string, type: string): string | null {
@@ -2808,7 +2829,9 @@ function actionTemplate(o: any, text: string, act: string, dn: string, body: (D:
   const at = apply({ op: "add_action", name: act, params: [{ name: `${dn}ID`, type: "識別子" }], body: body(D), ...(fail ? { fail } : {}) });
   // 役割の人に D.更新 が無ければボタンが出ないので知らせる(取消ボタンが出ず、理由が分からなかった。第 14 回評価)
   const lack = (outline().decls ?? []).filter((d: any) => d.kind === "role" && !(d.caps ?? []).includes(`${dn}.更新`)).map((d: any) => d.name);
-  const capNote = lack.length ? `。役割「${lack.join("・")}」の人には ${dn}.更新 が無いので、このボタンが出ません。「${lack[0]}に${dn}の更新を許可する」と書くと出ます` : "";
+  // 状態を進めるボタンはお店・先生の側が使うことが多い。勧める役割はスタッフらしい名前を先に(お客さんの役割を勧められて迷った。第 18 回評価)
+  const staff = lack.find((r: string) => STAFF_ROLE.test(r)) ?? lack[0];
+  const capNote = lack.length ? `。役割「${lack.join("・")}」の人には ${dn}.更新 が無いので、このボタンが出ません。押せるようにする役割に「${staff}に${dn}の更新を許可する」のように書くと出ます(お客さんの役割には付けない)` : "";
   // 詳細画面(「D の…を表示」がある画面)にボタンを出す。無ければ作る
   const ds = detailScreen(dn);
   const detail = ds?.d;
