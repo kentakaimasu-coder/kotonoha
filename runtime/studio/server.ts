@@ -271,7 +271,8 @@ function renameDecl(o: any, from: string, to: string): string {
   // 新しい名前が古い名前を含むとき(「予約」→「内見予約」)、もう新しい名前になっている所は変えない(「内見内見予約」になった。第 16 回評価)
   const pre = to.endsWith(from) && to !== from ? `(?<!${reEsc(to.slice(0, to.length - from.length))})` : "";
   const post = to.startsWith(from) && to !== from ? `(?!${reEsc(to.slice(from.length))})` : "";
-  const re = new RegExp(pre + reEsc(from) + post + "(?!(?![をのはがにでとへかもや])[ぁ-ゖ])", "g");
+  // 「受付係だけ」「受付係から」の「だけ」「から」も助詞として扱う(「この画面は受付係だけ」が変わらず失敗した。第 18 回評価)
+  const re = new RegExp(pre + reEsc(from) + post + "(?!(?!(?:だけ|から|まで|より|ごと|など|として|ずつ|しか|[をのはがにでとへかもや]))[ぁ-ゖ])", "g");
   for (const f of srcFiles(o)) {
     const t = read(f);
     // 注釈(# …)の行も古い名前をそろえる(説明書きに「受付係」が残って迷った。第 10・12 回評価)。
@@ -2864,7 +2865,9 @@ function registration(o: any, ctx: { screen?: string }, text: string, D: any, ac
   for (const f of D.fields.filter((x: any) => x.name !== "ID")) {
     // 本人を自動で入れるのは、その操作をした人を表す名前の項目だけ(担当者・割当先は入力にする。第 7 回評価)
     // 番号・整理番号は通し番号(登録した順に 1, 2, 3…。第 17 回評価)
-    const auto = NUMBER_FIELD.test(f.name) && f.type === "整数" ? `件数(${D.name}の一覧()) + 1` : autoValue(o, f.name, f.type);
+    // 割当・当番・シフトのように「人に割り当てる」データでは、担当者は登録した本人ではなく選ぶ(職員本人に固定された。第 18 回評価)
+    const assign = /(割当|割り当て|当番|シフト|配置|配車|担当表)/.test(D.name) && /^(担当|担当者|営業担当)$/.test(f.name);
+    const auto = NUMBER_FIELD.test(f.name) && f.type === "整数" ? `件数(${D.name}の一覧()) + 1` : assign ? null : autoValue(o, f.name, f.type);
     if (auto && !(only ?? []).includes(f.name)) args.push(`${f.name}: ${auto}`);
     else if (!only || only.includes(f.name) || !/^選択</.test(f.type)) {
       params.push({ name: f.name, type: f.type });
