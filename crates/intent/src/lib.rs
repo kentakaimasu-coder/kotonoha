@@ -726,7 +726,8 @@ impl Ctx<'_> {
                         return Match::NoMatch(vec![format!("「{d}」はデータとして定義されていません。どのデータの重複を防ぎますか")]);
                     };
                     let mut fields: Vec<String> = Vec::new();
-                    for f in fs.split('と') {
+                    let split = split_known(fs, &|p| info.field(p).is_some()).unwrap_or_else(|| fs.split('と').map(String::from).collect());
+                    for f in split.iter().map(String::as_str) {
                         match info.field(f) {
                             None => return Match::Invalid(Diagnostic::error(Code::REF001, span, format!("データ `{d}` にフィールド `{f}` はありません"))),
                             Some(
@@ -1047,10 +1048,8 @@ impl Ctx<'_> {
             if let Some((d, fields_text)) = self.split_data_prefix(x) {
                 let info = &self.env.data[d];
                 let parts: Vec<&str> = fields_text.split('と').collect();
-                let fields: Vec<String> = if parts.iter().all(|p| info.shown(p).is_some()) {
-                    parts.iter().map(|p| p.to_string()).collect()
-                } else if info.shown(fields_text).is_some() {
-                    vec![fields_text.to_string()]
+                let fields: Vec<String> = if let Some(v) = split_known(fields_text, &|p| info.shown(p).is_some()) {
+                    v
                 } else {
                     let unknown: Vec<&str> = parts.iter().copied().filter(|p| info.shown(p).is_none()).collect();
                     return Match::Invalid(
@@ -1372,7 +1371,8 @@ impl Ctx<'_> {
             None => info.fields.iter().filter(|(n, t)| n != by && numeric(t)).map(|(n, _)| n.clone()).collect(),
             Some(text) => {
                 let mut v = Vec::new();
-                for f in text.split('と') {
+                let split = split_known(text, &|p| info.field(p).is_some()).unwrap_or_else(|| text.split('と').map(String::from).collect());
+                for f in split.iter().map(String::as_str) {
                     match info.field(f) {
                         None => {
                             return Some(Match::Invalid(Diagnostic::error(
@@ -1588,6 +1588,28 @@ impl Ctx<'_> {
             }
         }
     }
+}
+
+/// 「AとBとC」を、実際にある名前(`known`)で切る。名前の中に「と」があってもよい(「ひとり分」「色とサイズ」)。
+/// 切り方が無ければ None。切り方が複数あるときは、前から長い名前を優先する
+fn split_known(text: &str, known: &dyn Fn(&str) -> bool) -> Option<Vec<String>> {
+    if known(text) {
+        return Some(vec![text.to_string()]);
+    }
+    // 「と」の位置(バイト)を後ろから試す: 前の部分を長く取る
+    let cuts: Vec<usize> = text.match_indices('と').map(|(i, _)| i).collect();
+    for &i in cuts.iter().rev() {
+        let (head, tail) = (&text[..i], &text[i + 'と'.len_utf8()..]);
+        if head.is_empty() || tail.is_empty() || !known(head) {
+            continue;
+        }
+        if let Some(mut rest) = split_known(tail, known) {
+            let mut v = vec![head.to_string()];
+            v.append(&mut rest);
+            return Some(v);
+        }
+    }
+    None
 }
 
 #[cfg(test)]

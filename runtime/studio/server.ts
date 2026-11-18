@@ -114,6 +114,8 @@ function okName(s: string, what: string): string {
   const t = (s ?? "").trim();
   // 数字で始まる名前は書けない(「1日の数」が「厳密層」の分かりにくい誤りになった。第 5 回評価)
   if (/^[0-9０-９]/.test(t)) throw new Error(`${what}「${t}」は数字で始められません(例: 「一日の数」「1日の数」→「日ごとの数」)`);
+  // 「・」は値や役割を並べる区切りに使うので、名前には使えない(「色・サイズ」が分かりにくい誤りになった。第 17 回評価)
+  if (/[・･]/.test(t)) throw new Error(`${what}「${t}」に「・」は使えません(並べる区切りに使うため)。「${t.replace(/[・･]/g, "")}」のようにつなげるか、「${t.split(/[・･]/)[0]}」と「${t.split(/[・･]/).slice(1).join("")}」の 2 つに分けます`);
   if (!NAME.test(t)) throw new Error(`${what}「${t}」は使えません(空白や記号を含まない名前にします)`);
   return t;
 }

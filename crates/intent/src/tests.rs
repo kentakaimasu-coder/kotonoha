@@ -344,3 +344,17 @@ fn repeated_filters_on_the_same_field_get_distinct_keys() {
         vec![("ne.状態".to_string(), "案内済".to_string()), ("ne.状態#2".to_string(), "取消".to_string())]
     );
 }
+
+#[test]
+fn split_known_allows_to_inside_names() {
+    let names = ["名前", "色とサイズ", "ひとり分", "定員"];
+    let known = |p: &str| names.contains(&p);
+    assert_eq!(
+        super::split_known("名前と色とサイズと定員", &known),
+        Some(vec!["名前".into(), "色とサイズ".into(), "定員".into()])
+    );
+    assert_eq!(super::split_known("ひとり分と定員", &known), Some(vec!["ひとり分".into(), "定員".into()]));
+    assert_eq!(super::split_known("名前と無い項目", &known), None);
+    // 「と」が無い 1 語
+    assert_eq!(super::split_known("定員", &known), Some(vec!["定員".into()]));
+}
