@@ -176,3 +176,4 @@ pre.code { background: var(--surface-2); border: 1px solid var(--line); padding:
 .line .plain { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .line .plain > span:first-child { font-weight: 600; }
 .line .plain code.raw { font-size: 0.78rem; color: var(--muted); background: none; padding: 0; white-space: normal; word-break: break-all; }
+.publish-detail summary{cursor:pointer;min-height:44px;display:flex;align-items:center;color:var(--muted);font-weight:600}

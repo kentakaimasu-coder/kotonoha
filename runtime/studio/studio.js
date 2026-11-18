@@ -181,7 +181,22 @@ function renderRun() {
     ),
   );
   $("seed-table").replaceChildren(table);
-  $("publish-check").textContent = S.published || "";
+  // 公開の点検の後半(JWT・CSRF・API ごとの範囲)は詳しい人向けなので畳んでおく(第 17 回評価で 26 人が「読めない」)
+  // 見出しの「#」やコードの「```」をそのまま出さない(記号が混じって読みにくかった。第 18 回評価)
+  const pub = (S.published || "")
+    .split("\n")
+    .filter((l) => !/^```/.test(l))
+    .map((l) => l.replace(/^#{1,6}\s*/, "■ "))
+    .join("\n");
+  const cut = pub.indexOf("■ 自動で入っている安全対策");
+  $("publish-check").replaceChildren(
+    ...(pub
+      ? [
+          el("pre", { class: "publish-check" }, cut >= 0 ? pub.slice(0, cut).trimEnd() : pub),
+          cut >= 0 ? el("details", { class: "publish-detail" }, el("summary", {}, "詳しい人向け: 自動で入っている安全対策と、API ごとの公開範囲(読まなくても公開できます)"), el("pre", { class: "publish-check" }, pub.slice(cut))) : null,
+        ]
+      : []),
+  );
 }
 $("seed-data").addEventListener("change", (e) => {
   seedSel = e.target.value;
@@ -250,6 +265,8 @@ $("seed-paste-apply").addEventListener("click", async () => {
     if (!r.error) {
       $("seed-paste").value = "";
       seedRows = null;
+      // 入れた初期データを読み直してから表を描く(古い表のまま「初期データを保存する」を押すと、空の行で上書きされた。第 18 回評価)
+      S = await (await fetch("/api/state")).json();
       renderRun();
     }
     return;

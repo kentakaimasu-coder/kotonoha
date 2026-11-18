@@ -1160,6 +1160,15 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       text = `${sa[2].trim()}を表示`;
     } else if (sa && decl(o, "analysis", sa[2].trim()) && ctx.screen) text = `${sa[2].trim()}を表示`;
   }
+  // 「おやつ当番一覧のおやつ当番を日付順に一覧表示」: 画面の名前+「の」から書いた画面の文(読めず、ソースを直した。第 18 回評価)
+  {
+    const scr = (o.decls ?? []).filter((d: any) => d.kind === "screen").map((d: any) => d.name).sort((a: string, b: string) => b.length - a.length);
+    const hit = scr.find((n: string) => text.startsWith(`${n}の`) && /(一覧表示|を表示)$/.test(text) && decl(o, "data", text.slice(n.length + 1).split(/のうち|を|の/)[0]));
+    if (hit) {
+      ctx = { ...ctx, screen: hit };
+      text = text.slice(hit.length + 1);
+    }
+  }
   // 「商談一覧に商談の見込み金額を状況ごとに合計を表示」: 画面の名前と集計の文(読めず、ソースで行を移した。第 17 回評価)
   {
     const ag = /^(?:(?:画面)?「?([^「」]+?)」?に)?(.+?ごとに(?:合計|集計))(?:を|して)?(?:表示|出す|出したい|表示したい|載せる)?(?:する)?$/.exec(text);
