@@ -286,3 +286,14 @@ test("第 17 回評価の言い方: 最初に出る画面・主催者だけの�
   assert.match(JSON.stringify(j), /項目「症状メモ」がありません.*並べられる項目/);
   assert.equal(src(), before);
 });
+
+test("集計を作るとき、選んでいた画面が 1 件を見る詳細の画面なら、そこには出さない", async () => {
+  const r = await ok("分析「名前別の定員」を作る(枠の定員を名前ごとに合計)", { screen: "枠詳細" });
+  assert.doesNotMatch(r.done, /画面「枠詳細」に出しました/);
+  assert.doesNotMatch(src(), /\n    名前別の定員を表示\n/);
+});
+
+test("「枠一覧に枠の定員を名前ごとに合計を表示」: 画面の名前と集計の文を一度に書ける", async () => {
+  await ok("枠一覧に枠の定員を名前ごとに合計を表示");
+  assert.match(src(), /画面 枠一覧:\n(    .+\n)*    枠の定員を名前ごとに合計\n/);
+});

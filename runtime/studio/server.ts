@@ -1129,6 +1129,14 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       text = `${sa[2].trim()}を表示`;
     } else if (sa && decl(o, "analysis", sa[2].trim()) && ctx.screen) text = `${sa[2].trim()}を表示`;
   }
+  // 「商談一覧に商談の見込み金額を状況ごとに合計を表示」: 画面の名前と集計の文(読めず、ソースで行を移した。第 17 回評価)
+  {
+    const ag = /^(?:(?:画面)?「?([^「」]+?)」?に)?(.+?ごとに(?:合計|集計))(?:を|して)?(?:表示|出す|出したい|表示したい|載せる)?(?:する)?$/.exec(text);
+    if (ag && ag[1] && decl(o, "screen", ag[1].trim())) {
+      ctx = { ...ctx, screen: ag[1].trim() };
+      text = ag[2].trim();
+    } else if (ag && !ag[1] && text !== ag[2]) text = ag[2].trim();
+  }
   // Excel の表(タブ区切りの何行か)を指示の欄に貼ったとき: 初期データの貼り付け欄を案内する(第 9 回評価)
   if (text0.includes("\t") && text0.trim().split("\n").length >= 2) {
     const head = text0.trim().split("\n")[0].split("\t").map((x) => x.trim());
@@ -1349,7 +1357,10 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     }
     if ((o.decls ?? []).some((x: any) => x.name === an)) throw new Error(`「${an}」は既にあります`);
     const at = addDecl(o, ["action", "data"], [`分析 ${an}() -> 一覧<記録{${cols.map(([n, t]) => `${n}: ${t}`).join(", ")}}>:`, `    集計 = "${sentence}"`]);
-    const sc = (ctx.screen && decl(outline(), "screen", ctx.screen)) || null;
+    // 選んでいた画面に出す。ただし 1 件を見る詳細の画面には出さない(集計を作ると詳細の画面に勝手に入った。第 17 回評価)
+    const sc0 = (ctx.screen && decl(outline(), "screen", ctx.screen)) || null;
+    const body0 = sc0 ? lines(sc0.file).slice(sc0.line, sc0.end) : [];
+    const sc = sc0 && !body0.some((l) => /\.ID[,)]/.test(l) || /^\s+\S+の[^\s「」]+を表示$/.test(l)) ? sc0 : null;
     if (sc) apply({ op: "add_line", kind: "screen", name: sc.name, text: `${an}を表示` });
     return checked(at, `分析「${an}」を作りました(列: ${cols.map((c) => c[0]).join("・")})${sc ? `。画面「${sc.name}」に出しました` : `。「${(o.decls ?? []).find((d: any) => d.kind === "screen")?.name ?? "画面の名前"}に${an}を表示」と書くと画面に出ます`}`, o, text);
   }
