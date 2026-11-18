@@ -1169,6 +1169,22 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       text = text.slice(hit.length + 1);
     }
   }
+  // 「月謝を月ごとに一覧表示」: 並べたいのか、まとめたいのかで書き方が違う。両方を案内する(読めず、画面ごと消してやり直した。第 18 回評価)
+  {
+    const gm = /^(.+?)を(.+?)ごとに(?:一覧表示|並べる|表示)$/.exec(text);
+    const GD = gm && decl(o, "data", gm[1].trim());
+    if (GD) {
+      const dn = GD.name;
+      const by = gm![2].trim();
+      const dateF = GD.fields.find((f: any) => /日付|日時/.test(f.type))?.name;
+      const unitF = GD.fields.find((f: any) => f.name === by)?.name;
+      throw new Error(
+        `「…ごとに一覧表示」は書けません。` +
+          `並べるなら「${dn}を${unitF ?? dateF ?? "項目"}の${unitF ? "" : "新しい"}順に一覧表示」、` +
+          `${by}ごとに件数や合計をまとめるなら「${dn}を${unitF ?? (dateF ? `${dateF}の月` : by)}ごとに集計」と書きます`,
+      );
+    }
+  }
   // 「商談一覧に商談の見込み金額を状況ごとに合計を表示」: 画面の名前と集計の文(読めず、ソースで行を移した。第 17 回評価)
   {
     const ag = /^(?:(?:画面)?「?([^「」]+?)」?に)?(.+?ごとに(?:合計|集計))(?:を|して)?(?:表示|出す|出したい|表示したい|載せる)?(?:する)?$/.exec(text);
