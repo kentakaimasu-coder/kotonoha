@@ -1104,6 +1104,18 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     if (LD && !LD.fields.some((x: any) => x.name === lo![3]) && LD.fields.some((x: any) => x.name === `${lo![3]}ID`))
       text = `${LD.name}${lo![2] ? `のうち${lo![2]}のもの` : ""}を${lo![3]}ID${lo![4] ?? ""}順に一覧表示`;
     const F2 = D && !F ? D.fields.find((x: any) => x.name === `${so![3].trim()}ID`) : null;
+    // データに無い項目で並べようとしたときは、壊れた行を入れずに、並べられる項目を案内する
+    // (予約を「開始日時」で並べようとして誤りになり、言い直しても直らなかった。第 17 回評価)
+    if (D && !F && !F2) {
+      const want = so![3].trim();
+      const owner = (o.decls ?? []).find((d: any) => d.kind === "data" && d.name !== D.name && d.fields.some((x: any) => x.name === want));
+      const via = owner && D.fields.find((x: any) => x.name === `${owner.name}ID`);
+      throw new Error(
+        `「${D.name}」には項目「${want}」がありません${owner ? `(「${want}」は「${owner.name}」の項目です)` : ""}。` +
+          `並べられる項目: ${D.fields.map((x: any) => x.name).join("、")}` +
+          (via ? `。「${D.name}を${owner.name}ID順に並べる」と書くと、${owner.name}ごとにまとまります` : ""),
+      );
+    }
     if (D && (F || F2)) {
       const desc = /^(新しい|遅い|大きい|多い|高い|降)$/.test(so![4] ?? "");
       text = `${D.name}${so![2] ? `のうち${so![2]}のもの` : ""}を${(F ?? F2).name}${desc ? "の新しい" : ""}順に一覧表示`;
@@ -1168,7 +1180,7 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   }
   // 画面を役割だけにする: この画面は店長だけ / 画面「管理」は店長だけ(上の欄では読めなかった。第 8 回評価)
   {
-    const mm = /^(?:画面「(.+?)」は|この画面は|(.+?)の画面は)「?(.+?)」?だけ(?:にする|が使える|が見られる)?$/.exec(text);
+    const mm = /^(?:画面「(.+?)」は|この画面は|(.+?)の画面は)「?(.+?)」?だけ(?:にする|にしたい|が使える|が見られる|のメニューにする|のメニューにしたい|のメニュー|に見せる|に出す|に表示する)?$/.exec(text);
     if (mm) {
       // 画面を選んでいないときの「この画面は…」は、今作った画面にする(作った画面が候補に出ず迷った。第 14 回評価)
       const sname = (mm[1] ?? mm[2])?.trim() ?? ctx.screen ?? (lastScreen && decl(o, "screen", lastScreen) ? lastScreen : undefined);
@@ -1275,7 +1287,7 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     return checked(at, `動作「${acts[0].name}」で、${fld}が${n}${cmp}なら「${val}」で止めるようにしました`, o, text);
   }
   // 最初に出る画面: 「最初の画面を「順番待ち」にする」(画面の宣言の順で、いちばん前の画面が最初に出る。分からなかった。第 12 回評価)
-  if ((m = cmd(/^(?:アプリを開いたときの|開いたときの)?(?:最初|はじめ|トップ)(?:に出る|の)?画面を「?(.+?)」?に(?:する|変える)$/.exec(text)))) {
+  if ((m = cmd(/^(?:(?:アプリを)?開いたとき[にの]?)?(?:最初|はじめ|トップ|一番最初|いちばん最初)(?:に(?:出る|出す|表示する|表示される|開く)|の)?画面を「?(.+?)」?(?:の画面)?に(?:する|変える|したい)$/.exec(text)))) {
     const sc = decl(o, "screen", m[1].trim());
     if (!sc) throw new Error(`画面「${m[1].trim()}」はありません(画面: ${(o.decls ?? []).filter((d: any) => d.kind === "screen").map((d: any) => d.name).join("、")})`);
     const first = (o.decls ?? []).filter((d: any) => d.kind === "screen" && d.file === sc.file).sort((a: any, b: any) => a.line - b.line)[0];
@@ -1290,7 +1302,7 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     return changed(o, `画面「${sc.name}」を、アプリを開いたときに最初に出る画面にしました(メニューでもいちばん前です)`);
   }
   // アプリの名前: アプリの名前を「料理教室」にする(画面のいちばん上に出る)
-  if ((m = cmd(/^アプリ(?:の名前)?を「?(.+?)」?に(?:する|変える)$/.exec(text)))) {
+  if ((m = cmd(/^アプリ(?:の名前)?を「?([^「」]+?)」?に(?:する|変える)$/.exec(text)))) {
     const app = (o.decls ?? []).find((d: any) => d.kind === "app");
     if (!app) throw new Error("アプリの宣言が見つかりません");
     const nm = m[1].trim();
@@ -2742,9 +2754,18 @@ async function freePort(): Promise<number> {
     });
   });
 }
+async function portIsFree(port: number): Promise<boolean> {
+  return new Promise((ok) => {
+    const s = netServer();
+    s.once("error", () => ok(false));
+    s.listen(port, "127.0.0.1", () => s.close(() => ok(true)));
+  });
+}
 async function startPreview(): Promise<void> {
   // 起こし直すときも同じポートを使う(番号が変わって、開いていたタブがつながらなくなった。第 7 回評価)
-  if (!previewPort) previewPort = await freePort();
+  // ただし、止めている間にほかのアプリがその番号を使い始めたら、別の番号にする
+  // (ほかの人のアプリが「アプリを開く」で開いた。第 17 回評価)
+  if (!previewPort || !(await portIsFree(previewPort))) previewPort = await freePort();
   preview = spawn(KOTO, ["-C", PROJECT, "dev", "--port", String(previewPort)], {
     // 止めるときに裏のアプリ(backend・画面)ごと止められるよう、プロセスのまとまりにする(止めても残った。第 7 回評価)
     detached: process.platform !== "win32",

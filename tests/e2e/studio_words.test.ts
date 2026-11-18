@@ -270,3 +270,19 @@ test("「「満席」を「定員に達しました」に変える」: 失敗の
   assert.match(src(), /失敗\("定員に達しました"\)/);
   assert.doesNotMatch(src(), /"満席"/);
 });
+
+test("第 17 回評価の言い方: 最初に出る画面・主催者だけのメニュー・データに無い項目での並べ替え", async () => {
+  // 「アプリを開いたときに最初に出る画面を…」がアプリの名前の文と取り違えられ「アプリの名前に「」は使えません」になった
+  const r1 = await ok("アプリを開いたときに最初に出る画面を「受付の一覧」にする");
+  assert.match(r1.done, /受付の一覧/);
+  assert.match(src(), /^アプリ「[^」]+」\n(?:(?!画面 ).*\n)*画面 受付の一覧:/m);
+  // 「…の画面は受付係だけのメニューにしたい」
+  const r2 = await ok("枠一覧の画面は受付係だけのメニューにしたい");
+  assert.match(r2.done, /受付係 だけにしました/);
+  // データに無い項目で並べようとしたときは、行を入れずに並べられる項目を案内する
+  const before = src();
+  const j = await say("枠を症状メモの順に並べる");
+  assert.notEqual(j.result?.ok, true);
+  assert.match(JSON.stringify(j), /項目「症状メモ」がありません.*並べられる項目/);
+  assert.equal(src(), before);
+});
