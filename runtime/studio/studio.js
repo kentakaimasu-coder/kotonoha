@@ -524,7 +524,7 @@ function analysisForm() {
 const EDITORS = {
   home() {
     const themes = ["藍", "紺", "青", "緑", "深緑", "朱", "紅", "紫", "橙", "茶", "墨"];
-    const pick = el("select", { "aria-label": "テーマ色" }, el("option", { value: "" }, "(既定: 藍)"), ...themes.map((c) => el("option", { value: c, selected: c === S.theme }, c)));
+    const pick = el("select", { "aria-label": "テーマ色" }, el("option", { value: "" }, S.theme ? `今の色: ${S.theme}` : "今の色: 藍(既定)"), ...themes.filter((c) => c !== (S.theme || "藍")).map((c) => el("option", { value: c }, c)));
     const msg = el("div", { class: "msg", role: "status" });
     return [
       el("h2", { text: "画面で作る" }),

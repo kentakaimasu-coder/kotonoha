@@ -70,7 +70,7 @@ main { padding: 16px 20px 40px; }
 @media (max-width: 1100px) { .build { grid-template-columns: 220px minmax(0, 1fr); } .side { grid-column: 1 / -1; } }
 /* 中身が広くても列が広がって横にはみ出さない(スマホで「動かす」が 1250px にはみ出した。デザインの確認) */
 .build > *, main, .card { min-width: 0; }
-@media (max-width: 720px) { .build { grid-template-columns: 1fr; } .tree button { min-height: 44px; } .device-grid .device:not(:first-child) { display: none; } }
+@media (max-width: 720px) { .build { grid-template-columns: 1fr; } .device-grid .device:not(:first-child) { display: none; } }
 .tree, .card, .editor { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
 .tree { padding: 8px; position: sticky; top: 70px; max-height: calc(100vh - 90px); overflow: auto; }
 .tree h3 { font-size: 0.75rem; color: var(--muted); margin: 10px 8px 4px; letter-spacing: 0.05em; }
@@ -167,3 +167,8 @@ pre.code { background: var(--surface-2); border: 1px solid var(--line); padding:
 #checks li.summary { font-size: 15px; font-weight: 700; list-style: none; margin-bottom: 6px; }
 #checks li.summary.ok { color: var(--ok, #1a7f37); }
 #checks li.summary.ng { color: var(--err, #b42318); }
+
+/* スマホでは押す所を 44px 以上に(デザインの確認: 左の一覧・タブが 34〜38px で押しにくい)。上の既定より後に置く */
+@media (max-width: 720px) { .tree button, .tabs button, header button, main button, main select { min-height: 44px; } }
+/* 端末の枠の下の機種名は読める大きさに */
+.device figcaption small { font-size: 0.75rem; }

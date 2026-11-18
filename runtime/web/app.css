@@ -328,3 +328,5 @@ a.button { display: inline-flex; align-items: center; justify-content: center; m
 .page ul { padding-left: 1.2em; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+/* スマホの一覧のカードで、詳細へのリンクを押しやすく(デザインの確認: 高さ 29px で小さかった) */
+@media (max-width: 640px) { table.list td a { display: inline-flex; align-items: center; min-height: 44px; } }
