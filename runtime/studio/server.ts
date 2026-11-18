@@ -692,7 +692,9 @@ function showOnDetailScreens(dn: string, fn: string): void {
   }
 }
 /** 確かめるの呼び出しに入れる、型に合った仮の値 */
-function sampleValue(o: any, type: string, name = ""): string {
+function sampleValue(o: any, type0: string, name = ""): string {
+  // 空でもよい項目(選択<…>)は中の型で決める(選択肢の項目に「施術内容の例」が入り、問題 6 件になった。第 19 回評価)
+  const type = type0.replace(/^選択<(.+)>$/, "$1");
   // 何の値か分かるように、文字は「…の例」、数は 1(0 だと「> 0 を確認」で止まる)。第 10 回評価: "" や 0 の意味が分からなかった
   return /^(整数|金額)/.test(type) ? "1" : type === "真偽" ? "偽" : type === "日時" ? "2026-12-01 10:00" : type === "日付" ? "2026-12-01" : o.enums?.[type] ? `"${o.enums[type][0]}"` : type === "メール" ? '"taro@example.com"' : type === "URL" ? '"https://example.com/"' : name ? `"${name}の例"` : '""';
 }

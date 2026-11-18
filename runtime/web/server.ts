@@ -565,7 +565,11 @@ function devRoleButtons(dq: { caps: string[]; roles?: Record<string, string[]>; 
   const roles = dq.roles ?? {};
   const can = (caps: string[]): string => {
     const out: string[] = [];
+    // 登録の権限を持つ役割の「…の更新」は、たいてい登録のついでに数を書き換えるためのもの(予約で枠の予約数を足す)。
+    //   「イベントの変更」と出て、お客さんがイベントを変えられるのかと不安になった(第 19 回評価)ので出さない
+    const creates = caps.some((c) => /\.(作成|create)$/.test(c));
     for (const c of caps) {
+      if (creates && /\.(更新|update)$/.test(c)) continue;
       let m: RegExpExecArray | null;
       if ((m = /^動作\.(.+)$/.exec(c))) out.push(m[1]);
       else if ((m = /^(.+)\.(作成|create)$/.exec(c))) out.push(`${m[1]}の登録`);
