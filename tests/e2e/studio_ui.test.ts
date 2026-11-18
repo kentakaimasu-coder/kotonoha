@@ -2,7 +2,7 @@
 // 欄に例として出している文は、その欄にそのまま入れて通らなければならない
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { spawnSync, execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { KOTO, tmp, freePort, waitHttp } from "./helpers.ts";
@@ -221,4 +221,21 @@ test("空でもよくすると、外した確認の失敗を確かめていた�
   } finally {
     p4.kill();
   }
+});
+
+test("ADR-0141: 「…はログインした人だけ閲覧可」は、役割の無い人でもログインしていれば読める", async () => {
+  const d5 = join(tmp("adr0141"), "受付");
+  execFileSync(KOTO, ["init", d5, "--template", "予約受付"], { stdio: "pipe" });
+  const p = join(d5, "src/app.koto");
+  const s = readFileSync(p, "utf8")
+    .replace("    枠は誰でも閲覧可\n", "    枠はログインした人だけ閲覧可\n")
+    .replace("    枠(回)の予約数は 2", "    枠(回)の予約数は 2\n    次郎から 枠が 1件見える");
+  writeFileSync(p, s);
+  const r = spawnSync(KOTO, ["-C", d5, "test"], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout + r.stderr, /✓ 次郎から 枠が 1件見える/);
+  // 公開の点検でも「ログインした人みんな」と出す
+  execFileSync(KOTO, ["-C", d5, "publish"], { stdio: "pipe" });
+  const plain = readFileSync(join(d5, "公開用", "点検の結果.md"), "utf8");
+  assert.match(plain, /「枠」の一覧を見られる: ログインした人みんな\(役割に関わらず\)/);
 });

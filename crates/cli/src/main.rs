@@ -404,6 +404,9 @@ fn plain_access(api: &serde_json::Value) -> String {
         if let Some(o) = a["owner"].as_str() {
             return format!("ログインした本人の分だけ(全件閲覧.{o} を持つ役割の人は全員分)");
         }
+        if a["logged_in"].as_bool() == Some(true) {
+            return "ログインした人みんな(役割に関わらず)".into();
+        }
         let roles: Vec<String> = api["roles"]
             .as_object()
             .into_iter()

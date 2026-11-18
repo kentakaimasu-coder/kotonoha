@@ -35,6 +35,8 @@ pub enum Access {
     Owner,
     /// 認証済みで、名前で指定した権限・許可をすべて保持していること(本人限定データの分析: 全件閲覧.データ名)
     Named(Vec<String>),
+    /// 認証済みなら誰でも(約束「…はログインした人だけ閲覧可」の読み取り。役割の権限を求めない。ADR-0141)
+    LoggedIn,
 }
 
 impl Access {
@@ -45,6 +47,7 @@ impl Access {
             Access::Caps(c) => json!({"public": false, "capabilities": c.iter().map(|x| x.vag()).collect::<Vec<_>>()}),
             Access::Owner => json!({"public": false, "capabilities": []}),
             Access::Named(c) => json!({"public": false, "capabilities": c}),
+            Access::LoggedIn => json!({"public": false, "capabilities": [], "logged_in": true}),
         };
         if let Some(g) = grant {
             v["grant"] = json!(g);
@@ -301,6 +304,9 @@ fn read_access(policy: &AccessPolicy, data: &str) -> Access {
         Access::Owner
     } else if policy.public_read.contains(data) {
         Access::Public
+    } else if policy.auth_required.contains(data) {
+        // 「…はログインした人だけ閲覧可」: ログインしていれば役割に関わらず読める(ADR-0141)
+        Access::LoggedIn
     } else {
         Access::Caps(vec![Capability::new(data, Verb::Read)])
     }
@@ -559,6 +565,8 @@ pub fn build_ir(inp: &IrInput) -> AppIr {
                 v.push(format!("全件閲覧.{t}"));
             }
             Access::Named(v)
+        } else if a.tables.iter().all(|t| policy.auth_required.contains(t) || policy.public_read.contains(t)) {
+            Access::LoggedIn
         } else {
             Access::Caps(a.tables.iter().map(|t| Capability::new(t, Verb::Read)).collect())
         };

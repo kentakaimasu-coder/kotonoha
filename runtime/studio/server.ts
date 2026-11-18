@@ -831,9 +831,7 @@ function apply(op: Op): { file: string; line: number } | null {
     case "add_rule": {
       const d = decl(o, "rules");
       const at = d ? addLine(d, op.text) : addDecl(o, ["role", "screen"], ["約束:", "    " + op.text.trim()]);
-      // 「回覧はログインした人だけ閲覧可」: 役割の人も見られるように、役割に読取を足す(役割の人には見えなかった。第 13 回評価)
-      const lm = /^(\S+?)はログインした人だけ閲覧可/.exec(String(op.text).trim());
-      if (lm && decl(outline(), "data", lm[1])) grantReadToRoles(lm[1]);
+      // 「回覧はログインした人だけ閲覧可」は、ログインしていれば役割に関わらず読める(ADR-0141)。役割に読取を足さない
       return at;
     }
     case "add_action": {
@@ -2154,7 +2152,7 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     if (vis) {
       // 役割のあるアプリでは、ログインしても役割の無い人は読めない(ADR-0140)。先に知らせる(役割なしで 403 になり迷った。第 14 回評価)
       const rs = (o.decls ?? []).filter((d: any) => d.kind === "role").map((d: any) => d.name);
-      const vnote = /ログインした人だけ/.test(vis) && rs.length ? `。役割があるので、見られるのは役割(${rs.join("・")})の付いた人です。役割の無い人にも見せるなら、役割を作ってその人に付けます` : "";
+      const vnote = /ログインした人だけ/.test(vis) && rs.length ? `。ログインした人なら、役割(${rs.join("・")})が無くても見られます` : "";
       // 前の約束の行をその場で置き換える(先に消すと、約束がその 1 行だけのとき中身の無い「約束:」が残った。第 7 回評価)
       const R = decl(o, "rules");
       if (R) {
