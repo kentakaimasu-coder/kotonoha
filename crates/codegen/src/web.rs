@@ -534,7 +534,13 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
             .as_ref()
             .and_then(|d| ir.entities.iter().find(|e| &e.name == d))
             .and_then(|e| e.fields.iter().find(|(n, t)| n != "ID" && matches!(t, Type::Str)))
-            .map(|(n, _)| format!(", record: (p.data[{}]?.body as any)?.[{}]", js_str(&format!("get:{}", s.input.as_ref().unwrap())), js_str(n)))
+            .map(|(n, _)| {
+                format!(
+                    ", record: (p.data[{}]?.body as any)?.[{}]",
+                    js_str(&format!("get:{}", s.input.as_ref().unwrap())),
+                    js_str(n)
+                )
+            })
             .unwrap_or_default();
         g.push_str(&format!(
             "function {fname}(p: ScreenProps) {{\n  return h(Page, {{ title: {}{record} }},\n    {}\n  );\n}}\n\n",
