@@ -2615,6 +2615,7 @@ function deleteField(o: any, D: any, fn: string): any {
   const i = ls.findIndex((l, k) => k >= D.line && k < D.end && new RegExp(`^\\s*${reEsc(fn)}\\s*:`).test(l));
   ls.splice(i, 1);
   write(D.file, ls.join("\n"));
+  const goneFails = new Set<string>();
   for (const an of (outline().decls ?? []).filter((x: any) => x.kind === "action").map((x: any) => x.name)) {
     // 前の動作の行を消すと位置がずれるので、動作ごとに読み直す
     const a = (outline().decls ?? []).find((x: any) => x.kind === "action" && x.name === an);
@@ -2637,6 +2638,8 @@ function deleteField(o: any, D: any, fn: string): any {
       for (let k = a.end - 1; k >= a.line; k--)
         // 「作業時間 > 0 を確認 …」のように、その値だけを確かめる行に限る(満席などほかの確認は残す)
         if (new RegExp(`^\\s*${reEsc(fn)}\\s*(>=|<=|>|<|==|!=|=)\\s*[^\\s]+\\s*を確認`).test(al[k] ?? "")) {
+          const fv = /失敗\(\s*"([^"]+)"\s*\)/.exec(al[k] ?? "")?.[1];
+          if (fv) goneFails.add(fv);
           al.splice(k, 1);
           removed++;
         }
@@ -2649,6 +2652,25 @@ function deleteField(o: any, D: any, fn: string): any {
     }
     if (hit) write(a.file, al.join("\n"));
     if (dropIdx >= 0) dropScenarioArg(a.name, dropIdx);
+  }
+  // その項目の確認で起きていた失敗を確かめる行は、もう起きないので外す(「作業時間」を消すと確かめるが ✗ になった。第 18 回評価)
+  {
+    const o3 = outline();
+    const still = (v: string) => (o3.decls ?? []).some((a: any) => a.kind === "action" && lines(a.file).slice(a.line, a.end).some((l) => l.includes(`失敗("${v}")`)));
+    const gone = [...goneFails].filter((v) => !still(v));
+    if (gone.length) {
+      for (const sc of (o3.decls ?? []).filter((d: any) => d.kind === "scenario")) {
+        const sl = lines(sc.file);
+        let touched = false;
+        for (let k = sc.end - 1; k >= sc.line; k--) {
+          if (gone.some((v) => new RegExp(`→\\s*失敗\\(\\s*"${reEsc(v)}"\\s*\\)\\s*$`).test(sl[k] ?? ""))) {
+            sl.splice(k, 1);
+            touched = true;
+          }
+        }
+        if (touched) write(sc.file, sl.join("\n"));
+      }
+    }
   }
   // 初期データからも、その項目の値を外す(残すと初期データの表を保存できなかった。第 8 回評価)
   {
