@@ -1594,6 +1594,9 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
         return changed(o, `「${ow.name}」の項目「${cand}」を「${to}」に変えました(「${a}」は前に「${b}」に変えたので、今の名前は「${cand}」でした)`);
       }
     }
+    // 選択肢・失敗の言葉(「満席」)なら、その値の名前を変える(「「満席」を「定員に達しました」に変える」が読めなかった。第 17 回の準備)
+    const Es = (o.decls ?? []).filter((d: any) => d.kind === "enum" && (d.values ?? []).includes(from));
+    if (Es.length === 1) return instruct(`列挙「${Es[0].name}」の「${from}」を「${to}」に変える`, {});
     throw new Error(`「${from}」という名前はありません`);
   }
   // 権限を与える: 受付係に予約の更新を許可する / 受付係は予約を更新できる / 店長に動作「締める」を許可する(第 6 回評価)

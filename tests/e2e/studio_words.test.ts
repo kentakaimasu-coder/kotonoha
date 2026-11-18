@@ -263,3 +263,10 @@ test("詳細の画面に表示する項目を増やすと、前の表示の行�
   assert.equal((src().match(/\n    枠の[^\n]*を表示\n/g) ?? []).length, 1);
 });
 
+
+test("「「満席」を「定員に達しました」に変える」: 失敗の言葉(選択肢の値)の名前も変えられる", async () => {
+  const r = await ok("「満席」を「定員に達しました」に変える");
+  assert.match(r.done, /「満席」を「定員に達しました」に変えました/);
+  assert.match(src(), /失敗\("定員に達しました"\)/);
+  assert.doesNotMatch(src(), /"満席"/);
+});
