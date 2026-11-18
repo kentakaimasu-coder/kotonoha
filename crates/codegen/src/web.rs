@@ -10,6 +10,7 @@ use serde_json::{json, Value};
 
 pub const UI_TS: &str = include_str!("../../../runtime/web/ui.ts");
 pub const SERVER_TS: &str = include_str!("../../../runtime/web/server.ts");
+pub const LOCAL_LOGIN_TS: &str = include_str!("../../../runtime/web/local_login.ts");
 pub const APP_CSS: &str = include_str!("../../../runtime/web/app.css");
 
 /// テーマ色の名前(ADR-0131)。どれも白い文字とのコントラストが 4.5 以上(ボタンの文字が読める)
@@ -71,6 +72,7 @@ const SERVER_MAIN_TS: &str = r#"// 生成物: KOTONOHA web の起動点
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createWebServer, oidcFromEnv } from "./runtime/server.ts";
+import { localLoginFromEnv } from "./runtime/local_login.ts";
 import { webApp } from "./screens.generated.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -95,8 +97,10 @@ createWebServer(webApp, {
   secureCookie: process.env.KOTONOHA_COOKIE_SECURE === "1",
   tz: process.env.KOTONOHA_DISPLAY_TZ ?? "Asia/Tokyo",
   oidc: oidcFromEnv(process.env),
+  // アプリの中のログイン(KOTONOHA_LOCAL_LOGIN=1。ADR-0142)
+  local: localLoginFromEnv(process.env),
   // 開発用のトークン貼り付けログイン。OIDC を設定したら既定で無効(KOTONOHA_DEV_LOGIN=1 で有効)
-  devLogin: process.env.KOTONOHA_DEV_LOGIN ? process.env.KOTONOHA_DEV_LOGIN === "1" : !process.env.KOTONOHA_OIDC_ISSUER,
+  devLogin: process.env.KOTONOHA_DEV_LOGIN ? process.env.KOTONOHA_DEV_LOGIN === "1" : !process.env.KOTONOHA_OIDC_ISSUER && process.env.KOTONOHA_LOCAL_LOGIN !== "1",
   // koto dev が設定する、開発用のワンクリックログイン(本番モードでは起動を拒否する)
   devQuick: process.env.KOTONOHA_DEV_JWT_SECRET ? { secret: process.env.KOTONOHA_DEV_JWT_SECRET, caps: (process.env.KOTONOHA_DEV_CAPS ?? "").split(",").filter((c) => c), roles: JSON.parse(process.env.KOTONOHA_DEV_ROLES ?? "{}"), general: process.env.KOTONOHA_DEV_GENERAL_CAPS === undefined ? undefined : process.env.KOTONOHA_DEV_GENERAL_CAPS.split(",").filter((c) => c) } : null,
 }).listen(port, host, () => {
@@ -565,12 +569,13 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
     }
     let nav: Vec<&str> = ir.screens.iter().filter(|s| s.input.is_none()).map(|s| s.name.as_str()).collect();
     g.push_str(&format!(
-        "export const screens: Record<string, ScreenDef> = {{\n{}\n}};\n\nexport const webApp: WebApp = {{ appName: {}, entry: {}, nav: {}, screens, roles: {} }};\n",
+        "export const screens: Record<string, ScreenDef> = {{\n{}\n}};\n\nexport const webApp: WebApp = {{ appName: {}, entry: {}, nav: {}, screens, roles: {}, general: {} }};\n",
         defs.join("\n"),
         js_str(&ir.name),
         ir.entry_screen.as_ref().map(|e| js_str(e)).unwrap_or_else(|| "null".into()),
         serde_json::to_string(&nav).unwrap(),
-        serde_json::to_string(&ir.roles).unwrap()
+        serde_json::to_string(&ir.roles).unwrap(),
+        serde_json::to_string(&ir.general_caps()).unwrap()
     ));
     if !errs.is_empty() {
         return Err(errs);
@@ -617,6 +622,7 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
         GeneratedFile::text("src/client.ts", CLIENT_TS.to_string()),
         GeneratedFile::text("src/runtime/ui.ts", UI_TS.to_string()),
         GeneratedFile::text("src/runtime/server.ts", SERVER_TS.to_string()),
+        GeneratedFile::text("src/runtime/local_login.ts", LOCAL_LOGIN_TS.to_string()),
     ];
     out.extend(ext_files);
     Ok(out)

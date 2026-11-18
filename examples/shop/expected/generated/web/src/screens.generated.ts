@@ -42,4 +42,4 @@ export const screens: Record<string, ScreenDef> = {
   "売れ筋": { name: "売れ筋", input: null, loaders: [{"key":"query:売れ筋商品:20","query":{"limit":"20"},"segments":["api","queries","売れ筋商品"],"withId":false}], View: Screen_売れ筋 },
 };
 
-export const webApp: WebApp = { appName: "商店", entry: "商品一覧", nav: ["商品一覧","商品管理","注文履歴","売れ筋"], screens, roles: {} };
+export const webApp: WebApp = { appName: "商店", entry: "商品一覧", nav: ["商品一覧","商品管理","注文履歴","売れ筋"], screens, roles: {}, general: ["動作.商品登録","動作.注文する","商品.create","商品.read","商品.update","注文.create","注文明細.read"] };

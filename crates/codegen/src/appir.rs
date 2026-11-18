@@ -275,6 +275,31 @@ pub struct AppIr {
     pub theme_color: Option<String>,
 }
 
+impl AppIr {
+    /// 役割の付いていない人(ログインしただけの人)の権限(ADR-0140)。
+    /// 役割に関わらない操作(必要な権限も動作の許可も、どの役割にも書いていない)の権限と許可だけ。全件閲覧は持たない。
+    /// koto dev の一般の利用者・確かめるで役割を省いた人・アプリの中のログイン(ADR-0142)で同じ決め方
+    pub fn general_caps(&self) -> Vec<String> {
+        let role_caps: BTreeSet<&str> = self.roles.values().flatten().map(|c| c.as_str()).collect();
+        let mut out = BTreeSet::new();
+        for e in &self.endpoints {
+            let a = e.access_json();
+            let caps: Vec<&str> = a["capabilities"].as_array().into_iter().flatten().filter_map(|c| c.as_str()).collect();
+            let grant = a["grant"].as_str();
+            let restricted = caps.iter().any(|c| role_caps.contains(c)) || grant.is_some_and(|g| role_caps.contains(g));
+            for c in &caps {
+                if !c.starts_with("全件閲覧.") && !role_caps.contains(c) {
+                    out.insert(c.to_string());
+                }
+            }
+            if let Some(g) = grant.filter(|_| !restricted) {
+                out.insert(g.to_string());
+            }
+        }
+        out.into_iter().collect()
+    }
+}
+
 pub struct IrInput<'a> {
     pub env: &'a Env,
     pub registry: &'a Registry,

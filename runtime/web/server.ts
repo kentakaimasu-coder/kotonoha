@@ -1,6 +1,7 @@
 // KOTONOHA web runtime: SSR サーバー + 同一オリジンの API プロキシ + ログイン(Cookie)
 // 認可はすべて backend が行う(SEC-03)。このサーバーは秘密情報を持たない(AT-10)。
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { LocalLogin, MIN_PASSWORD, type LocalLoginConfig, type LocalUser } from "./local_login.ts";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, createHmac, randomBytes } from "node:crypto";
@@ -8,6 +9,8 @@ import ReactDOMServer from "react-dom/server";
 import { App, h, loaderUrl, type Init, type LoadResult, type ScreenDef } from "./ui.ts";
 
 export interface WebApp {
+  /** 役割の付いていない人の権限(ADR-0140。アプリの中のログインで使う) */
+  general?: string[];
   appName: string;
   entry: string | null;
   nav: string[];
@@ -60,12 +63,13 @@ function securityHeaders(extra: Record<string, string | number | string[]> = {})
 }
 
 /** 本番モード(KOTONOHA_ENV=production)で安全でない設定なら起動しない(NR-02) */
-export function checkWebProductionConfig(env: NodeJS.ProcessEnv, opts: { secureCookie: boolean; devLogin: boolean; oidc: unknown }): string[] {
+export function checkWebProductionConfig(env: NodeJS.ProcessEnv, opts: { secureCookie: boolean; devLogin: boolean; oidc: unknown; local?: { secret: string } | null }): string[] {
   if (env.KOTONOHA_ENV !== "production") return [];
   const p: string[] = [];
   if (!opts.secureCookie) p.push("本番では KOTONOHA_COOKIE_SECURE=1(HTTPS)が必要です");
   if (opts.devLogin) p.push("本番では開発用のトークン貼り付けログインを有効にできません");
-  if (!opts.oidc) p.push("本番では OIDC(KOTONOHA_OIDC_ISSUER など)の設定が必要です");
+  if (!opts.oidc && !opts.local) p.push("本番ではログインの仕組みが必要です: アプリの中のログイン(KOTONOHA_LOCAL_LOGIN=1)か、OIDC(KOTONOHA_OIDC_ISSUER など)");
+  if (opts.local && opts.local.secret.length < 64) p.push("アプリの中のログインを本番で使うときは、署名の秘密(.env の JWT の秘密)を 64 文字以上にしてください");
   if (env.KOTONOHA_DEV_JWT_SECRET) p.push("本番では開発用のワンクリックログイン(KOTONOHA_DEV_JWT_SECRET)を使えません");
   return p;
 }
@@ -92,9 +96,21 @@ function cookieOf(req: IncomingMessage, name: string): string | null {
 let COOKIE = "sid";
 let OIDC_COOKIE = "oauth";
 
+/** アプリの中のログイン(ADR-0142)。有効なら、Cookie の印はここで確かめてから使う */
+let LOCAL: LocalLogin | null = null;
+
 function tokenOf(req: IncomingMessage): string | null {
   const t = cookieOf(req, COOKIE);
-  return t !== null && TOKEN_RE.test(t) ? t : null;
+  if (t === null || !TOKEN_RE.test(t)) return null;
+  // 役割を変えた・消した・パスワードを変えた人の古い印は使わない
+  if (LOCAL && LOCAL.check(t) === null) return null;
+  return t;
+}
+
+/** ログイン中の、アプリの中の利用者 */
+function localUserOf(req: IncomingMessage): LocalUser | null {
+  const t = cookieOf(req, COOKIE);
+  return LOCAL && t !== null && TOKEN_RE.test(t) ? LOCAL.check(t) : null;
 }
 
 async function readBody(req: IncomingMessage): Promise<Buffer> {
@@ -147,10 +163,16 @@ const b64u = (b: Buffer) => b.toString("base64url");
 
 export function createWebServer(
   app: WebApp,
-  opts: { backendUrl: string; root: string; secureCookie: boolean; tz: string; oidc?: OidcConfig | null; devLogin?: boolean; devQuick?: { secret: string; caps: string[]; roles?: Record<string, string[]>; general?: string[] } | null },
+  opts: { backendUrl: string; root: string; secureCookie: boolean; tz: string; oidc?: OidcConfig | null; local?: LocalLoginConfig | null; devLogin?: boolean; devQuick?: { secret: string; caps: string[]; roles?: Record<string, string[]>; general?: string[] } | null },
 ) {
   const backend = new URL(opts.backendUrl);
   const oidc = opts.oidc ?? null;
+  const local = opts.local ? new LocalLogin(opts.local, app.roles ?? {}, app.general ?? []) : null;
+  LOCAL = local;
+  if (local?.setupToken) {
+    // 最初の管理者を作る URL は、起動した人だけが見られる場所(ログ)に出す
+    process.stdout.write(`\n最初の管理者を作ります。ブラウザでこのアプリの /setup?t=${local.setupToken} を開いてください(この URL は一度だけ使えます)\n\n`);
+  }
   const devLogin = opts.devLogin ?? oidc === null;
   // 開発用のワンクリックログイン(koto dev が設定する)。名前を入れるだけで、アプリの全権限を持つ利用者として入れる
   const devQuick = devLogin && opts.devQuick && opts.devQuick.secret.length >= 32 ? opts.devQuick : null;
@@ -183,7 +205,7 @@ export function createWebServer(
   hsts = opts.secureCookie;
   const fa = process.env.KOTONOHA_DEV_FRAME_ANCESTOR ?? "";
   frameAncestor = opts.devLogin && /^http:\/\/(127\.0\.0\.1|localhost):\d{1,5}( http:\/\/(127\.0\.0\.1|localhost):\d{1,5})?$/.test(fa) ? fa : null;
-  const problems = checkWebProductionConfig(process.env, { secureCookie: opts.secureCookie, devLogin, oidc });
+  const problems = checkWebProductionConfig(process.env, { secureCookie: opts.secureCookie, devLogin, oidc, local: opts.local ?? null });
   if (problems.length > 0) throw new Error(`本番モードの設定に問題があります:\n- ${problems.join("\n- ")}`);
   const assets: Record<string, [string, string]> = {
     "/assets/client.js": ["dist/client.js", "text/javascript; charset=utf-8"],
@@ -312,7 +334,7 @@ export function createWebServer(
         return res.end();
       }
       // ログイン・ログアウトの POST を他サイトから送らせない(ログイン CSRF 対策。ペルソナ評価で指摘)
-      if ((url.pathname === "/login" || url.pathname === "/logout" || url.pathname === "/login/dev") && req.method === "POST") {
+      if ((url.pathname === "/login" || url.pathname === "/logout" || url.pathname === "/login/dev" || LOCAL_PATH.test(url.pathname)) && req.method === "POST") {
         const origin = req.headers.origin;
         const site = req.headers["sec-fetch-site"];
         if ((origin && origin !== "null" && new URL(origin).host !== req.headers.host) || origin === "null" || site === "cross-site") {
@@ -320,6 +342,7 @@ export function createWebServer(
           return res.end("別のサイトからの要求は受け付けません");
         }
       }
+      if (local && LOCAL_PATH.test(url.pathname)) return await localRoute(local, req, res, url, secure, opts.secureCookie);
       if (url.pathname === "/login/dev" && req.method === "POST" && devQuick) {
         const form = new URLSearchParams((await readBody(req)).toString("utf8"));
         const name = (form.get("name") ?? "").trim() || "開発者";
@@ -350,7 +373,7 @@ export function createWebServer(
         return res.end(
           page(
             "ログイン",
-            `<section class="page"><h1>ログイン</h1>${oidc ? `<p><a class="button" href="/login/oidc">認証基盤でログイン</a></p>` : ""}${devQuick ? `<form method="post" action="/login/dev" class="form"><h2>開発用: 名前を入れてすぐ入る</h2><p>開発中だけの機能です。別の名前で入ると別の人として扱われます。「本人のものだけ閲覧可」のデータは、一般の利用者なら自分の分だけ、管理者なら全員の分が見えます。${Object.keys(devQuick.roles ?? {}).length ? "役割のあるアプリでは、一般の利用者(役割なし)は役割に関わらない操作だけができます(本番で役割の付いていない人と同じ)。予約などを試すときは、役割の名前のボタンで入ります。" : ""}</p><div class="field"><label for="dev-name">名前</label><input id="dev-name" name="name" value="開発者" maxlength="64" autocomplete="off"></div><div class="buttons"><button type="submit" name="role" value="user">${Object.keys(devQuick.roles ?? {}).length ? "一般の利用者(役割なし)として入る" : "一般の利用者として入る"}</button> ${Object.keys(devQuick.roles ?? {}).map((r) => `<button type="submit" name="role" value="r:${escHtml(r)}" class="secondary">${escHtml(r)}として入る</button> `).join("")}<button type="submit" name="role" value="admin" class="secondary">${"管理者" in (devQuick.roles ?? {}) ? "すべての権限で入る" : "管理者として入る"}</button></div></form>` : ""}${devLogin ? `<form method="post" action="/login" class="form"><h2>開発用: トークンでログイン</h2><p>発行済みのトークンを入力してログインします。</p><div class="field"><label for="token">トークン</label><input id="token" name="token" type="password" required autocomplete="off"></div><div class="buttons"><button type="submit">ログイン</button></div></form>` : ""}<form method="post" action="/logout" class="logout"><button type="submit" class="secondary">ログアウト</button></form></section>`,
+            `<section class="page"><h1>ログイン</h1>${local ? localLoginHtml(local, req) : ""}${oidc ? `<p><a class="button" href="/login/oidc">認証基盤でログイン</a></p>` : ""}${devQuick ? `<form method="post" action="/login/dev" class="form"><h2>開発用: 名前を入れてすぐ入る</h2><p>開発中だけの機能です。別の名前で入ると別の人として扱われます。「本人のものだけ閲覧可」のデータは、一般の利用者なら自分の分だけ、管理者なら全員の分が見えます。${Object.keys(devQuick.roles ?? {}).length ? "役割のあるアプリでは、一般の利用者(役割なし)は役割に関わらない操作だけができます(本番で役割の付いていない人と同じ)。予約などを試すときは、役割の名前のボタンで入ります。" : ""}</p><div class="field"><label for="dev-name">名前</label><input id="dev-name" name="name" value="開発者" maxlength="64" autocomplete="off"></div><div class="buttons"><button type="submit" name="role" value="user">${Object.keys(devQuick.roles ?? {}).length ? "一般の利用者(役割なし)として入る" : "一般の利用者として入る"}</button> ${Object.keys(devQuick.roles ?? {}).map((r) => `<button type="submit" name="role" value="r:${escHtml(r)}" class="secondary">${escHtml(r)}として入る</button> `).join("")}<button type="submit" name="role" value="admin" class="secondary">${"管理者" in (devQuick.roles ?? {}) ? "すべての権限で入る" : "管理者として入る"}</button></div></form>` : ""}${devLogin ? `<form method="post" action="/login" class="form"><h2>開発用: トークンでログイン</h2><p>発行済みのトークンを入力してログインします。</p><div class="field"><label for="token">トークン</label><input id="token" name="token" type="password" required autocomplete="off"></div><div class="buttons"><button type="submit">ログイン</button></div></form>` : ""}<form method="post" action="/logout" class="logout"><button type="submit" class="secondary">ログアウト</button></form></section>`,
             null,
           ),
         );
@@ -409,4 +432,130 @@ export function createWebServer(
   server.requestTimeout = 30_000;
   server.keepAliveTimeout = 5_000;
   return server;
+}
+
+// ---- アプリの中のログイン(ADR-0142)の画面 ----
+const LOCAL_PATH = /^\/(login\/local|setup|invite\/[^/]+|reset\/[^/]+|users(\/[^/]+(\/(reset|delete))?)?|account(\/password)?)$/;
+
+function localLoginHtml(local: LocalLogin, req: IncomingMessage): string {
+  const u = localUserOf(req);
+  if (u) {
+    return `<p>${escHtml(u.name)} さん(${escHtml(u.login)})でログインしています。${u.roles.length ? `役割: ${u.roles.map(escHtml).join("・")}` : ""}</p><p class="buttons"><a class="button secondary" href="/account">パスワードを変える</a>${u.admin ? ` <a class="button" href="/users">利用者の管理</a>` : ""}</p>`;
+  }
+  const setup = local.setupToken ? `<p class="notice info">まだ利用者がいません。最初の管理者は、アプリを起動したときに出た URL(/setup?t=…)を開いて作ります。</p>` : "";
+  return `${setup}<form method="post" action="/login/local" class="form"><div class="field"><label for="ll-login">ログイン名(メールアドレスなど)</label><input id="ll-login" name="login" required maxlength="100" autocomplete="username"></div><div class="field"><label for="ll-pw">パスワード</label><input id="ll-pw" name="password" type="password" required maxlength="200" autocomplete="current-password"></div><div class="buttons"><button type="submit">ログイン</button></div><p class="hint">パスワードを忘れたときは、管理者に「再設定のリンク」を作ってもらいます。</p></form>`;
+}
+
+function localPage(res: ServerResponse, status: number, title: string, body: string, extra: Record<string, string | string[]> = {}): void {
+  res.writeHead(status, securityHeaders({ "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...extra }));
+  res.end(page(title, `<section class="page"><h1>${escHtml(title)}</h1>${body}<p><a href="/">トップへ</a></p></section>`, null));
+}
+
+const pwFields = (auto: string) =>
+  `<div class="field"><label for="pw1">パスワード(${MIN_PASSWORD} 文字以上)</label><input id="pw1" name="password" type="password" required minlength="${MIN_PASSWORD}" maxlength="200" autocomplete="${auto}"></div><div class="field"><label for="pw2">パスワード(確認のためもう一度)</label><input id="pw2" name="password2" type="password" required minlength="${MIN_PASSWORD}" maxlength="200" autocomplete="${auto}"></div>`;
+const userFields = `<div class="field"><label for="u-login">ログイン名(メールアドレスなど)</label><input id="u-login" name="login" required maxlength="100" autocomplete="username"></div><div class="field"><label for="u-name">名前(画面に出ます)</label><input id="u-name" name="name" maxlength="64" autocomplete="name"></div>`;
+const err = (m: string) => `<p class="notice" role="alert">${escHtml(m)}</p>`;
+
+async function localRoute(local: LocalLogin, req: IncomingMessage, res: ServerResponse, url: URL, secure: string, https: boolean): Promise<void> {
+  const post = req.method === "POST";
+  const form = post ? new URLSearchParams((await readBody(req)).toString("utf8")) : new URLSearchParams();
+  const ip = req.socket.remoteAddress ?? "";
+  const login = (u: LocalUser) => ({ Location: "/", "Set-Cookie": `${COOKIE}=${local.mint(u)}; HttpOnly; SameSite=Strict; Path=/${secure}` });
+  const samePw = () => (form.get("password") === form.get("password2") ? null : "確認のパスワードが合いません");
+  const base = process.env.KOTONOHA_PUBLIC_URL?.replace(/\/$/, "") || `${https ? "https" : "http"}://${req.headers.host ?? "localhost"}`;
+  const p = url.pathname;
+  // ログイン
+  if (p === "/login/local") {
+    if (!post) return localPage(res, 405, "ログイン", err("ログインの画面から入ります"));
+    const r = local.authenticate(form.get("login") ?? "", form.get("password") ?? "", ip);
+    if (r === "blocked") return localPage(res, 429, "ログイン", err("失敗が続いたため、しばらく(15 分)ログインできません") + `<p><a href="/login">戻る</a></p>`);
+    if (r === null) return localPage(res, 401, "ログイン", err("ログイン名かパスワードが違います") + `<p><a href="/login">戻る</a></p>`);
+    res.writeHead(303, securityHeaders(login(r)));
+    return void res.end();
+  }
+  // 最初の管理者
+  if (p === "/setup") {
+    const t = post ? (form.get("t") ?? "") : (url.searchParams.get("t") ?? "");
+    if (local.setupToken === null) return localPage(res, 404, "最初の管理者", err("最初の管理者はもう作られています。ログインの画面から入ります") + `<p><a href="/login">ログイン</a></p>`);
+    const html = (m = "") => `${m ? err(m) : ""}<p>このアプリの管理者を作ります。管理者は、ほかの人を招待して役割を付けられます。</p><form method="post" action="/setup" class="form"><input type="hidden" name="t" value="${escHtml(t)}">${userFields}${pwFields("new-password")}<div class="buttons"><button type="submit">管理者を作って入る</button></div></form>`;
+    if (!post) return localPage(res, 200, "最初の管理者", html());
+    const r = samePw() ?? local.setup(t, form.get("login") ?? "", form.get("name") ?? "", form.get("password") ?? "");
+    if (typeof r === "string") return localPage(res, 400, "最初の管理者", html(r));
+    res.writeHead(303, securityHeaders(login(r)));
+    return void res.end();
+  }
+  // 招待のリンク
+  let m = /^\/invite\/([^/]+)$/.exec(p);
+  if (m) {
+    const secret = decodeURIComponent(m[1]);
+    const i = local.findLink(secret);
+    if (!i || i.kind !== "invite") return localPage(res, 404, "招待", err("このリンクは使えません(期限切れか、もう使われています)。管理者に新しいリンクを頼みます"));
+    const html = (msg = "") => `${msg ? err(msg) : ""}<p>このアプリに登録します。${i.roles.length ? `役割: ${i.roles.map(escHtml).join("・")}` : ""}</p><form method="post" action="/invite/${encodeURIComponent(secret)}" class="form">${userFields}${pwFields("new-password")}<div class="buttons"><button type="submit">登録して入る</button></div></form>`;
+    if (!post) return localPage(res, 200, "招待", html());
+    const r = samePw() ?? local.acceptInvite(secret, form.get("login") ?? "", form.get("name") ?? "", form.get("password") ?? "");
+    if (typeof r === "string") return localPage(res, 400, "招待", html(r));
+    res.writeHead(303, securityHeaders(login(r)));
+    return void res.end();
+  }
+  // 再設定のリンク
+  m = /^\/reset\/([^/]+)$/.exec(p);
+  if (m) {
+    const secret = decodeURIComponent(m[1]);
+    const i = local.findLink(secret);
+    if (!i || i.kind !== "reset") return localPage(res, 404, "パスワードの再設定", err("このリンクは使えません(期限切れか、もう使われています)。管理者に新しいリンクを頼みます"));
+    const html = (msg = "") => `${msg ? err(msg) : ""}<form method="post" action="/reset/${encodeURIComponent(secret)}" class="form">${pwFields("new-password")}<div class="buttons"><button type="submit">パスワードを決めて入る</button></div></form>`;
+    if (!post) return localPage(res, 200, "パスワードの再設定", html());
+    const r = samePw() ?? local.acceptReset(secret, form.get("password") ?? "");
+    if (typeof r === "string") return localPage(res, 400, "パスワードの再設定", html(r));
+    res.writeHead(303, securityHeaders(login(r)));
+    return void res.end();
+  }
+  const me = localUserOf(req);
+  // 自分のパスワード
+  if (p === "/account" || p === "/account/password") {
+    if (!me) return localPage(res, 401, "パスワードを変える", err("ログインしてから開きます") + `<p><a href="/login">ログイン</a></p>`);
+    const html = (msg = "") => `${msg ? err(msg) : ""}<form method="post" action="/account/password" class="form"><div class="field"><label for="pw0">今のパスワード</label><input id="pw0" name="current" type="password" required maxlength="200" autocomplete="current-password"></div>${pwFields("new-password")}<div class="buttons"><button type="submit">変える</button></div></form>`;
+    if (!post) return localPage(res, 200, "パスワードを変える", html());
+    const r = samePw() ?? local.changePassword(me.id, form.get("current") ?? "", form.get("password") ?? "");
+    if (typeof r === "string") return localPage(res, 400, "パスワードを変える", html(r));
+    res.writeHead(303, securityHeaders(login(r)));
+    return void res.end();
+  }
+  // 利用者の管理(管理者だけ)
+  if (!me || !me.admin) return localPage(res, me ? 403 : 401, "利用者の管理", err(me ? "利用者の管理は、管理者だけが使えます" : "ログインしてから開きます") + `<p><a href="/login">ログイン</a></p>`);
+  const roleBoxes = (name: string, on: string[], admin: boolean) =>
+    `<fieldset class="field"><legend>役割</legend>${local.roleNames().map((r) => `<label class="check"><input type="checkbox" name="${name}" value="${escHtml(r)}"${on.includes(r) ? " checked" : ""}> ${escHtml(r)}</label>`).join(" ") || "(役割はありません)"} <label class="check"><input type="checkbox" name="admin" value="1"${admin ? " checked" : ""}> 管理者(利用者の管理ができる)</label></fieldset>`;
+  let note = "";
+  if (post && p === "/users/invite") {
+    const secret = local.createLink("invite", form.getAll("role"), form.get("admin") === "1");
+    note = `<div class="notice info"><p>招待のリンクを作りました(7 日間・1 回だけ使えます)。この画面を閉じると二度と表示されないので、いま相手に送ってください。</p><p><input readonly value="${escHtml(`${base}/invite/${secret}`)}" aria-label="招待のリンク" onfocus="this.select()"></p></div>`;
+  } else if (post && (m = /^\/users\/([^/]+)\/reset$/.exec(p))) {
+    const target = local.load().users.find((x) => x.id === decodeURIComponent(m![1]));
+    if (!target) note = err("その利用者はいません");
+    else {
+      const secret = local.createLink("reset", [], false, target.id);
+      note = `<div class="notice info"><p>${escHtml(target.name)} さんのパスワード再設定のリンクを作りました(24 時間・1 回だけ使えます)。いま相手に送ってください。</p><p><input readonly value="${escHtml(`${base}/reset/${secret}`)}" aria-label="再設定のリンク" onfocus="this.select()"></p></div>`;
+    }
+  } else if (post && (m = /^\/users\/([^/]+)\/delete$/.exec(p))) {
+    const e = local.remove(decodeURIComponent(m[1]), me.id);
+    note = e ? err(e) : `<p class="notice info">消しました</p>`;
+  } else if (post && (m = /^\/users\/([^/]+)$/.exec(p))) {
+    const e = local.update(decodeURIComponent(m[1]), form.getAll("role"), form.get("admin") === "1", me.id);
+    note = e ? err(e) : `<p class="notice info">保存しました(その人は次の操作でログインし直します)</p>`;
+  } else if (post || p !== "/users") {
+    return localPage(res, 404, "利用者の管理", err("見つかりません"));
+  }
+  const rows = local
+    .load()
+    .users.map(
+      (u) =>
+        `<li class="card"><p><strong>${escHtml(u.name)}</strong>(${escHtml(u.login)})${u.id === me.id ? " ← あなた" : ""}</p><form method="post" action="/users/${encodeURIComponent(u.id)}" class="form">${roleBoxes("role", u.roles, u.admin)}<div class="buttons"><button type="submit">保存</button></div></form><div class="buttons"><form method="post" action="/users/${encodeURIComponent(u.id)}/reset"><button type="submit" class="secondary">再設定のリンクを作る</button></form>${u.id === me.id ? "" : `<form method="post" action="/users/${encodeURIComponent(u.id)}/delete" onsubmit="return confirm('${escHtml(u.name)} さんを消しますか?')"><button type="submit" class="secondary">消す</button></form>`}</div></li>`,
+    )
+    .join("");
+  return localPage(
+    res,
+    200,
+    "利用者の管理",
+    `${note}<h2>招待する</h2><form method="post" action="/users/invite" class="form"><p>招待のリンクを作って相手に送ると、相手がログイン名とパスワードを決めて登録します。</p>${roleBoxes("role", [], false)}<div class="buttons"><button type="submit">招待のリンクを作る</button></div></form><h2>利用者</h2><ul class="users">${rows}</ul>`,
+  );
 }

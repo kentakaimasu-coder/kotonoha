@@ -991,12 +991,12 @@ fn cmd_publish(o: &mut Opts) -> Result<i32, String> {
             return Err("秘密の値を作れませんでした".into());
         }
         let env = format!(
-            "# 本番の設定(このファイルは人に見せない・Git に入れない)\nKOTONOHA_ENV=production\nKOTONOHA_JWT_SECRET={secret}\nKOTONOHA_DB=./data/data.sqlite\nPORT=8080\n# HTTPS で公開する(置き場所のサービスが HTTPS にする)。開発用のログインは使わない\nKOTONOHA_COOKIE_SECURE=1\nKOTONOHA_DEV_LOGIN=0\n# ログイン(OIDC)。会社・お店で使っているログインの仕組み(Google Workspace・Microsoft Entra・Auth0 など)の値を入れる\nKOTONOHA_OIDC_ISSUER=\nKOTONOHA_OIDC_CLIENT_ID=\nKOTONOHA_OIDC_CLIENT_SECRET=\nKOTONOHA_OIDC_REDIRECT_URI=https://あなたのドメイン/login/callback\n"
+            "# 本番の設定(このファイルは人に見せない・Git に入れない)\nKOTONOHA_ENV=production\nKOTONOHA_JWT_SECRET={secret}\nKOTONOHA_DB=./data/data.sqlite\nPORT=8080\n# HTTPS で公開する(置き場所のサービスが HTTPS にする)。開発用のログインは使わない\nKOTONOHA_COOKIE_SECURE=1\nKOTONOHA_DEV_LOGIN=0\n# ログイン: アプリの中で利用者を登録する(外部のサービスは要らない。ADR-0142)。利用者の一覧は data/users.json に入る\nKOTONOHA_LOCAL_LOGIN=1\nKOTONOHA_USERS_FILE=./data/users.json\n# 招待のリンクに使う、このアプリの URL(例: https://yoyaku.example.jp)\nKOTONOHA_PUBLIC_URL=\n# 会社・学校のログインの仕組み(OIDC: Google Workspace・Microsoft Entra・Auth0 など)を使うときだけ、下に値を入れる\nKOTONOHA_OIDC_ISSUER=\nKOTONOHA_OIDC_CLIENT_ID=\nKOTONOHA_OIDC_CLIENT_SECRET=\nKOTONOHA_OIDC_REDIRECT_URI=https://あなたのドメイン/login/callback\n"
         );
         std::fs::write(&env_path, env).map_err(|e| e.to_string())?;
     }
     std::fs::write(out.join(".gitignore"), ".env\ndata/\nnode_modules/\n").map_err(|e| e.to_string())?;
-    let start_sh = "#!/bin/sh\n# 本番の起動(Node.js 22.18 以上)。.env の値を読み込んで、画面(PORT)と API(PORT+1)を動かす\nset -e\ncd \"$(dirname \"$0\")\"\nset -a; . ./.env; set +a\nif [ -z \"$KOTONOHA_OIDC_ISSUER\" ]; then echo \"ログインの仕組み(.env の KOTONOHA_OIDC_…)がまだです。公開の手順.md の 1 を見てください\" >&2; exit 1; fi\nmkdir -p data\nAPI_PORT=$((PORT + 1))\n(cd web && npm install --no-audit --no-fund && npm run build)\n(cd backend && PORT=$API_PORT KOTONOHA_DB=\"../$KOTONOHA_DB\" exec node --no-warnings src/main.ts) &\ncd web && KOTONOHA_BACKEND_URL=http://127.0.0.1:$API_PORT exec node --no-warnings src/server-main.ts\n";
+    let start_sh = "#!/bin/sh\n# 本番の起動(Node.js 22.18 以上)。.env の値を読み込んで、画面(PORT)と API(PORT+1)を動かす\nset -e\ncd \"$(dirname \"$0\")\"\n# .env があれば読む(コンテナでは置き場所のサービスの「環境変数」に入れる)\nif [ -f ./.env ]; then set -a; . ./.env; set +a; fi\nif [ -z \"$KOTONOHA_OIDC_ISSUER\" ] && [ \"$KOTONOHA_LOCAL_LOGIN\" != \"1\" ]; then echo \"ログインの仕組みがまだです(.env の KOTONOHA_LOCAL_LOGIN=1 か KOTONOHA_OIDC_…)。公開の手順.md の 1 を見てください\" >&2; exit 1; fi\nmkdir -p data\nif [ -n \"$KOTONOHA_OIDC_ISSUER\" ]; then unset KOTONOHA_LOCAL_LOGIN; else unset KOTONOHA_OIDC_ISSUER KOTONOHA_OIDC_CLIENT_ID KOTONOHA_OIDC_CLIENT_SECRET KOTONOHA_OIDC_REDIRECT_URI; fi\nAPI_PORT=$((PORT + 1))\n(cd web && npm install --no-audit --no-fund && npm run build)\n(cd backend && PORT=$API_PORT KOTONOHA_DB=\"../$KOTONOHA_DB\" exec node --no-warnings src/main.ts) &\ncd web && KOTONOHA_USERS_FILE=\"../${KOTONOHA_USERS_FILE:-./data/users.json}\" KOTONOHA_BACKEND_URL=http://127.0.0.1:$API_PORT exec node --no-warnings src/server-main.ts\n";
     std::fs::write(out.join("start.sh"), start_sh).map_err(|e| e.to_string())?;
     #[cfg(unix)]
     {
@@ -1041,14 +1041,19 @@ fn cmd_publish(o: &mut Opts) -> Result<i32, String> {
 const PUBLISH_GUIDE: &str = "# 「{app}」を公開する手順
 
 この一式は `koto publish` が作りました。KOTONOHA が用意するのは、本番用の画面と API・安全な既定の設定・点検の結果までです。
-**置き場所(インターネットから開けるサーバー)と、ログインの仕組み(OIDC)は、外部のサービスを使います**(契約・費用はそのサービスの条件によります)。
+**置き場所(インターネットから開けるサーバー)は、外部のサービスを使います**(契約・費用はそのサービスの条件によります)。
+ログインは、最初から**アプリの中で利用者を登録する形**になっています(外部のサービスは要りません)。
 
-## 1. ログインの仕組みを決める
-本番では「名前を入れてすぐ入る」(開発用ログイン)は使えません。次のどれかで、利用者を登録します。
-- 会社・学校: Google Workspace / Microsoft Entra ID
-- お店・小さな団体: Auth0 / Firebase Authentication などの無料枠
-登録すると「発行者(issuer)」「クライアント ID」「クライアントの秘密」がもらえます。`.env` の `KOTONOHA_OIDC_…` に入れます。
-戻り先の URL には `https://あなたのドメイン/login/callback` を登録します。
+## 1. ログインの仕組み
+本番では「名前を入れてすぐ入る」(開発用ログイン)は使えません。最初から次の形になっています(`.env` の `KOTONOHA_LOCAL_LOGIN=1`)。
+1. 初めて起動すると、起動の記録(ログ)に「最初の管理者を作ります。… /setup?t=… を開いてください」と出ます。その URL を開いて、管理者のログイン名とパスワードを決めます(この URL は一度だけ使えます)
+2. ほかの人は、管理者が「利用者の管理」(ログインの画面から開けます)で**招待のリンク**を作って送ります。役割(受付係など)はそこで付けます
+3. パスワードを忘れた人には、管理者が「再設定のリンク」を作って送ります
+4. 利用者の一覧は `data/users.json` に入ります(パスワードはそのまま保存せず、元に戻せない形にしてあります)。**データと一緒にコピーを取ってください**
+5. `.env` の `KOTONOHA_PUBLIC_URL` に、このアプリの URL(https://…)を入れておくと、招待のリンクがその URL で作られます
+
+会社・学校のログインの仕組み(Google Workspace / Microsoft Entra ID / Auth0 など、OIDC)を使いたいときは、`.env` の `KOTONOHA_OIDC_…` に値を入れます
+(入れると、アプリの中のログインの代わりにそちらを使います)。戻り先の URL には `https://あなたのドメイン/login/callback` を登録します。
 
 ## 2. 置き場所を決めて動かす
 - **コンテナを置けるサービス**(Render・Fly.io・Google Cloud Run など): このフォルダを Git に入れて、`Dockerfile` で動かします。`.env` の値は、そのサービスの「環境変数」の画面に入れます(`.env` ファイルは上げません)
