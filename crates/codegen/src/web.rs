@@ -328,8 +328,11 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                         None => String::new(),
                     };
                     let refs = refs_js(ir, fields, &mut loaders);
+                    // 画面に一覧が 1 つだけなら、見出しと同じ言葉を繰り返さない
+                    let lists = s.components.iter().filter(|c| matches!(c, Component::List { .. })).count();
+                    let quiet = if lists == 1 && s.input.is_none() { ", quiet: true" } else { "" };
                     body.push(format!(
-                        "h(DataList, {{ key: {ci}, r: p.data[{}], fields: {}, tz: p.tz, caption: {}{link}{refs} }})",
+                        "h(DataList, {{ key: {ci}, r: p.data[{}], fields: {}, tz: p.tz, caption: {}{link}{refs}{quiet} }})",
                         js_str(&key),
                         serde_json::to_string(&fs).unwrap(),
                         js_str(caption)
@@ -525,8 +528,16 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                 }
             }
         }
+        // 1 件を出す画面は、見出しをその 1 件の名前(最初の文字列の項目)にする
+        let record = s
+            .input
+            .as_ref()
+            .and_then(|d| ir.entities.iter().find(|e| &e.name == d))
+            .and_then(|e| e.fields.iter().find(|(n, t)| n != "ID" && matches!(t, Type::Str)))
+            .map(|(n, _)| format!(", record: (p.data[{}]?.body as any)?.[{}]", js_str(&format!("get:{}", s.input.as_ref().unwrap())), js_str(n)))
+            .unwrap_or_default();
         g.push_str(&format!(
-            "function {fname}(p: ScreenProps) {{\n  return h(Page, {{ title: {} }},\n    {}\n  );\n}}\n\n",
+            "function {fname}(p: ScreenProps) {{\n  return h(Page, {{ title: {}{record} }},\n    {}\n  );\n}}\n\n",
             js_str(&s.name),
             body.join(",\n    ")
         ));

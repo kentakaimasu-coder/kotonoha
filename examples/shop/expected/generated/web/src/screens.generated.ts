@@ -4,12 +4,12 @@ import type { WebApp } from "./runtime/server.ts";
 
 function Screen_商品一覧(p: ScreenProps) {
   return h(Page, { title: "商品一覧" },
-    h(DataList, { key: 0, r: p.data["list:商品"], fields: [{"name":"名前","type":{"kind":"string"}},{"name":"価格","type":{"currency":"JPY","kind":"money","minor_units":0}},{"name":"在庫","type":{"kind":"int"}}], tz: p.tz, caption: "商品の一覧", link: (row: any) => screenHref("商品詳細", row["ID"]) })
+    h(DataList, { key: 0, r: p.data["list:商品"], fields: [{"name":"名前","type":{"kind":"string"}},{"name":"価格","type":{"currency":"JPY","kind":"money","minor_units":0}},{"name":"在庫","type":{"kind":"int"}}], tz: p.tz, caption: "商品の一覧", link: (row: any) => screenHref("商品詳細", row["ID"]), quiet: true })
   );
 }
 
 function Screen_商品詳細(p: ScreenProps) {
-  return h(Page, { title: "商品詳細" },
+  return h(Page, { title: "商品詳細", record: (p.data["get:商品"]?.body as any)?.["名前"] },
     h(Detail, { key: 0, r: p.data["get:商品"], fields: [{"name":"名前","type":{"kind":"string"}},{"name":"価格","type":{"currency":"JPY","kind":"money","minor_units":0}},{"name":"在庫","type":{"kind":"int"}}], tz: p.tz }),
     h(ActionButton, { key: 1, label: "購入", action: "注文する", reload: p.reload, need: {"caps":["商品.read","商品.update","注文.create"],"grant":"動作.注文する"}, caps: p.caps, args: () => { const r = p.data["get:商品"]; if (!r?.ok) return null; const cur: any = r.body; return { "商品ID": cur["ID"], "数量": 1 }; } })
   );
@@ -18,13 +18,13 @@ function Screen_商品詳細(p: ScreenProps) {
 function Screen_商品管理(p: ScreenProps) {
   return h(Page, { title: "商品管理" },
     h(ActionForm, { key: 0, action: "商品登録", fields: [{"name":"名前","type":{"kind":"string"}},{"name":"価格","type":{"currency":"JPY","kind":"money","minor_units":0}},{"name":"在庫","type":{"kind":"int"}}], reload: p.reload, tz: p.tz, fixed: null, need: {"caps":["商品.create"],"grant":"動作.商品登録"}, caps: p.caps }),
-    h(DataList, { key: 1, r: p.data["list:商品"], fields: [{"name":"名前","type":{"kind":"string"}},{"name":"価格","type":{"currency":"JPY","kind":"money","minor_units":0}},{"name":"在庫","type":{"kind":"int"}}], tz: p.tz, caption: "商品の一覧", link: (row: any) => screenHref("商品詳細", row["ID"]) })
+    h(DataList, { key: 1, r: p.data["list:商品"], fields: [{"name":"名前","type":{"kind":"string"}},{"name":"価格","type":{"currency":"JPY","kind":"money","minor_units":0}},{"name":"在庫","type":{"kind":"int"}}], tz: p.tz, caption: "商品の一覧", link: (row: any) => screenHref("商品詳細", row["ID"]), quiet: true })
   );
 }
 
 function Screen_注文履歴(p: ScreenProps) {
   return h(Page, { title: "注文履歴" },
-    h(DataList, { key: 0, r: p.data["list:注文"], fields: [{"name":"商品ID","type":{"kind":"id"}},{"name":"数量","type":{"kind":"int"}},{"name":"注文者","type":{"kind":"id"}}], tz: p.tz, caption: "注文の一覧", refs: { "商品ID": { r: p.data["list:商品"], label: "名前", title: "商品" } } })
+    h(DataList, { key: 0, r: p.data["list:注文"], fields: [{"name":"商品ID","type":{"kind":"id"}},{"name":"数量","type":{"kind":"int"}},{"name":"注文者","type":{"kind":"id"}}], tz: p.tz, caption: "注文の一覧", refs: { "商品ID": { r: p.data["list:商品"], label: "名前", title: "商品" } }, quiet: true })
   );
 }
 

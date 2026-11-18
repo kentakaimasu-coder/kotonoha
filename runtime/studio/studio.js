@@ -329,6 +329,35 @@ function select(s) {
   $("editor").focus?.();
 }
 
+/** 画面の行の記号まじりの文(「「1名で予約」を押すと 予約する(イベント.ID, 1)」)を、読める言い方にする。読めなければ null
+ *  (行の中の記号が怖いと 10 人中 9 人。GUI で直す評価) */
+function friendlyLine(t) {
+  const arg = (a) => {
+    a = a.trim();
+    let m;
+    if ((m = /^(\S+?)\.ID$/.exec(a))) return `この${m[1]}`;
+    if (a === "本人") return "ログインしている人";
+    if ((m = /^"(.*)"$/.exec(a))) return `「${m[1]}」`;
+    return a;
+  };
+  let m = /^(?:(.+?)とき)?「(.+?)」を押すと\s+(\S+?)\((.*)\)$/.exec(t.trim());
+  if (m) {
+    const act = (S?.outline?.decls ?? []).find((x) => x.kind === "action" && x.name === m[3]);
+    const args = m[4]
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .map((x, i) => {
+        // 何の値かを動作の受け取る値の名前で添える(「このイベント・1」では 1 が何か分からない)
+        const pn = act?.params?.[i]?.name;
+        return /\.ID$/.test(x) || !pn ? arg(x) : `${pn} ${arg(x)}`;
+      });
+    const when = m[1] ? `${m[1].replace(/\S+?\.(\S+?)が/g, "$1が")}ときだけ出る、` : "";
+    return `${when}「${m[2]}」のボタン → 押すと「${m[3]}」${args.length ? `(${args.join("・")})` : ""}`;
+  }
+  if ((m = /^(\S+?)のフォームを表示$/.exec(t.trim()))) return `「${m[1]}」の入力欄(フォーム)`;
+  return null;
+}
 // ---- 編集の欄 ----
 function lineList(d, opts = {}) {
   const ls = srcLines(d.file);
@@ -340,7 +369,7 @@ function lineList(d, opts = {}) {
     // その場で直す(足して消すしかなく、同じ表示が 2 回出た。第 8 回評価)
     const edit = () => {
       const input = el("input", { type: "text", value: text.trim(), "aria-label": "直した文" });
-      const msg = el("div", { class: "msg", role: "status" });
+      const msg = el("div", { class: "msg", role: "status", text: friendlyLine(text) ? "ボタンの文字は「」の中を書き換えます。( ) の中はそのまま残します" : "" });
       row.replaceChildren(
         el("form", { class: "row", onsubmit: async (e) => { e.preventDefault(); const v = input.value; input.blur(); if (v.trim() && v.trim() !== text.trim()) { const j = await op({ op: "replace_line", file: d.file, line: n, old: text, text: v }, msg); if (j.error) { input.value = v; input.focus(); } } else renderAll(); } }, input, el("button", { type: "submit" }, "直す"), el("button", { type: "button", class: "ghost", onclick: () => renderAll() }, "やめる")),
         msg,
@@ -350,7 +379,9 @@ function lineList(d, opts = {}) {
     const row = el(
         "div",
         { class: "line" + (bad.length ? " bad" : "") },
-        el("code", {}, text.trim(), ...bad.map((b) => el("span", { class: "why", text: soft(b.message_ja) + (b.hints?.length ? "(" + soft(b.hints[0]) + ")" : "") }))),
+        friendlyLine(text)
+          ? el("div", { class: "plain" }, el("span", { text: friendlyLine(text) }), el("code", { class: "raw", title: "ソースでの書き方" }, text.trim()), ...bad.map((b) => el("span", { class: "why", text: soft(b.message_ja) + (b.hints?.length ? "(" + soft(b.hints[0]) + ")" : "") })))
+          : el("code", {}, text.trim(), ...bad.map((b) => el("span", { class: "why", text: soft(b.message_ja) + (b.hints?.length ? "(" + soft(b.hints[0]) + ")" : "") }))),
         opts.removable === false ? null : el("button", { type: "button", class: "small ghost", "aria-label": "この行を直す", title: "この行を書き直す", onclick: edit }, "直す"),
         opts.removable === false ? null : el("button", { type: "button", class: "small ghost", "aria-label": "この行を上へ", title: "上へ", onclick: () => op({ op: "move_line", file: d.file, line: n, old: text, dir: "up" }) }, "↑"),
         opts.removable === false ? null : el("button", { type: "button", class: "small ghost", "aria-label": "この行を下へ", title: "下へ", onclick: () => op({ op: "move_line", file: d.file, line: n, old: text, dir: "down" }) }, "↓"),

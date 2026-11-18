@@ -344,3 +344,10 @@ ul.users > li.card { background: var(--surface); border: 1px solid var(--line); 
 ul.users .buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 ul.users .buttons form { margin: 0; }
 a.button.secondary { background: var(--surface); color: var(--fg); border: 1px solid var(--line-strong, #9aa3b2); }
+/* 詳細の画面: 画面の名前を小さく上に、見出しはその 1 件の名前 */
+.page > .kicker { margin: 24px 0 -14px; color: var(--muted); font-size: 0.85rem; font-weight: 600; }
+/* 画面に一覧が 1 つだけのとき: 見出しの言葉は読み上げだけ。条件と件数を出す */
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+table.list caption.quiet { font-weight: 500; color: var(--muted); }
+table.list caption.quiet .cond { margin-right: 8px; }
+table.list caption.quiet .visually-hidden + .count { margin-left: 0; }

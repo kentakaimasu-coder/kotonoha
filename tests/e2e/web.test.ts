@@ -66,7 +66,9 @@ test("AT-01 / TC-011 商品一覧の SSR 表示とクリック遷移", async () 
   assert.ok(html.includes("緑茶") && html.includes("¥300"));
   await page.click("text=緑茶");
   await page.waitForURL(/%E5%95%86%E5%93%81%E8%A9%B3%E7%B4%B0/);
-  assert.equal(await page.textContent("h1"), "商品詳細");
+  // 詳細の画面の見出しはその 1 件の名前。画面の名前は小さく上に(デザインの確認)
+  assert.equal(await page.textContent("h1"), "緑茶");
+  assert.equal(await page.textContent(".page > .kicker"), "商品詳細");
   assert.ok((await page.textContent("dl.detail"))?.includes("¥300"));
   assert.deepEqual(errors, []);
 });

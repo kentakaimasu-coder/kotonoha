@@ -189,8 +189,16 @@ function Notice(p: { r: LoadResult }) {
 }
 
 // ---- 部品 ----
-export function Page(p: { title: string; children?: React.ReactNode }) {
-  return h("section", { className: "page", "aria-labelledby": "page-title" }, h("h1", { id: "page-title" }, p.title), p.children);
+/** 画面。1 件を出す画面(詳細)は、見出しをその 1 件の名前にし、画面の名前は小さく上に出す(デザインの確認: 見出しが画面の種類名だった) */
+export function Page(p: { title: string; record?: unknown; children?: React.ReactNode }) {
+  const rec = typeof p.record === "string" && p.record.trim() ? p.record : null;
+  return h(
+    "section",
+    { className: "page", "aria-labelledby": "page-title" },
+    rec ? h("p", { className: "kicker" }, p.title) : null,
+    h("h1", { id: "page-title" }, rec ?? p.title),
+    p.children,
+  );
 }
 
 /** 関連データの名前で表示する(フィールド「イベントID」→ イベントの名前)。読めなければ ID のまま */
@@ -251,15 +259,18 @@ function Value(p: { refs: Refs | undefined; f: Field; v: unknown; tz: string }) 
   return h(React.Fragment, null, text);
 }
 
-export function DataList(p: { r: LoadResult | undefined; fields: Field[]; tz: string; link?: (row: any) => string; caption: string; refs?: Refs }) {
+export function DataList(p: { r: LoadResult | undefined; fields: Field[]; tz: string; link?: (row: any) => string; caption: string; refs?: Refs; quiet?: boolean }) {
   if (!p.r) return null;
   if (!p.r.ok) return h(Notice, { r: p.r });
   const rows: any[] = p.r.body ?? [];
   if (rows.length === 0) return h("div", { className: "empty" }, h("p", { className: "empty-title" }, p.caption), h("p", null, "まだありません"));
+  // 画面に一覧が 1 つだけなら、見出し(画面の名前)と同じ言葉を繰り返さず、条件と件数だけを出す(デザインの確認: 見出しが重なっていた)
+  const cond = /[(（](.+)[)）]$/.exec(p.caption)?.[1];
+  const label = p.quiet ? h(React.Fragment, null, h("span", { className: "visually-hidden" }, p.caption), cond ? h("span", { className: "cond" }, cond) : null) : p.caption;
   return h(
     "table",
     { className: p.link ? "list linked" : "list" },
-    h("caption", null, p.caption, h("span", { className: "count" }, `${rows.length.toLocaleString("ja-JP")}件`)),
+    h("caption", { className: p.quiet ? "quiet" : undefined }, label, h("span", { className: "count" }, `${rows.length.toLocaleString("ja-JP")}件`)),
     h("thead", null, h("tr", null, p.fields.map((f) => h("th", { key: f.name, scope: "col", className: cellClass(f, p.refs) }, refTitle(p.refs, f))))),
     h(
       "tbody",

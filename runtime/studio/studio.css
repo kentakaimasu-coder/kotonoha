@@ -172,3 +172,7 @@ pre.code { background: var(--surface-2); border: 1px solid var(--line); padding:
 @media (max-width: 720px) { .tree button, .tabs button, header button, main button, main select { min-height: 44px; } }
 /* 端末の枠の下の機種名は読める大きさに */
 .device figcaption small { font-size: 0.75rem; }
+/* 画面の行の記号まじりの文は、読める言い方を上に、ソースの書き方を小さく下に(GUI で直す評価) */
+.line .plain { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.line .plain > span:first-child { font-weight: 600; }
+.line .plain code.raw { font-size: 0.78rem; color: var(--muted); background: none; padding: 0; white-space: normal; word-break: break-all; }
