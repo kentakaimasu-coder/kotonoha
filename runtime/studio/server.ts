@@ -1644,7 +1644,9 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
         }
       }
       convertSeed(o, D.name, fn, t);
-      return changed(o, `「${D.name}」の「${fn}」を ${t} にしました${fixedNote}`);
+      // 「…にする」は型を変える。名前を変えたかった人に分かるように添える(名前ではなく選択肢の種類が変わり紛らわしかった。第 18 回評価)
+      const renameHint = o.enums?.[t] ? `。項目の名前を「${t}」に変えたいときは「${D.name}の「${fn}」を「${t}」に変える」と書きます(「1 つ前に戻す」で戻せます)` : "";
+      return changed(o, `「${D.name}」の「${fn}」の種類(型)を ${t} にしました${fixedNote}${renameHint}`);
     }
   }
   // 名前を変える(第 5 回評価: ひな形の「枠」を自分の言葉にする方法が無かった)
@@ -2931,6 +2933,23 @@ function actionTemplate(o: any, text: string, act: string, dn: string, body: (D:
 
 /** 詳細画面の「表示する X がどれか決まりません」: X を一覧表示している画面に「X を選ぶと 詳細画面 へ」を足す
  * (詳細画面を作るたびにこの誤りが出て、直し方が分かりにくかった。第 7 回評価) */
+/** 本人の分だけ見られるデータの集計(分析)を画面に出したら、見られるのは全件閲覧の人だけと知らせる
+ *  (検査は合格なのに、アプリで「権限がありません。全件閲覧.商談 が必要です」と出た。第 18 回評価) */
+function ownerAnalysisNote(at: { file: string; line: number } | null): string {
+  if (!at) return "";
+  const o = outline();
+  const t = (lines(at.file)[at.line - 1] ?? "").trim();
+  const an = /^(\S+)を表示$/.exec(t)?.[1];
+  const A = an && decl(o, "analysis", an);
+  if (!A) return "";
+  const sent = /集計\s*=\s*"([^"]+)"/.exec(lines(A.file).slice(A.line, A.end).join("\n"))?.[1] ?? "";
+  const datas = (o.decls ?? []).filter((d: any) => d.kind === "data").map((d: any) => d.name).sort((a: string, b: string) => b.length - a.length);
+  const dn = datas.find((n: string) => sent.startsWith(n));
+  const R = decl(o, "rules");
+  const owner = dn && R && lines(R.file).slice(R.line, R.end).some((l) => new RegExp(`^\\s*${reEsc(dn)}は.+が本人のものだけ閲覧可`).test(l));
+  if (!owner) return "";
+  return `。この集計は「${dn}」の全員分を数えるので、見られるのは 全件閲覧.${dn} を持つ役割の人だけです(ほかの人には「権限がありません」と出ます)。役割の人だけの画面にするか(「この画面は○○だけ」)、本人の分だけ数えるなら画面に「${sent.replace(/ごとに(合計|集計)$/, "ごとに$1")}」と書きます`;
+}
 function autoNav(at: { file: string; line: number } | null = null): string[] {
   const added: string[] = [];
   for (let round = 0; round < 3; round++) {
@@ -2974,6 +2993,7 @@ function autoNav(at: { file: string; line: number } | null = null): string[] {
 function checked(at: { file: string; line: number } | null, done: string, before: any, text: string): any {
   const nav = autoNav(at);
   if (nav.length) done += `(一覧から開けるように、${nav.join("、")}を足しました)`;
+  done += ownerAnalysisNote(at);
   const o = outline();
   const bad = (o.diagnostics ?? []).filter((d: any) => d.severity === "error" && at && d.span?.line === at.line && d.file === at.file);
   if (bad.length === 0) {
