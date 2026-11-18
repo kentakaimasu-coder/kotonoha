@@ -1,0 +1,160 @@
+[
+ {
+  "name": "studio-home",
+  "width": 1280,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/studio-home-1280.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [
+   "span 11px \"9:41\"",
+   "span 11px \"● ▮\"",
+   "small 11.3333px \"iOS・375×667\"",
+   "small 11.3333px \"iOS・393×852\"",
+   "span 10px \"9:41\"",
+   "span 10px \"▾ ▮\"",
+   "small 11.3333px \"Android・360×780\"",
+   "small 11.3333px \"Android・412×915\""
+  ],
+  "axe": []
+ },
+ {
+  "name": "app-list",
+  "width": 1280,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/app-list-1280.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [],
+  "axe": []
+ },
+ {
+  "name": "app-detail",
+  "width": 1280,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/app-detail-1280.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [],
+  "axe": []
+ },
+ {
+  "name": "app-login",
+  "width": 1280,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/app-login-1280.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [],
+  "axe": []
+ },
+ {
+  "name": "app-mine",
+  "width": 1280,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/app-mine-1280.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [],
+  "axe": []
+ },
+ {
+  "name": "app-admin",
+  "width": 1280,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/app-admin-1280.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [],
+  "axe": []
+ },
+ {
+  "name": "studio-home",
+  "width": 390,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/studio-home-390.png",
+  "overflow": false,
+  "small_targets": [
+   "button \"作る\" 63x38",
+   "button \"見た目の確認\" 121x38",
+   "button \"動かす・初期データ・公開\" 208x38",
+   "button \"ソース\" 78x38",
+   "button \"↶ 1 つ前に戻す\" 132x38",
+   "button \"はじめに\" 332x34",
+   "button \"イベント\" 332x34",
+   "button \"予約\" 332x34",
+   "button \"+ 新しいデータ\" 332x34",
+   "button \"イベント一覧\" 332x34",
+   "button \"イベント詳細\" 332x34",
+   "button \"自分の予約\" 332x34",
+   "button \"管理\" 332x34",
+   "button \"+ 新しい画面\" 332x34",
+   "button \"予約する\" 332x34"
+  ],
+  "small_count": 27,
+  "tiny_text": [
+   "span 11px \"9:41\"",
+   "span 11px \"● ▮\"",
+   "small 11.3333px \"iOS・375×667\"",
+   "small 11.3333px \"iOS・393×852\"",
+   "span 10px \"9:41\"",
+   "span 10px \"▾ ▮\"",
+   "small 11.3333px \"Android・360×780\"",
+   "small 11.3333px \"Android・412×915\""
+  ],
+  "axe": []
+ },
+ {
+  "name": "app-list",
+  "width": 390,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/app-list-390.png",
+  "overflow": false,
+  "small_targets": [
+   "a \"はじめての Rust 勉強会\" 181x29",
+   "a \"データ分析入門セミナー\" 187x29",
+   "a \"デザイン相談会\" 119x29"
+  ],
+  "small_count": 3,
+  "tiny_text": [],
+  "axe": []
+ },
+ {
+  "name": "app-detail",
+  "width": 390,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/app-detail-390.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [],
+  "axe": []
+ },
+ {
+  "name": "app-login",
+  "width": 390,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/app-login-390.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [],
+  "axe": []
+ },
+ {
+  "name": "app-mine",
+  "width": 390,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/app-mine-390.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [],
+  "axe": []
+ },
+ {
+  "name": "app-admin",
+  "width": 390,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/app-admin-390.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [],
+  "axe": []
+ }
+]

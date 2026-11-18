@@ -474,6 +474,9 @@ function makeOptional(o: any, dn: string | undefined, fn: string): string[] {
     ls[i] = ls[i].replace(/:\s*(.+?)\s*$/, `: 選択<${f.type}>`);
     write(D.file, ls.join("\n"));
     done.push(`${D.name}の${fn}`);
+    // 必須で足したときに初期データへ入れた仮の値「未設定」は、空でもよくなったので消す
+    // (アプリに「持ち物 未設定」と出た。GUI で直す評価で 10 人中 9 人)
+    clearSeedPlaceholder(D.name, fn);
     // 「D を登録(… fn: fn …)」を含む動作の引数 fn も 選択<…> に
     const o2 = outline();
     for (const a of (o2.decls ?? []).filter((x: any) => x.kind === "action")) {
@@ -2289,6 +2292,24 @@ function fillSeed(o: any, dn: string, fn: string, t: string): void {
   let changed = false;
   for (const r of rows) if (r && typeof r === "object" && r[fn] === undefined) {
     r[fn] = v;
+    changed = true;
+  }
+  if (changed) writeRaw("seed.json", JSON.stringify(seed, null, 2) + "\n");
+}
+function clearSeedPlaceholder(dn: string, fn: string): void {
+  const sp = join(PROJECT, "seed.json");
+  if (!existsSync(sp)) return;
+  let seed: any;
+  try {
+    seed = JSON.parse(readFileSync(sp, "utf8"));
+  } catch {
+    return;
+  }
+  const rows = seed?.[dn];
+  if (!Array.isArray(rows)) return;
+  let changed = false;
+  for (const r of rows) if (r && typeof r === "object" && r[fn] === "未設定") {
+    delete r[fn];
     changed = true;
   }
   if (changed) writeRaw("seed.json", JSON.stringify(seed, null, 2) + "\n");

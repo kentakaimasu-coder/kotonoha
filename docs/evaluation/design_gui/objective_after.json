@@ -1,0 +1,132 @@
+[
+ {
+  "name": "studio-home",
+  "width": 1280,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/studio-home-1280.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [
+   "span 11px \"9:41\"",
+   "span 11px \"● ▮\"",
+   "span 10px \"9:41\"",
+   "span 10px \"▾ ▮\""
+  ],
+  "axe": []
+ },
+ {
+  "name": "app-list",
+  "width": 1280,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/app-list-1280.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [],
+  "axe": []
+ },
+ {
+  "name": "app-detail",
+  "width": 1280,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/app-detail-1280.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [],
+  "axe": []
+ },
+ {
+  "name": "app-login",
+  "width": 1280,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/app-login-1280.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [],
+  "axe": []
+ },
+ {
+  "name": "app-mine",
+  "width": 1280,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/app-mine-1280.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [],
+  "axe": []
+ },
+ {
+  "name": "app-admin",
+  "width": 1280,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/app-admin-1280.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [],
+  "axe": []
+ },
+ {
+  "name": "studio-home",
+  "width": 390,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/studio-home-390.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [
+   "span 11px \"9:41\"",
+   "span 11px \"● ▮\"",
+   "span 10px \"9:41\"",
+   "span 10px \"▾ ▮\""
+  ],
+  "axe": []
+ },
+ {
+  "name": "app-list",
+  "width": 390,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/app-list-390.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [],
+  "axe": []
+ },
+ {
+  "name": "app-detail",
+  "width": 390,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/app-detail-390.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [],
+  "axe": []
+ },
+ {
+  "name": "app-login",
+  "width": 390,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/app-login-390.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [],
+  "axe": []
+ },
+ {
+  "name": "app-mine",
+  "width": 390,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/app-mine-390.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [],
+  "axe": []
+ },
+ {
+  "name": "app-admin",
+  "width": 390,
+  "file": "/tmp/claude-0/-home-user/afe56ed3-818c-5119-984f-5b840e3607c0/scratchpad/design/shots/app-admin-390.png",
+  "overflow": false,
+  "small_targets": [],
+  "small_count": 0,
+  "tiny_text": [],
+  "axe": []
+ }
+]

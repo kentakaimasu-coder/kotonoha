@@ -297,3 +297,12 @@ test("「枠一覧に枠の定員を名前ごとに合計を表示」: 画面の
   await ok("枠一覧に枠の定員を名前ごとに合計を表示");
   assert.match(src(), /画面 枠一覧:\n(    .+\n)*    枠の定員を名前ごとに合計\n/);
 });
+
+test("必須で足した項目を空でもよいにすると、初期データの仮の値「未設定」を消す", async () => {
+  const seed = () => JSON.parse(readFileSync(join(dir, "seed.json"), "utf8"));
+  const dn = Object.keys(seed()).find((k) => Array.isArray(seed()[k]) && seed()[k].length && /枠/.test(k))!;
+  await ok(`${dn}に「持ち物」を追加`);
+  assert.ok(seed()[dn].every((r: any) => r.持ち物 === "未設定"), JSON.stringify(seed()[dn][0]));
+  await ok("「持ち物」を空でもよいにする");
+  assert.ok(seed()[dn].every((r: any) => r.持ち物 === undefined), JSON.stringify(seed()[dn][0]));
+});

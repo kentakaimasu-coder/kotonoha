@@ -17,6 +17,12 @@ function el(tag, attrs = {}, ...kids) {
   for (const k of kids.flat()) if (k !== null && k !== undefined && k !== false) e.append(k instanceof Node ? k : document.createTextNode(String(k)));
   return e;
 }
+/** 検査の文から英語の記号を外す(「(UNRESOLVED_INTENT)」「P-LIST」が出て怖かった。GUI で直す評価) */
+function soft(t) {
+  return String(t ?? "")
+    .replace(/\s*\(UNRESOLVED_INTENT\)/g, "")
+    .replace(/画面の文型は docs\/spec\/intent_patterns\.md の P-LIST .*?です/, "画面の文は「…を一覧表示」「…の…を表示」「「ボタンの文字」を押すと 動作(…)」などの形です(はじめにの表に例があります)");
+}
 const $ = (id) => document.getElementById(id);
 function store(k, v) {
   try {
@@ -344,7 +350,7 @@ function lineList(d, opts = {}) {
     const row = el(
         "div",
         { class: "line" + (bad.length ? " bad" : "") },
-        el("code", {}, text.trim(), ...bad.map((b) => el("span", { class: "why", text: b.message_ja + (b.hints?.length ? "(" + b.hints[0] + ")" : "") }))),
+        el("code", {}, text.trim(), ...bad.map((b) => el("span", { class: "why", text: soft(b.message_ja) + (b.hints?.length ? "(" + soft(b.hints[0]) + ")" : "") }))),
         opts.removable === false ? null : el("button", { type: "button", class: "small ghost", "aria-label": "この行を直す", title: "この行を書き直す", onclick: edit }, "直す"),
         opts.removable === false ? null : el("button", { type: "button", class: "small ghost", "aria-label": "この行を上へ", title: "上へ", onclick: () => op({ op: "move_line", file: d.file, line: n, old: text, dir: "up" }) }, "↑"),
         opts.removable === false ? null : el("button", { type: "button", class: "small ghost", "aria-label": "この行を下へ", title: "下へ", onclick: () => op({ op: "move_line", file: d.file, line: n, old: text, dir: "down" }) }, "↓"),
@@ -827,7 +833,7 @@ function renderSide() {
   const ds = S.outline?.diagnostics ?? [];
   if (!ds.length) pr.append(el("li", { class: "none", text: "問題はありません" }));
   for (const d of ds.slice(0, 30)) {
-    pr.append(el("li", { class: d.severity === "error" ? "" : "warn" }, `${d.file ? d.file + ":" : ""}${d.span?.line ?? ""} ${d.message_ja}`, ...(d.hints ?? []).slice(0, 2).map((h) => el("span", { class: "hint", text: h }))));
+    pr.append(el("li", { class: d.severity === "error" ? "" : "warn" }, `${d.file ? d.file + ":" : ""}${d.span?.line ?? ""} ${soft(d.message_ja)}`, ...(d.hints ?? []).slice(0, 2).map((h) => el("span", { class: "hint", text: soft(h) }))));
   }
 }
 
@@ -877,7 +883,7 @@ function showResult(j) {
     box.append(el("span", { class: "err", text: r.message }), el("div", { class: "chips" }, ...r.screens.map((s) => el("button", { type: "button", class: "chip", onclick: () => { select({ kind: "screen", name: s }); $("ask-form").requestSubmit(); } }, `画面「${s}」に入れる`))));
     return;
   }
-  for (const e2 of r.errors ?? []) box.append(el("div", { class: "err", text: "この文は読めませんでした: " + e2.message }), ...(e2.hints ?? []).slice(0, 2).map((h) => el("div", { class: "help", text: h })));
+  for (const e2 of r.errors ?? []) box.append(el("div", { class: "err", text: "この文は読めませんでした: " + soft(e2.message) }), ...(e2.hints ?? []).slice(0, 2).map((h) => el("div", { class: "help", text: soft(h) })));
   if (r.suggestions?.length) {
     box.append(el("div", { class: "help", text: "近い書き方(押すと入ります):" }), el("div", { class: "chips" }, ...r.suggestions.map((s) => el("button", { type: "button", class: "chip", onclick: () => { $("ask-text").value = s; $("ask-text").focus(); } }, s))));
   }
