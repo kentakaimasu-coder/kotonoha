@@ -351,3 +351,8 @@ a.button.secondary { background: var(--surface); color: var(--fg); border: 1px s
 table.list caption.quiet { font-weight: 500; color: var(--muted); }
 table.list caption.quiet .cond { margin-right: 8px; }
 table.list caption.quiet .visually-hidden + .count { margin-left: 0; }
+/* 開発用ログインの役割のボタン: ボタンの下に、その人ができること */
+.role-choices { display: grid; gap: 10px; }
+.role-choice { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.role-choice button { min-width: 15em; }
+.role-choice .hint { margin: 0; color: var(--muted); font-size: 0.85rem; }

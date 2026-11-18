@@ -373,7 +373,7 @@ export function createWebServer(
         return res.end(
           page(
             "ログイン",
-            `<section class="page"><h1>ログイン</h1>${local ? localLoginHtml(local, req) : ""}${oidc ? `<p><a class="button" href="/login/oidc">認証基盤でログイン</a></p>` : ""}${devQuick ? `<form method="post" action="/login/dev" class="form"><h2>開発用: 名前を入れてすぐ入る</h2><p>開発中だけの機能です。別の名前で入ると別の人として扱われます。「本人のものだけ閲覧可」のデータは、一般の利用者なら自分の分だけ、管理者なら全員の分が見えます。${Object.keys(devQuick.roles ?? {}).length ? "役割のあるアプリでは、一般の利用者(役割なし)は役割に関わらない操作だけができます(本番で役割の付いていない人と同じ)。予約などを試すときは、役割の名前のボタンで入ります。" : ""}</p><div class="field"><label for="dev-name">名前</label><input id="dev-name" name="name" value="開発者" maxlength="64" autocomplete="off"></div><div class="buttons"><button type="submit" name="role" value="user">${Object.keys(devQuick.roles ?? {}).length ? "一般の利用者(役割なし)として入る" : "一般の利用者として入る"}</button> ${Object.keys(devQuick.roles ?? {}).map((r) => `<button type="submit" name="role" value="r:${escHtml(r)}" class="secondary">${escHtml(r)}として入る</button> `).join("")}<button type="submit" name="role" value="admin" class="secondary">${"管理者" in (devQuick.roles ?? {}) ? "すべての権限で入る" : "管理者として入る"}</button></div></form>` : ""}${devLogin ? `<form method="post" action="/login" class="form"><h2>開発用: トークンでログイン</h2><p>発行済みのトークンを入力してログインします。</p><div class="field"><label for="token">トークン</label><input id="token" name="token" type="password" required autocomplete="off"></div><div class="buttons"><button type="submit">ログイン</button></div></form>` : ""}${tokenOf(req) !== null || cookieOf(req, COOKIE) !== null ? `<form method="post" action="/logout" class="logout"><button type="submit" class="secondary">ログアウト</button></form>` : ""}</section>`,
+            `<section class="page"><h1>ログイン</h1>${local ? localLoginHtml(local, req) : ""}${oidc ? `<p><a class="button" href="/login/oidc">認証基盤でログイン</a></p>` : ""}${devQuick ? `<form method="post" action="/login/dev" class="form"><h2>開発用: 名前を入れてすぐ入る</h2><p>開発中だけの機能です。試したい人の立場のボタンで入ります(ボタンの横に、その人ができることが出ます)。別の名前で入ると別の人になります。</p><div class="field"><label for="dev-name">名前</label><input id="dev-name" name="name" value="開発者" maxlength="64" autocomplete="off"></div>${devRoleButtons(devQuick)}</form>` : ""}${devLogin ? `<form method="post" action="/login" class="form"><h2>開発用: トークンでログイン</h2><p>発行済みのトークンを入力してログインします。</p><div class="field"><label for="token">トークン</label><input id="token" name="token" type="password" required autocomplete="off"></div><div class="buttons"><button type="submit">ログイン</button></div></form>` : ""}${tokenOf(req) !== null || cookieOf(req, COOKIE) !== null ? `<form method="post" action="/logout" class="logout"><button type="submit" class="secondary">ログアウト</button></form>` : ""}</section>`,
             null,
           ),
         );
@@ -558,4 +558,28 @@ async function localRoute(local: LocalLogin, req: IncomingMessage, res: ServerRe
     "利用者の管理",
     `${note}<h2>招待する</h2><form method="post" action="/users/invite" class="form"><p>招待のリンクを作って相手に送ると、相手がログイン名とパスワードを決めて登録します。</p>${roleBoxes("role", [], false)}<div class="buttons"><button type="submit">招待のリンクを作る</button></div></form><h2>利用者</h2><ul class="users">${rows}</ul>`,
   );
+}
+
+/** 開発用ログインのボタン。役割ごとに「できること」を添える(どのボタンで入れば予約できるか分からなかった。第 17 回評価で 15 人) */
+function devRoleButtons(dq: { caps: string[]; roles?: Record<string, string[]>; general?: string[] }): string {
+  const roles = dq.roles ?? {};
+  const can = (caps: string[]): string => {
+    const out: string[] = [];
+    for (const c of caps) {
+      let m: RegExpExecArray | null;
+      if ((m = /^動作\.(.+)$/.exec(c))) out.push(m[1]);
+      else if ((m = /^(.+)\.(作成|create)$/.exec(c))) out.push(`${m[1]}の登録`);
+      else if ((m = /^(.+)\.(更新|update)$/.exec(c))) out.push(`${m[1]}の変更`);
+      else if ((m = /^(.+)\.(削除|delete)$/.exec(c))) out.push(`${m[1]}の削除`);
+      else if ((m = /^全件閲覧\.(.+)$/.exec(c))) out.push(`全員の${m[1]}を見る`);
+    }
+    const u = [...new Set(out)];
+    return u.length ? u.slice(0, 6).join("・") + (u.length > 6 ? " ほか" : "") : "見ることだけ";
+  };
+  const names = Object.keys(roles);
+  const row = (value: string, label: string, caps: string[], primary: boolean) =>
+    `<div class="role-choice"><button type="submit" name="role" value="${escHtml(value)}"${primary ? "" : ' class="secondary"'}>${escHtml(label)}</button><p class="hint">できること: ${escHtml(can(caps))}</p></div>`;
+  if (names.length === 0) return `<div class="buttons">${row("user", "一般の利用者として入る", dq.general ?? dq.caps, true)}${row("admin", "管理者として入る", dq.caps, false)}</div>`;
+  // 役割のあるアプリは、役割のボタンを先に。役割なしの人は最後に(役割なしでは予約できないと気づかなかった)
+  return `<div class="role-choices">${names.map((r, i) => row(`r:${r}`, `${r}として入る`, roles[r], i === 0)).join("")}${row("user", "役割なし(ログインしただけの人)として入る", dq.general ?? [], false)}${"管理者" in roles ? row("admin", "すべての権限で入る", dq.caps, false) : ""}</div>`;
 }

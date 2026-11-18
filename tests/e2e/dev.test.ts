@@ -59,9 +59,12 @@ test("ADR-0140: 一般の利用者(役割なし)には、予約のボタンの�
   const ctx = await browser.newContext({ locale: "ja-JP" });
   const page = await ctx.newPage();
   await page.goto(url + "/login");
-  assert.match((await page.textContent("main"))!, /一般の利用者\(役割なし\)は役割に関わらない操作だけができます/);
+  // ボタンの横に、その人ができることを出す(どのボタンで入れば予約できるか分からなかった。第 17 回評価)
+  const main = (await page.textContent("main"))!;
+  assert.match(main, /利用者として入るできること: 予約の登録/);
+  assert.match(main, /役割なし\(ログインしただけの人\)として入るできること: 見ることだけ/);
   await page.fill("#dev-name", "次郎");
-  await page.click("text=一般の利用者(役割なし)として入る");
+  await page.click("text=役割なし(ログインしただけの人)として入る");
   await page.waitForURL(/\/s\//);
   await page.click("text=午後の回");
   await page.waitForSelector("dl");
