@@ -1000,6 +1000,13 @@ function apply(op: Op): { file: string; line: number } | null {
         const d = (o.decls ?? []).find((x: any) => x.file === op.file && op.line > x.line && op.line <= x.end);
         if (d && ["screen", "rules", "scenario", "enum", "role"].includes(d.kind)) {
           const body = ls.slice(d.line, d.end).filter((l) => l.trim() && !l.trim().startsWith("#"));
+          // 約束は最後の 1 行を消すと「約束:」ごと消す(約束は無くても動く。「誰でも閲覧可」を消せなかった。第 18 回評価)
+          if (body.length <= 1 && d.kind === "rules") {
+            const n = d.end - d.line + 1 + (ls[d.end]?.trim() === "" ? 1 : 0);
+            ls.splice(d.line - 1, n);
+            write(op.file, ls.join("\n"));
+            return { file: op.file, line: Math.max(1, d.line - 1) };
+          }
           if (body.length <= 1) {
             const what = ({ screen: "画面", rules: "約束", scenario: "確かめる", enum: "列挙", role: "役割" } as any)[d.kind];
             throw new Error(`${what}「${d.name ?? "約束"}」の最後の 1 行なので消せません。先に新しい行を足すか、${what}ごと消すときは日本語の欄に「${d.name ?? "約束"}を消す」と書きます`);
@@ -1326,6 +1333,48 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     if (ge) {
       const flip = ({ 以上: "未満", 以下: "より大きい", 未満: "以上", より大きく: "以下", より大きい: "以下", より小さく: "以上", より小さい: "以上" } as Record<string, string>)[ge[4]];
       text = `${ge[2]}が${ge[3]}${flip}なら止める`;
+    }
+  }
+  // 「「注文する」でメニューが売り切れなら断る」「「予約する」で枠の状態が「休み」なら断る」: 真偽・選択肢の項目で止める
+  //   (売り切れなら断る判定を日本語で書けず、ソースで書いた。第 18 回評価)
+  {
+    const fm = /^(?:動作)?「?([^「」\s]+?)」?(?:で|では|のとき)、?([^「」\s]+?)(?:の([^「」\s]+?))?が「?([^「」\s]+?)」?(?:なら|のとき|のときは|の場合は|だったら)、?(?:断る|失敗|失敗にする|止める|できないようにする|エラーにする)$/.exec(text);
+    const A = fm && decl(o, "action", fm[1]);
+    const FD = fm && decl(o, "data", fm[2]);
+    if (A && FD) {
+      const [, an, dn, fn0, v] = fm!;
+      // 項目: 「売り切れ」(真偽)・「状態」(選択肢に v がある)
+      const enumOf = (t: string) => o.enums?.[t.replace(/^選択<(.+)>$/, "$1")] as string[] | undefined;
+      const f =
+        (fn0 && FD.fields.find((x: any) => x.name === fn0)) ||
+        FD.fields.find((x: any) => x.name === v && /真偽/.test(x.type)) ||
+        FD.fields.find((x: any) => enumOf(x.type)?.includes(v));
+      if (!f) throw new Error(`「${dn}」に「${v}」を表す項目がありません。真偽の項目「${v}」を足すか(「${dn}に「${v}」を追加(真偽)」)、選択肢の項目の値にします`);
+      const isBool = /真偽/.test(f.type);
+      if (!isBool && !enumOf(f.type)?.includes(v)) throw new Error(`「${dn}」の「${f.name}」の選択肢に「${v}」がありません(選択肢: ${(enumOf(f.type) ?? []).join("・") || "なし"})`);
+      const al = lines(A.file);
+      const head = al[A.line - 1];
+      const fe = /結果<[^,>]+,\s*([^>]+)>/.exec(head)?.[1]?.trim();
+      if (!fe || !decl(o, "enum", fe)) throw new Error(`動作「${an}」は失敗を返さない形です。先に「${an}」に失敗を返す確認を 1 つ入れてから使います`);
+      // 対象の 1 件を取り出す行を探す。無ければ「…ID」の受け取る値から取り出す
+      let k = al.slice(A.line, A.end).findIndex((l) => new RegExp(`=\\s*${reEsc(dn)}を取得\\(`).test(l));
+      let v1 = "";
+      if (k >= 0) {
+        k += A.line;
+        v1 = /^\s*(\S+)\s*=/.exec(al[k])![1];
+      } else {
+        const pid = (A.params ?? []).find((p: any) => p.name === `${dn}ID`);
+        if (!pid) throw new Error(`動作「${an}」は「${dn}」を受け取っていません(${dn}ID が無い)`);
+        v1 = dn;
+        al.splice(A.line, 0, `    ${v1} = ${dn}を取得(${dn}ID)`);
+        k = A.line;
+      }
+      const cond = isBool ? `${v1}.${f.name} == 偽` : `${v1}.${f.name} != "${v}"`;
+      al.splice(k + 1, 0, `    ${cond} を確認 または 失敗("${v}")`);
+      write(A.file, al.join("\n"));
+      const E = decl(outline(), "enum", fe);
+      if (!(E.values ?? []).includes(v)) apply({ op: "add_line", kind: "enum", name: fe, text: v });
+      return checked({ file: A.file, line: k + 2 }, `動作「${an}」で、${dn}が「${v}」なら「${v}」で断るようにしました`, o, text);
     }
   }
   // 裏返しの言い方: 「注文するで数量が1以上でなければ失敗」「金額は0より大きくないとだめにする」(読めなかった。第 14 回評価)
