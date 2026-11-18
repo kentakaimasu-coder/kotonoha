@@ -1199,6 +1199,19 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       );
     }
   }
+  // 「同じ人が同じレッスンに2回予約できないようにしたい」: 「予約はレッスンIDと予約者の組で重複不可」に読み替える
+  //   (読めず、近い書き方にも無かった。第 18 回評価)
+  {
+    const um = /^同じ(?:人|お客さん?|お客様|利用者|会員|生徒|患者|部員|社員)が、?同じ([^\s、]+?)(?:に|を|へ|で)(?:2回|２回|二回|二度|2度|何度も|二重に|重ねて)?(?:は)?([^\s、]+?)(?:できない|できなく|させない|しない)(?:ように)?(?:したい|する|して)?$/.exec(text);
+    const X = um && decl(o, "data", um[1]);
+    if (X) {
+      const verbs = um![2].replace(/(する|をする)$/, "");
+      const cands = (o.decls ?? []).filter((d: any) => d.kind === "data" && d.fields.some((f: any) => f.name === `${X.name}ID`));
+      const D = cands.find((d: any) => d.name.includes(verbs) || verbs.includes(d.name)) ?? cands[0];
+      const actor = D && D.fields.find((f: any) => /識別子/.test(f.type) && autoValue(o, f.name, "識別子") === "本人");
+      if (D && actor) text = `${D.name}は${X.name}IDと${actor.name}の組で重複不可`;
+    }
+  }
   // 「商談一覧に商談の見込み金額を状況ごとに合計を表示」: 画面の名前と集計の文(読めず、ソースで行を移した。第 17 回評価)
   {
     const ag = /^(?:(?:画面)?「?([^「」]+?)」?に)?(.+?ごとに(?:合計|集計))(?:を|して)?(?:表示|出す|出したい|表示したい|載せる)?(?:する)?$/.exec(text);
