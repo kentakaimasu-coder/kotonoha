@@ -261,3 +261,28 @@ test("ADR-0141: 「…はログインした人だけ閲覧可」は、役割の�
   const plain = readFileSync(join(d5, "公開用", "点検の結果.md"), "utf8");
   assert.match(plain, /「枠」の一覧を見られる: ログインした人みんな\(役割に関わらず\)/);
 });
+
+test("「受取日」を必須にする: 入力欄が無ければ先に作る案内、あれば必須にしてボタンをフォームに置き換える(第 19 回評価)", async () => {
+  const d6 = join(tmp("required"), "受付");
+  execFileSync(KOTO, ["init", d6, "--template", "予約受付"], { stdio: "pipe" });
+  const port = await freePort();
+  const p6 = spawn(KOTO, ["-C", d6, "studio", "--port", String(port)], { stdio: "ignore" });
+  try {
+    const u6 = `http://127.0.0.1:${port}`;
+    await waitHttp(u6 + "/", 60000);
+    const token = /name="studio-token" content="([0-9a-f]+)"/.exec(await (await fetch(u6 + "/")).text())![1];
+    const say = async (text: string) => (await (await fetch(u6 + "/api/instruct", { method: "POST", headers: { "Content-Type": "application/json", "X-Studio-Token": token }, body: JSON.stringify({ text }) })).json()) as any;
+    await say("予約に「受取日」を追加(日付)");
+    const r1 = await say("「受取日」を必須にする");
+    assert.match(r1.error ?? "", /先に入力欄を作ります/);
+    await say("予約するで「受取日」も入力できるようにしたい");
+    const r2 = await say("「受取日」を必須にする");
+    assert.equal(r2.result?.ok, true, JSON.stringify(r2.result ?? r2.error));
+    const t = readFileSync(join(d6, "src/app.koto"), "utf8");
+    assert.match(t, /    受取日: 日付\n/);
+    assert.match(t, /予約するのフォームを表示/);
+    assert.doesNotMatch(t, /予約する\(枠\.ID, 1, なし\)/);
+  } finally {
+    p6.kill();
+  }
+});

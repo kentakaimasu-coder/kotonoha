@@ -987,7 +987,8 @@ function apply(op: Op): { file: string; line: number } | null {
         if (D && D.fields.some((f: any) => f.name === name) && !new RegExp(`[(,]\\s*${reEsc(name)}\\s*:`).test(al[k])) al[k] = addParam(al[k], `${name}: ${name}`, al[k].indexOf(`${mm![1]}を登録(`));
       }
       write(a.file, al.join("\n"));
-      appendCallArg(a.name, sampleValue(o, t, name), /ID$/.test(name) && decl(o, "data", name.slice(0, -2)) ? name.slice(0, -2) : "");
+      // 空でもよい値は、ボタンでは「なし」にする(日付の仮の値が入り「型が一致しません」になった。第 19 回評価)
+      appendCallArg(a.name, sampleValue(o, t, name), /ID$/.test(name) && decl(o, "data", name.slice(0, -2)) ? name.slice(0, -2) : "", /^選択</.test(t) ? "なし" : undefined);
       return { file: a.file, line: a.line };
     }
     case "move_param": {
@@ -1549,6 +1550,41 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
         dropScenarioArg(a.name, idx);
       }
       return changed(o, `「${D.name}」の「${fn}」には、登録したときにログインした本人が入るようにしました(${acts.map((a: any) => a.name).join("・")} の入力欄から外しました)`);
+    }
+  }
+  // 必須にする: 「受取日」を必須にする(空でもよいの反対。読めず、型の書き方で直した。第 19 回評価)
+  {
+    const rq = /^(?:([^「」]+?)の)?「?([^「」]+?)」?(?:を|は)(?:必須|必ず入れる|必ず入力|入力必須|空にできない|空ではだめ)(?:の)?(?:項目|欄)?(?:に(?:する|したい|して))?$/.exec(text);
+    if (rq) {
+      const fn = rq[2].trim();
+      const D = (o.decls ?? []).find((d: any) => d.kind === "data" && (!rq[1] || d.name === rq[1].trim()) && d.fields.some((f: any) => f.name === fn));
+      const f = D?.fields.find((x: any) => x.name === fn);
+      if (f && /^選択<(.+)>$/.test(f.type)) {
+        // 登録の動作がこの項目を入れていなければ、先に入力欄を作ってもらう(必須にすると登録できなくなる)
+        const miss = (o.decls ?? []).filter((a: any) => a.kind === "action" && lines(a.file).slice(a.line, a.end).some((l) => l.includes(`${D.name}を登録(`) && !new RegExp(`[(,]\\s*${reEsc(fn)}\\s*:`).test(l)));
+        if (miss.length) throw new Error(`「${fn}」を必須にするには、先に入力欄を作ります: 「${miss[0].name}で「${fn}」も入力できるようにしたい」と書いてから、もう一度「「${fn}」を必須にする」と書きます`);
+        // 「なし」で呼んでいるボタンは、必須にすると押せなくなる。その画面ではフォームに置き換える
+        const regActs = (o.decls ?? []).filter((a: any) => a.kind === "action" && (a.params ?? []).some((p: any) => p.name === fn) && lines(a.file).slice(a.line, a.end).some((l) => l.includes(`${D.name}を登録(`)));
+        for (const A of regActs) {
+          for (const sc of (outline().decls ?? []).filter((d: any) => d.kind === "screen")) {
+            const sl = lines(sc.file);
+            let touched = false;
+            for (let k = sc.end - 1; k >= sc.line; k--) {
+              if (/を押すと/.test(sl[k] ?? "") && new RegExp(`\\s${reEsc(A.name)}\\(.*[(,]\\s*なし\\s*[,)]`).test(sl[k])) {
+                sl.splice(k, 1);
+                touched = true;
+              }
+            }
+            if (touched) {
+              const form = `    ${A.name}のフォームを表示`;
+              if (!sl.slice(sc.line, sc.end).some((l) => l === form)) sl.splice(sc.line, 0, form);
+              write(sc.file, sl.join("\n"));
+            }
+          }
+        }
+        text = `${D.name}の「${fn}」を「${f.type.replace(/^選択<(.+)>$/, "$1")}」にする`;
+      }
+      else if (f) return { ok: true, done: `「${fn}」は、もう必須の項目です` };
     }
   }
   // 項目の型を変える: 予約の「状態」を「予約状態」にする / 「家賃」の型を金額にする
@@ -2550,7 +2586,7 @@ function convertSeed(o: any, dn: string, fn: string, t: string): void {
   if (changedAny) writeRaw("seed.json", JSON.stringify(seed, null, 2) + "\n");
 }
 /** 動作のすべての呼び出し(ボタン・確かめる・ほかの動作の中)の最後に値を足す */
-function appendCallArg(act: string, value: string, idOf = ""): void {
+function appendCallArg(act: string, value: string, idOf = "", btnValue?: string): void {
   const o = outline();
   for (const f of srcFiles(o)) {
     const t = read(f);
@@ -2580,7 +2616,7 @@ function appendCallArg(act: string, value: string, idOf = ""): void {
         const k = m.index + m[1].length;
         // ボタンには「…の例」を入れない(押すたびに「アレルギーの例」が記録された。第 11 回評価)。空の文字にする
         const btn = /を押すと/.test(l);
-        return addParam(l, (btn && screenValue(i)) || (btn && /^"[^"]*の例"$/.test(value) ? '""' : value), k);
+        return addParam(l, (btn && screenValue(i)) || (btn && btnValue) || (btn && /^"[^"]*の例"$/.test(value) ? '""' : value), k);
       })
       .join("\n");
     if (u !== t) write(f, u);
