@@ -257,6 +257,13 @@ function renameDecl(o: any, from: string, to: string): string {
   const d = (o.decls ?? []).find((x: any) => x.name === from && ["data", "screen", "action", "role", "enum", "scenario"].includes(x.kind));
   if (!d) throw new Error(`「${from}」という名前のデータ・画面・動作・役割・列挙はありません`);
   okName(to, "新しい名前");
+  // 「窯焚きを登録」のように、データの組込みの操作と同じ名前の動作は作れない。先に分かる言葉で断る
+  // (変えても何も起きず、理由も見えなかった。第 17・18 回評価)
+  if (d.kind === "action") {
+    const bm = /^(.+?)(を登録|を取得|をIDで取得|の一覧)$/.exec(to);
+    if (bm && decl(o, "data", bm[1]))
+      throw new Error(`「${to}」は、データ「${bm[1]}」の組込みの操作と同じ名前なので、動作の名前には使えません。「${bm[1]}の登録」「${bm[1]}を受け付ける」「${bm[1]}を追加」のような名前にします`);
+  }
   // アプリの名前と同じでもよい(「お迎え連絡」アプリのデータを「お迎え連絡」にできなかった。第 16 回評価)
   const dup = (o.decls ?? []).find((x: any) => x.name === to && x.kind !== "app");
   if (dup) throw new Error(`「${to}」は既にあります(${({ data: "データ", screen: "画面", action: "動作", role: "役割", enum: "列挙", scenario: "確かめる", analysis: "集計" } as any)[dup.kind] ?? ""}の名前)。別の名前にします`);
