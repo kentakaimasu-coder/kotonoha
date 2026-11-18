@@ -279,7 +279,7 @@ form.logout { margin-top: 24px; }
 .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .field label { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-weight: 600; font-size: 0.9rem; }
 .field .hint { color: var(--muted); font-weight: 500; font-size: 0.82rem; }
-.field .tag { font-size: 0.7rem; font-weight: 700; padding: 0 7px; border-radius: 4px; line-height: 1.6; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+.field .tag { font-size: 0.75rem; font-weight: 700; padding: 0 7px; border-radius: 4px; line-height: 1.6; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
 .field .tag.req { background: var(--err-soft); color: var(--err); border-color: transparent; }
 .field input, .field select, .field textarea {
   font: inherit;

@@ -65,7 +65,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 main { padding: 16px 20px 40px; }
 .build { display: grid; grid-template-columns: 240px minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
 @media (max-width: 1100px) { .build { grid-template-columns: 220px minmax(0, 1fr); } .side { grid-column: 1 / -1; } }
-@media (max-width: 720px) { .build { grid-template-columns: 1fr; } }
+@media (max-width: 720px) { .build { grid-template-columns: 1fr; } .tree button { min-height: 44px; } }
 .tree, .card, .editor { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
 .tree { padding: 8px; position: sticky; top: 70px; max-height: calc(100vh - 90px); overflow: auto; }
 .tree h3 { font-size: 0.75rem; color: var(--muted); margin: 10px 8px 4px; letter-spacing: 0.05em; }
