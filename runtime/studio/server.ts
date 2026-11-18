@@ -2818,7 +2818,7 @@ function actionTemplate(o: any, text: string, act: string, dn: string, body: (D:
 
 /** 詳細画面の「表示する X がどれか決まりません」: X を一覧表示している画面に「X を選ぶと 詳細画面 へ」を足す
  * (詳細画面を作るたびにこの誤りが出て、直し方が分かりにくかった。第 7 回評価) */
-function autoNav(): string[] {
+function autoNav(at: { file: string; line: number } | null = null): string[] {
   const added: string[] = [];
   for (let round = 0; round < 3; round++) {
     const o = outline();
@@ -2837,11 +2837,29 @@ function autoNav(): string[] {
     }
     if (!progressed) break;
   }
+  // 一覧の画面を後から作ったときも、そのデータの詳細の画面があれば一覧から開けるようにする
+  // (新しく作った「待ちの列」から整理券の詳細へ移れなかった。第 18 回評価)
+  {
+    const o = outline();
+    const screens = (o.decls ?? []).filter((d: any) => d.kind === "screen");
+    // 今の指示で入れた行のある画面だけ(ほかの画面は作り手の決めたとおりにしておく)
+    for (const L of screens.filter((d: any) => at && d.file === at.file && d.line <= at.line && at.line <= d.end)) {
+      for (const l of L.lines ?? []) {
+        const dn = /^(\S+?)(?:を|のうち).*一覧表示$/.exec(l.text)?.[1];
+        if (!dn || !decl(o, "data", dn) || (L.lines ?? []).some((x: any) => x.text.startsWith(`${dn}を選ぶと `))) continue;
+        const det = screens.find((d: any) => d.name !== L.name && (d.lines ?? []).some((x: any) => x.text.startsWith(`${dn}の`) && x.text.endsWith("を表示") && !/フォーム|一覧/.test(x.text)));
+        if (!det) continue;
+        apply({ op: "add_line", kind: "screen", name: L.name, text: `${dn}を選ぶと ${det.name} へ` });
+        added.push(`画面「${L.name}」に「${dn}を選ぶと ${det.name} へ」`);
+        break;
+      }
+    }
+  }
   return added;
 }
 /** 入れた行に誤りがあれば元に戻して、理由と近い書き方を返す */
 function checked(at: { file: string; line: number } | null, done: string, before: any, text: string): any {
-  const nav = autoNav();
+  const nav = autoNav(at);
   if (nav.length) done += `(一覧から開けるように、${nav.join("、")}を足しました)`;
   const o = outline();
   const bad = (o.diagnostics ?? []).filter((d: any) => d.severity === "error" && at && d.span?.line === at.line && d.file === at.file);

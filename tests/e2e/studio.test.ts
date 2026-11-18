@@ -311,6 +311,15 @@ test("日本語の指示(第 8 回の改善): 決まった名前の集計・権�
   assert.equal(lsAfter[k], prev);
   // 画面の最後の 1 行は消さない(画面が壊れて足し直す欄も無くなった)
   j = await (await api("/api/instruct", { text: "画面「お知らせ」を作る(レッスンを一覧表示)" })).json();
+  // 詳細の画面があれば「…を選ぶと 詳細 へ」も自動で入る(第 18 回評価)ので、先にそれを消す
+  {
+    const ls1 = src().split("\n");
+    const kn = ls1.findIndex((l, i) => i > ls1.findIndex((x) => x.trim() === "画面 お知らせ:") && /^    レッスンを選ぶと /.test(l));
+    if (kn >= 0) {
+      j = await (await api("/api/op", { op: "remove_line", file: "src/app.koto", line: kn + 1, old: ls1[kn] })).json();
+      assert.equal(j.ok, true, j.error);
+    }
+  }
   const ls2 = src().split("\n");
   const k2 = ls2.findIndex((l) => l.trim() === "画面 お知らせ:") + 1;
   j = await (await api("/api/op", { op: "remove_line", file: "src/app.koto", line: k2 + 1, old: ls2[k2] })).json();
