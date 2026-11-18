@@ -255,7 +255,7 @@ export function DataList(p: { r: LoadResult | undefined; fields: Field[]; tz: st
   if (!p.r) return null;
   if (!p.r.ok) return h(Notice, { r: p.r });
   const rows: any[] = p.r.body ?? [];
-  if (rows.length === 0) return h("div", { className: "empty" }, h("p", { className: "empty-title" }, p.caption), h("p", null, "データがありません"));
+  if (rows.length === 0) return h("div", { className: "empty" }, h("p", { className: "empty-title" }, p.caption), h("p", null, "まだありません"));
   return h(
     "table",
     { className: p.link ? "list linked" : "list" },
@@ -335,10 +335,17 @@ function RoleNotice(p: { what: string; need?: Need }) {
     .filter(([, cs]) => canUse(cs, p.need))
     .map(([r]) => r);
   if (names.length === 0) return null;
-  return h("p", { className: "notice" }, `「${p.what}」は、${names.join("・")}の役割の人が使えます(いまログインしている人は使えません)。`);
+  // 間違いではないので、エラーの色ではなく案内の色で出す(エラーの帯が並び、壊れているように見えた。デザインの確認)
+  return h("p", { className: "notice info" }, `「${p.what}」は、${names.join("・")}の役割の人が使えます(いまログインしている人は使えません)。`);
 }
 function LoginNotice(p: { what: string }) {
-  return h("p", { className: "notice" }, `「${p.what}」は、ログインすると使えます。`, h("a", { href: "/login" }, "ログイン"));
+  // 操作の主ボタンはログインしていなくても見せ、押すとログインへ進む(予約のボタンが見当たらなかった。デザインの確認)
+  return h(
+    "div",
+    { className: "action" },
+    h("a", { className: "button", href: "/login" }, p.what),
+    h("p", { className: "hint" }, `「${p.what}」は、ログインすると使えます。`),
+  );
 }
 
 export function ActionButton(p: { label: string; action: string; args: () => Record<string, unknown> | null; reload: () => Promise<void>; need?: Need; caps?: string[] | null }) {
@@ -528,7 +535,8 @@ export function ActionForm(p: { action: string; fields: Field[]; reload: () => P
     { className: "form", onSubmit, onKeyDown, onInput: () => m && setM(null), "aria-labelledby": formId + "-title" },
     h("h2", { id: formId + "-title" }, p.action),
     p.fields.filter((f) => !(p.fixed && f.name in p.fixed)).map((f) => h("div", { className: fieldClass(f), key: f.name }, h(FieldLabel, { htmlFor: `${formId}-${f.name}`, f, tz: p.tz ?? "Asia/Tokyo", refs: p.refs }), inputFor(f, `${formId}-${f.name}`, p.refs))),
-    h("button", { type: "submit", disabled: busy }, p.submit ?? "送信"),
+    // ボタンの文字を決めていないときは、何をするかが分かるように動作の名前にする(「送信」では何をするか分からなかった。デザインの確認)
+    h("button", { type: "submit", disabled: busy }, p.submit ?? p.action),
     h(MessageView, { m }),
   );
 }

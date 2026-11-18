@@ -812,9 +812,15 @@ function renderSide() {
   // 検査に合格していない間は試し直せないので、前の結果だと分かるようにする(第 5 回評価: 古い結果が出続けた)
   else if (S.outline && !S.outline.ok) ch.append(el("li", { class: "ng", text: "検査に合格していないので、これは前に試した結果です。下の「問題」を直すと試し直します" }));
   else if (c.stale) ch.append(el("li", { class: "head", text: S.devError ? "アプリを起動できないので、試し直せていません(下は前の結果)。「動かす・初期データ・公開」の理由を見てください" : "直したので試し直しています…(下は直す前の結果)" }));
+  // はじめに何件が想定どおりかを大きく出す(記号の行だけでは何が確かめられたか読めなかった。デザインの確認)
+  const okN = c.lines.filter((l) => l.trim().startsWith("✓")).length;
+  const ngN = c.lines.filter((l) => l.trim().startsWith("✗")).length;
+  if (okN + ngN) ch.append(el("li", { class: ngN ? "summary ng" : "summary ok", text: ngN ? `${okN + ngN} 件のうち ${ngN} 件が想定と違います` : `${okN} 件すべて想定どおりに動きました` }));
+  // 結果の書き方を日本語に寄せる(「→ 失敗("満席")」→「→ 「満席」で断る」)
+  const plain = (t) => t.replace(/→ 成功(\(.+?\))?/, "→ できる").replace(/→ 失敗\("(.+?)"\)/, "→ 「$1」で断る").replace(/→ 権限がない/, "→ 権限が無いので断る").replace(/→ ログインが必要/, "→ ログインが要るので断る");
   for (const l of c.lines) {
     const t = l.trim();
-    ch.append(el("li", { class: t.startsWith("✓") ? "ok" : t.startsWith("✗") ? "ng" : "head", text: t }));
+    ch.append(el("li", { class: t.startsWith("✓") ? "ok" : t.startsWith("✗") ? "ng" : "head", text: plain(t), title: t }));
   }
   const pr = $("problems");
   pr.replaceChildren();
@@ -927,7 +933,7 @@ function renderLook() {
   for (const d of DEVICES.filter((x) => picks.has(x.id))) {
     const s = SCALE[d.kind] ?? 0.6;
     const barH = BAR[d.kind] ?? 0;
-    const frame = el("iframe", { title: `${d.name} での表示`, src: previewBase() + lookPath, loading: "lazy" });
+    const frame = el("iframe", { title: `${d.name} での表示`, src: previewBase() + lookPath });
     frame.style.width = d.w + "px";
     frame.style.height = d.h - barH + "px";
     frame.style.transform = `scale(${s})`;

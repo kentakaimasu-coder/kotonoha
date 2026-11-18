@@ -75,7 +75,9 @@ test("FR-012 / AT-04 ボタン操作 → 状態変更 → 表示更新(未ログ
   const { page, errors } = await newPage();
   await page.goto(webUrl + "/s/" + encodeURIComponent("商品詳細") + "/P01");
   // ログインしていない人には、押しても失敗するボタンではなくログインの案内を出す(第 11 回評価)
-  await page.waitForSelector("main .notice");
+  await page.waitForSelector("main .action .hint");
+  // 押せる主ボタンはログインへ進む(デザインの確認: 予約のボタンが見当たらなかった)
+  assert.equal(await page.getAttribute("main .action a.button", "href"), "/login");
   assert.match(await page.textContent("main"), /「購入」は、ログインすると使えます。/);
   await login(page, ["商品.read", "商品.update", "注文.create"]);
   await page.goto(webUrl + "/s/" + encodeURIComponent("商品詳細") + "/P01");
@@ -180,7 +182,7 @@ test("ADR-0118 注文履歴は本人の注文だけを表示する", async () =>
   await b.fill("#token", runNode(be, ["tools/dev-token.ts", "--sub", "other-user", "--caps", ""], { KOTONOHA_JWT_SECRET: SECRET }));
   await b.click("form[action='/login'] button");
   await b.goto(webUrl + "/s/" + encodeURIComponent("注文履歴"));
-  assert.match(await b.textContent("main"), /データがありません/);
+  assert.match(await b.textContent("main"), /まだありません/);
 });
 
 test("K-06 アクセシビリティ自動監査(axe-core: WCAG 2.2 A/AA)で違反なし", async () => {

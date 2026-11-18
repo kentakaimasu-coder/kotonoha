@@ -38,7 +38,10 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .brand .mark { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(140deg, color-mix(in srgb, var(--accent) 80%, #fff), var(--accent-strong)); color: #fff; }
 .brand .app { color: var(--muted); font-weight: 600; }
 .brand .app:not(:empty)::before { content: "— "; }
-.tabs { display: flex; gap: 4px; flex: 1; }
+.tabs { display: flex; gap: 4px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.tabs button { white-space: nowrap; flex-shrink: 0; }
+/* スマホでは帯の 2 行目にタブを 1 行で並べ、はみ出す分は横に送る(1 文字ずつ縦に折り返した・幅が 0 になった。デザインの確認) */
+@media (max-width: 720px) { .tabs { flex: 1 1 100%; order: 3; } }
 .tabs button { background: transparent; color: var(--muted); border-radius: 999px; }
 .tabs button[aria-selected="true"] { background: var(--accent-soft); color: var(--accent-ink); }
 .status { display: flex; align-items: center; gap: 10px; }
@@ -65,7 +68,9 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 main { padding: 16px 20px 40px; }
 .build { display: grid; grid-template-columns: 240px minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
 @media (max-width: 1100px) { .build { grid-template-columns: 220px minmax(0, 1fr); } .side { grid-column: 1 / -1; } }
-@media (max-width: 720px) { .build { grid-template-columns: 1fr; } .tree button { min-height: 44px; } }
+/* 中身が広くても列が広がって横にはみ出さない(スマホで「動かす」が 1250px にはみ出した。デザインの確認) */
+.build > *, main, .card { min-width: 0; }
+@media (max-width: 720px) { .build { grid-template-columns: 1fr; } .tree button { min-height: 44px; } .device-grid .device:not(:first-child) { display: none; } }
 .tree, .card, .editor { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
 .tree { padding: 8px; position: sticky; top: 70px; max-height: calc(100vh - 90px); overflow: auto; }
 .tree h3 { font-size: 0.75rem; color: var(--muted); margin: 10px 8px 4px; letter-spacing: 0.05em; }
@@ -148,7 +153,7 @@ main { padding: 16px 20px 40px; }
 .seed-table{overflow-x:auto}
 .seed-table table{border-collapse:collapse}
 .seed-table th,.seed-table td{border:1px solid var(--line,#ccc);padding:2px 4px;text-align:left}
-.seed-table input{width:9em}
+.seed-table input{width:11em}
 .publish-check{white-space:pre-wrap;max-height:320px;overflow:auto;font-size:.85rem}
 a.button{display:inline-block;padding:6px 12px;border-radius:6px;background:var(--accent,#2563eb);color:#fff;text-decoration:none}
 a.button:not([href]){opacity:.5;pointer-events:none}
@@ -158,3 +163,7 @@ pre.code { background: var(--surface-2); border: 1px solid var(--line); padding:
 /* 初期データの表の「この行を消す」が 1 文字ずつ折り返した(第 12 回評価) */
 .seed-table td button { white-space: nowrap; }
 .seed-table td:last-child { width: 1%; }
+
+#checks li.summary { font-size: 15px; font-weight: 700; list-style: none; margin-bottom: 6px; }
+#checks li.summary.ok { color: var(--ok, #1a7f37); }
+#checks li.summary.ng { color: var(--err, #b42318); }
