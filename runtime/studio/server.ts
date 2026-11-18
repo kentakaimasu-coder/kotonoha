@@ -1965,6 +1965,50 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     const at = addLine(decl(outline(), "action", act), `${v}.${fn} = ${lit}`);
     return checked(at, `動作「${act}」で、${dn}の${fn}を「${val}」にするようにしました${guard ? `(もう「${val}」なら「${guard}」で断ります)` : ""}`, o, text);
   }
+  // 「整理券に番号を自動でつける」: 登録した順に 1, 2, 3…と振る項目(読めず、番号を出せなかった。第 17 回評価)
+  if ((m = cmd(/^(.+?)に(?:「)?(番号|通し番号|整理番号|受付番号|整理券番号|呼出番号|呼び出し番号)(?:」)?を(?:自動で|自動的に|順に|順番に)?(?:つける|付ける|振る|ふる|入れる)(?:ようにしたい|ようにする|たい)?$/.exec(text))) && decl(o, "data", m[1].trim())) {
+    const dn = m[1].trim();
+    const fn = m[2];
+    let D = decl(o, "data", dn);
+    const f0 = D.fields.find((x: any) => x.name === fn);
+    if (f0 && f0.type !== "整数") throw new Error(`「${dn}」の「${fn}」は${f0.type}です。番号を振るには整数の項目にします(「${dn}の「${fn}」を整数にする」)`);
+    if (!f0) {
+      const ls = lines(D.file);
+      ls.splice(D.end, 0, `    ${fn}: 整数`);
+      write(D.file, ls.join("\n"));
+    }
+    // 登録している動作で、番号を入れる
+    let acts = 0;
+    for (const a of (outline().decls ?? []).filter((x: any) => x.kind === "action")) {
+      const al = lines(a.file);
+      let hit = false;
+      for (let i = a.line; i < a.end; i++) {
+        const mm = new RegExp(`^(\\s*.*${reEsc(dn)}を登録\\()(.*)(\\).*)$`).exec(al[i] ?? "");
+        if (!mm || new RegExp(`(^|[,(\\s])${reEsc(fn)}\\s*:`).test(mm[2])) continue;
+        al[i] = `${mm[1]}${mm[2]}${mm[2].trim() ? ", " : ""}${fn}: 件数(${dn}の一覧()) + 1${mm[3]}`;
+        hit = true;
+      }
+      if (hit) {
+        write(a.file, al.join("\n"));
+        acts++;
+      }
+    }
+    // 初期データにも順に番号を入れる
+    const sp = join(PROJECT, "seed.json");
+    if (existsSync(sp)) {
+      try {
+        const seed = JSON.parse(readFileSync(sp, "utf8"));
+        if (Array.isArray(seed?.[dn])) {
+          seed[dn].forEach((r: any, i: number) => r && typeof r === "object" && (r[fn] = i + 1));
+          writeRaw("seed.json", JSON.stringify(seed, null, 2) + "\n");
+        }
+      } catch {
+        // 読めない初期データはそのまま
+      }
+    }
+    D = decl(outline(), "data", dn);
+    return checked({ file: D.file, line: D.line }, `${dn}に「${fn}」を足し、登録した順に 1, 2, 3…と自動で入るようにしました${acts ? `(登録の動作 ${acts} つ)` : "(登録の動作がまだありません。「" + dn + "を登録できるようにしたい」で作ると自動で入ります)"}。消した${dn}があると、番号が重なることがあります`, o, text);
+  }
   // 動作のひな形(第 5 回評価: 日本語で動作を作れない が最も多かった)
   // 「呼び出す」で整理券の状態を呼出中にする
   if ((m = cmd(/^「(.+?)」で(.+?)の(.+?)を「?(.+?)」?に(?:する|変える)$/.exec(text)))) {
@@ -2638,6 +2682,8 @@ function changed(before: any, done: string): any {
   return { ok: false, errors: added.slice(0, 3).map((d: any) => ({ code: d.code, message: `${d.file}:${d.span?.line} ${d.message_ja}`, hints: d.hints ?? [] })), suggestions: [] };
 }
 /** 登録のときに自動で入れる値(操作をした人 → 本人、登録日時 → 現在日時()、状況 → 最初の値)。無ければ null */
+/** 登録した順に振る通し番号の項目の名前 */
+const NUMBER_FIELD = /^(番号|通し番号|整理番号|受付番号|整理券番号|呼出番号|呼び出し番号)$/;
 function autoValue(o: any, name: string, type: string): string | null {
   const VERB = "予約|申込|申し込み|記入|送信|作成|登録|注文|依頼|連絡|投稿|報告|記録|受付|出品|回答|訪問|発行|発券|入力|提出|申請|発注|購入|相談|応募|点検|実施|貸出|借用";
   // 操作をした人(お客様・利用者など、データを登録する本人を表す名前も。お客様が入力欄になった。第 9 回評価)
@@ -2676,7 +2722,8 @@ function registration(o: any, ctx: { screen?: string }, text: string, D: any, ac
   const args: string[] = [];
   for (const f of D.fields.filter((x: any) => x.name !== "ID")) {
     // 本人を自動で入れるのは、その操作をした人を表す名前の項目だけ(担当者・割当先は入力にする。第 7 回評価)
-    const auto = autoValue(o, f.name, f.type);
+    // 番号・整理番号は通し番号(登録した順に 1, 2, 3…。第 17 回評価)
+    const auto = NUMBER_FIELD.test(f.name) && f.type === "整数" ? `件数(${D.name}の一覧()) + 1` : autoValue(o, f.name, f.type);
     if (auto && !(only ?? []).includes(f.name)) args.push(`${f.name}: ${auto}`);
     else if (!only || only.includes(f.name) || !/^選択</.test(f.type)) {
       params.push({ name: f.name, type: f.type });

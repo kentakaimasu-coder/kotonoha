@@ -545,6 +545,8 @@ fn implicit_adapters(decls: &[&Decl], call_names: &BTreeMap<String, Span>, env: 
                 walk_expr(rhs, out);
             }
             List(xs) => xs.iter().for_each(|a| walk_expr(a, out)),
+            // 名前付き引数の値の中の呼び出しも数える(「番号: 件数(整理券の一覧()) + 1」の一覧が用意されなかった)
+            Named { value, .. } => walk_expr(value, out),
             _ => {}
         }
     }

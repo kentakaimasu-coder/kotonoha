@@ -194,4 +194,7 @@ fn implicit_data_operations() {
     // 知らないデータは従来どおり REF001
     let unk = format!("{PRELUDE}動作 f(x: 整数, s: 文字列, id: 識別子) -> 結果<注文ID, 注文失敗>:\n    会計を取得(id) を返す\n");
     assert!(errors(&check_src(&unk).1).contains(&Code::REF001));
+    // 名前付き引数の値の中の組込みの操作も用意する(「番号: 件数(注文の一覧()) + 1」。第 17 回評価)
+    let named = format!("{PRELUDE}データ 注文:\n    ID: 識別子\n    商品ID: 識別子\n    数量: 整数\n動作 f(x: 整数, s: 文字列, id: 識別子) -> 結果<注文ID, 注文失敗>:\n    注文を登録(商品ID: id, 数量: 件数(注文の一覧()) + 1) を返す\n");
+    assert_eq!(errors(&check_src(&named).1), vec![]);
 }
