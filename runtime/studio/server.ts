@@ -526,6 +526,30 @@ function seqWhen(o: any, dn: string, fn: string, v: string): string {
   }
   return "";
 }
+/** 順番の約束があるデータで、状態を V にする動作のボタン(条件の無いもの)に「前の値のとき」を付ける */
+function gateSequenceButtons(dn: string, fn: string): void {
+  const o = outline();
+  for (const a of (o.decls ?? []).filter((d: any) => d.kind === "action")) {
+    const body = lines(a.file).slice(a.line, a.end).join("\n");
+    const mv = new RegExp(`\\.${reEsc(fn)} = "([^"]+)"`).exec(body);
+    if (!mv || !body.includes(`${dn}を取得(`)) continue;
+    const when = seqWhen(o, dn, fn, mv[1]);
+    if (!when) continue;
+    for (const sc of (o.decls ?? []).filter((d: any) => d.kind === "screen")) {
+      const ls = lines(sc.file);
+      let changedAny = false;
+      for (let i = sc.line; i < sc.end; i++) {
+        const t = ls[i] ?? "";
+        const mm = /^(\s*)(「[^」]+」を押すと\s+(\S+?)\(.*\))\s*$/.exec(t);
+        if (mm && mm[3] === a.name) {
+          ls[i] = `${mm[1]}${when}${mm[2]}`;
+          changedAny = true;
+        }
+      }
+      if (changedAny) write(sc.file, ls.join("\n"));
+    }
+  }
+}
 /** 役割があれば、どの役割にもデータ D の読取を足す(役割を作った後に足したデータを、役割の人が見られなかった。第 13 回評価) */
 function grantReadToRoles(dn: string): void {
   for (const r of (outline().decls ?? []).filter((d: any) => d.kind === "role")) {
@@ -832,6 +856,10 @@ function apply(op: Op): { file: string; line: number } | null {
       const d = decl(o, "rules");
       const at = d ? addLine(d, op.text) : addDecl(o, ["role", "screen"], ["約束:", "    " + op.text.trim()]);
       // 「回覧はログインした人だけ閲覧可」は、ログインしていれば役割に関わらず読める(ADR-0141)。役割に読取を足さない
+      // 順番の約束を後から書いたときは、もう出ている状態を進めるボタンも、前の状態のときだけ出す
+      // (ボタンを先に作ると、今の状況に関係なく全部のボタンが出た。第 17 回評価で 4 人)
+      const sq = /^(\S+?)の(\S+?)は\s*(.+?)\s*の順/.exec(String(op.text).trim());
+      if (sq) gateSequenceButtons(sq[1], sq[2]);
       return at;
     }
     case "add_action": {

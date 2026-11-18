@@ -543,7 +543,8 @@ export function ActionForm(p: { action: string; fields: Field[]; reload: () => P
   return h(
     "form",
     // 次の入力を始めたら、前の結果の知らせを消す(2 件目が入ったか分かりにくい。第 5 回評価)
-    { className: "form", onSubmit, onKeyDown, onInput: () => m && setM(null), "aria-labelledby": formId + "-title" },
+    // 入れ直したとき・空のまま送って入力の不足で止まったときは、前の「完了しました」を消す(残って、送れたように見えた。第 17 回評価)
+    { className: "form", onSubmit, onKeyDown, onInput: () => m && setM(null), onInvalidCapture: () => m?.kind === "ok" && setM(null), "aria-labelledby": formId + "-title" },
     h("h2", { id: formId + "-title" }, p.action),
     p.fields.filter((f) => !(p.fixed && f.name in p.fixed)).map((f) => h("div", { className: fieldClass(f), key: f.name }, h(FieldLabel, { htmlFor: `${formId}-${f.name}`, f, tz: p.tz ?? "Asia/Tokyo", refs: p.refs }), inputFor(f, `${formId}-${f.name}`, p.refs))),
     // ボタンの文字を決めていないときは、何をするかが分かるように動作の名前にする(「送信」では何をするか分からなかった。デザインの確認)
