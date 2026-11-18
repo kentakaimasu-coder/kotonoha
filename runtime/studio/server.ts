@@ -1282,7 +1282,7 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       text = sp[2].trim();
     }
   }
-  if ((m = cmd(/^「(.+?)」(?:の)?ボタンを(?:足す|付ける|つける|追加(?:する)?|作る)$/.exec(text) ?? /^(?:画面に)?ボタン「(.+?)」を(?:足す|付ける|つける|追加(?:する)?|作る)$/.exec(text)))) {
+  if ((m = cmd(/^「(.+?)」(?:の)?ボタンを(?:足す|足したい|付ける|付けたい|つける|つけたい|追加(?:する|したい)?|作る|作りたい|出す|出したい)$/.exec(text) ?? /^(?:画面に)?ボタン「(.+?)」を(?:足す|足したい|付ける|付けたい|つける|つけたい|追加(?:する|したい)?|作る|作りたい|出す|出したい)$/.exec(text)))) {
     const label = m[1].trim();
     const screens = (o.decls ?? []).filter((d: any) => d.kind === "screen");
     const cands = (ctx.screen ? screens.filter((d: any) => d.name === ctx.screen) : []).concat(screens);
