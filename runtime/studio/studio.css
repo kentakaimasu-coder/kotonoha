@@ -153,7 +153,7 @@ main { padding: 16px 20px 40px; }
 .seed-table{overflow-x:auto}
 .seed-table table{border-collapse:collapse}
 .seed-table th,.seed-table td{border:1px solid var(--line,#ccc);padding:2px 4px;text-align:left}
-.seed-table input{width:11em}
+.seed-table input{width:8.5em}
 .publish-check{white-space:pre-wrap;max-height:320px;overflow:auto;font-size:.85rem}
 a.button{display:inline-block;padding:6px 12px;border-radius:6px;background:var(--accent,#2563eb);color:#fff;text-decoration:none}
 a.button:not([href]){opacity:.5;pointer-events:none}
@@ -177,3 +177,6 @@ pre.code { background: var(--surface-2); border: 1px solid var(--line); padding:
 .line .plain > span:first-child { font-weight: 600; }
 .line .plain code.raw { font-size: 0.78rem; color: var(--muted); background: none; padding: 0; white-space: normal; word-break: break-all; }
 .publish-detail summary{cursor:pointer;min-height:44px;display:flex;align-items:center;color:var(--muted);font-weight:600}
+
+/* 初期データの表が横にはみ出すときの案内(右の列が見えなかった。第 18・19 回評価) */
+.seed-scroll-hint{color:var(--muted);font-size:.85rem;margin:4px 0}

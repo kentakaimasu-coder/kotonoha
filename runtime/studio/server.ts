@@ -2371,6 +2371,37 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     const act = reg?.[2] ? reg[1].trim() : can ? `${dn}する` : `${dn}を追加`;
     return registration(o, ctx, text, decl(o, "data", dn), act);
   }
+  // 「生徒は先生だけ閲覧可」「生徒を見られるのは先生だけにする」: 役割の人だけが読める
+  //   (読めず、ログインした人だけまでしか絞れなかった。第 19 回評価)。公開範囲の約束を外し、読取をその役割だけに付ける
+  {
+    const rm = /^(?:([^「」\s]+?)(?:は|を))「?([^「」\s]+?)」?だけ(?:が)?(?:閲覧可|見られる|見られるようにする|見られるようにしたい|に見せる|閲覧できる)$/.exec(text) ?? /^([^「」\s]+?)を見られるのは「?([^「」\s]+?)」?だけ(?:に(?:する|したい))?$/.exec(text);
+    const RD = rm && decl(o, "data", rm[1]);
+    const roles = rm ? rm[2].split(/[と・、]/).map((x) => x.trim()).filter(Boolean) : [];
+    if (RD && roles.length && roles.every((r) => decl(o, "role", r))) {
+      const dn = RD.name;
+      // 公開範囲の約束(誰でも・ログインした人だけ)を外す。本人だけ閲覧可はそのまま(本人と役割の人が読める)
+      const R = decl(o, "rules");
+      if (R) {
+        const rl = lines(R.file);
+        for (let k = R.end - 1; k >= R.line; k--) if (new RegExp(`^\\s*${reEsc(dn)}は(誰でも閲覧可|ログインした人だけ閲覧可)\\s*$`).test(rl[k] ?? "")) rl.splice(k, 1);
+        write(R.file, rl.join("\n"));
+        const R2 = decl(outline(), "rules");
+        if (R2 && lines(R2.file).slice(R2.line, R2.end).every((l) => !l.trim() || l.trim().startsWith("#"))) {
+          const rl2 = lines(R2.file);
+          rl2.splice(R2.line - 1, R2.end - R2.line + 1 + (rl2[R2.end]?.trim() === "" ? 1 : 0));
+          write(R2.file, rl2.join("\n"));
+        }
+      }
+      // 読取は書いた役割だけ
+      for (const r of (outline().decls ?? []).filter((d: any) => d.kind === "role")) {
+        const caps: string[] = r.caps ?? [];
+        const has = caps.includes(`${dn}.読取`) || caps.includes(`${dn}.read`);
+        if (roles.includes(r.name) && !has) apply({ op: "set_role_caps", name: r.name, caps: [...caps, `${dn}.読取`] });
+        if (!roles.includes(r.name) && has) apply({ op: "set_role_caps", name: r.name, caps: caps.filter((c) => c !== `${dn}.読取` && c !== `${dn}.read`) });
+      }
+      return changed(o, `「${dn}」を見られるのは、役割「${roles.join("・")}」の人だけにしました(ほかの人は見られません)`);
+    }
+  }
   // 見られる人の約束: 同じデータの前の約束(誰でも / ログインした人だけ / 本人だけ)を置き換える
   // (足すと「約束が矛盾しています」になり、消し間違えて電話番号が誰でも見える状態に戻った。第 6 回評価)
   {

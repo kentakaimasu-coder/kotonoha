@@ -286,3 +286,23 @@ test("「受取日」を必須にする: 入力欄が無ければ先に作る案
     p6.kill();
   }
 });
+
+test("「…は受付係だけ閲覧可」: 公開範囲の約束を外し、読む権限をその役割だけにする(第 19 回評価)", async () => {
+  const d7 = join(tmp("role-read"), "受付");
+  execFileSync(KOTO, ["init", d7, "--template", "予約受付"], { stdio: "pipe" });
+  const port = await freePort();
+  const p7 = spawn(KOTO, ["-C", d7, "studio", "--port", String(port)], { stdio: "ignore" });
+  try {
+    const u7 = `http://127.0.0.1:${port}`;
+    await waitHttp(u7 + "/", 60000);
+    const token = /name="studio-token" content="([0-9a-f]+)"/.exec(await (await fetch(u7 + "/")).text())![1];
+    const r: any = await (await fetch(u7 + "/api/instruct", { method: "POST", headers: { "Content-Type": "application/json", "X-Studio-Token": token }, body: JSON.stringify({ text: "枠は受付係だけ閲覧可" }) })).json();
+    assert.equal(r.result?.ok, true, JSON.stringify(r.result ?? r.error));
+    const t = readFileSync(join(d7, "src/app.koto"), "utf8");
+    assert.doesNotMatch(t, /枠は誰でも閲覧可/);
+    assert.match(t, /役割 受付係:\n    権限 = \[[^\]]*枠\.読取/);
+    assert.doesNotMatch(t, /役割 利用者:\n    権限 = \[[^\]]*枠\.読取/);
+  } finally {
+    p7.kill();
+  }
+});

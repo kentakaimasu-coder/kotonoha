@@ -181,6 +181,11 @@ function renderRun() {
     ),
   );
   $("seed-table").replaceChildren(table);
+  // 横にはみ出すときは、横に動かせることと列の数を知らせる
+  requestAnimationFrame(() => {
+    const box = $("seed-table");
+    if (box && box.scrollWidth > box.clientWidth + 2) box.prepend(el("p", { class: "seed-scroll-hint", text: `→ 表は横に動かせます(全部で ${cols.length} 列。右の方に「${cols[cols.length - 1]}」があります)` }));
+  });
   // 公開の点検の後半(JWT・CSRF・API ごとの範囲)は詳しい人向けなので畳んでおく(第 17 回評価で 26 人が「読めない」)
   // 見出しの「#」やコードの「```」をそのまま出さない(記号が混じって読みにくかった。第 18 回評価)
   const pub = (S.published || "")
