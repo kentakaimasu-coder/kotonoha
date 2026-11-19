@@ -550,7 +550,8 @@ function gateSequenceButtons(dn: string, fn: string): void {
       let changedAny = false;
       for (let i = sc.line; i < sc.end; i++) {
         const t = ls[i] ?? "";
-        const mm = /^(\s*)(「[^」]+」を押すと\s+(\S+?)\(.*\))\s*$/.exec(t);
+        // 条件の無いボタンと、「もうその状態のときは出さない」の条件(D の F が V でないとき)のボタン
+        const mm = new RegExp(`^(\\s*)(?:${reEsc(dn)}の${reEsc(fn)}が${reEsc(mv[1])}でないとき)?(「[^」]+」を押すと\\s+(\\S+?)\\(.*\\))\\s*$`).exec(t);
         if (mm && mm[3] === a.name) {
           ls[i] = `${mm[1]}${when}${mm[2]}`;
           changedAny = true;
@@ -606,8 +607,24 @@ function roleGapNote(roleName: string): string {
       if (mm && !/ログインしていない/.test(mm[1]) && !/(→|->)\s*権限がない/.test(l)) who.add(mm[1]);
     }
   }
-  if (who.size)
-    note += `${note ? "。" : ""}確かめるで役割を書いていない ${[...who].slice(0, 3).join("・")} は、役割があるアプリでは役割に関わらない操作しかできません。✗ になったら「${[...who][0]}(${r.name})が …」のように役割を書きます`;
+  if (who.size) {
+    // その人が行う動作をすべてできる役割を勧める(作った役割をそのまま勧め、日報を書けない「所長」を案内した。第 19 回評価)
+    const w0 = [...who][0];
+    const acts = new Set<string>();
+    for (const sc of (o.decls ?? []).filter((d: any) => d.kind === "scenario"))
+      for (const l of lines(sc.file).slice(sc.line, sc.end)) {
+        const mm = new RegExp(`^\\s+${reEsc(w0)}が\\s*(\\S+?)\\(`).exec(l);
+        if (mm && !/(→|->)\s*権限がない/.test(l)) acts.add(mm[1]);
+      }
+    const can = (R: any) =>
+      [...acts].every((an) => {
+        const A = decl(o, "action", an);
+        const cs: string[] = R.caps ?? [];
+        return !A || cs.includes(`動作.${A.name}`) || [...actionNeeds(A)].every((c) => !decl(o, "data", c.split(".")[0]) || cs.includes(c));
+      });
+    const fit = can(r) ? r : (o.decls ?? []).find((d: any) => d.kind === "role" && can(d));
+    note += `${note ? "。" : ""}確かめるで役割を書いていない ${[...who].slice(0, 3).join("・")} は、役割があるアプリでは役割に関わらない操作しかできません。✗ になったら「${w0}(${(fit ?? r).name})が …」のように${fit ? "" : "、その操作ができる"}役割を書きます`;
+  }
   return note;
 }
 /** 確かめるで役割を書いていない人(「花子が …」「花子から …」)を「花子(役割)」にする。権限で断られるのを確かめる行の人と、ログインしていない人はそのまま */
@@ -1590,6 +1607,40 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       else if (f) return { ok: true, done: `「${fn}」は、もう必須の項目です` };
     }
   }
+  // 項目の順番: 「会場を名前の次にする」「枠の会場を先頭にする」(型の名前と取り違え「型がありません」と出た。第 19 回評価)
+  if (
+    (m = cmd(/^(?:([^「」]+?)の)?「?([^「」の]+?)」?を「?([^「」]+?)」?の(次|後|あと|後ろ|うしろ|下|前|上)に(?:する|して|移す|動かす|並べる|置く)$/.exec(text))) ||
+    (m = cmd(/^(?:([^「」]+?)の)?「?([^「」の]+?)」?を()(先頭|最初|一番上|いちばん上|最後|一番下|いちばん下|末尾)に(?:する|して|移す|動かす|並べる|置く)$/.exec(text)))
+  ) {
+    const [dn, fn, gn, where] = [m[1]?.trim(), m[2].trim(), m[3].trim(), m[4]];
+    const ds = (o.decls ?? []).filter(
+      (d: any) => d.kind === "data" && (!dn || d.name === dn) && d.fields.some((f: any) => f.name === fn) && (!gn || d.fields.some((f: any) => f.name === gn)),
+    );
+    if (ds.length === 1 && fn !== "ID" && gn !== fn) {
+      const D = ds[0];
+      const names: string[] = D.fields.map((f: any) => f.name);
+      const rest = names.filter((x) => x !== fn && x !== "ID");
+      let k: number;
+      if (!gn) k = /先頭|最初|上/.test(where) ? 0 : rest.length;
+      else k = rest.indexOf(gn) + (/前|上/.test(where) ? 0 : 1);
+      const want = [...(names.includes("ID") ? ["ID"] : []), ...rest.slice(0, k), fn, ...rest.slice(k)];
+      // 1 つずつ動かす(↑↓と同じ処理で、詳細の表示・登録フォームの欄の順もそろう)
+      for (let guard = 0; guard < 100; guard++) {
+        const cur = decl(outline(), "data", D.name);
+        const now: string[] = cur.fields.map((f: any) => f.name);
+        const i = now.indexOf(fn);
+        const j = want.indexOf(fn);
+        if (i === j) break;
+        const ls = lines(cur.file);
+        let at = -1;
+        for (let x = cur.line; x < cur.end; x++) if (new RegExp(`^\\s+${reEsc(fn)}\\s*:`).test(ls[x] ?? "")) at = x;
+        if (at < 0) break;
+        apply({ op: "move_line", file: cur.file, line: at + 1, old: ls[at], dir: i > j ? "up" : "down" });
+      }
+      return changed(o, `「${D.name}」の項目「${fn}」を${gn ? `「${gn}」の${/前|上/.test(where) ? "前" : "次"}` : /先頭|最初|上/.test(where) ? "先頭" : "最後"}にしました(一覧の列・詳細・登録の欄の順もそろえました)`);
+    }
+    if (ds.length > 1) throw new Error(`項目「${fn}」は ${ds.map((d: any) => d.name).join("・")} にあります。「${ds[0].name}の${fn}を…の次にする」のように書きます`);
+  }
   // 項目の型を変える: 予約の「状態」を「予約状態」にする / 「家賃」の型を金額にする
   if (
     (m = cmd(/^(?:(.+?)の)?「(.+?)」の(?:型|種類)を「?(.+?)」?に(?:する|変える)$/.exec(text))) ||
@@ -1776,7 +1827,9 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     const toOwners = (o.decls ?? []).filter((d: any) => d.kind === "data" && d.fields.some((f: any) => f.name === to));
     if (toOwners.length) return { ok: true, done: `「${toOwners[0].name}」の項目は、もう「${to}」になっています(前に名前を変えたときに一緒に変わりました)` };
     // ボタンの文字(「「1名で予約」を「1名予約」に変える」。ソースを書き換えていた。第 11 回評価)
+    // 「「2名で予約」のボタンを「2人で予約」に変える」「「1個入庫」ボタンの文字を…」も(第 19 回評価)
     {
+      from = from.replace(/」?\s*の?\s*ボタン(?:の(?:文字|名前|表示))?$/, "").replace(/^「/, "").replace(/」$/, "").trim();
       let n = 0;
       for (const f of srcFiles(o)) {
         const t = read(f);
@@ -2071,6 +2124,17 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
         return changed(o, `「${name}」の行を消しました`);
       }
       if (hits.length > 1) throw new Error(`「${name}」の行が ${hits.length} か所にあります。左の一覧で消したい行の「消す」を押します`);
+      // ボタン(「「1名で予約」の行を消す」「「1名で予約」ボタンを消す」が通じず、ソースで消した。第 19 回評価)
+      {
+        const lbl = name.replace(/」?\s*の?\s*(?:ボタン|行)$/, "").replace(/^「/, "").replace(/」$/, "").trim();
+        const bs: { file: string; line: number; old: string }[] = [];
+        for (const f of srcFiles(o)) read(f).split("\n").forEach((l, k) => /^\s/.test(l) && l.includes(`「${lbl}」を押すと`) && bs.push({ file: f, line: k + 1, old: l }));
+        if (bs.length) {
+          // 下の行から消す(行の番号がずれない)
+          for (const b of [...bs].sort((x, y) => (x.file === y.file ? y.line - x.line : 0))) apply({ op: "remove_line", ...b });
+          return changed(o, `ボタン「${lbl}」を消しました${bs.length > 1 ? `(${bs.length} か所)` : ""}`);
+        }
+      }
       throw new Error(`「${name}」という名前のデータ・画面・動作・役割・項目はありません`);
     }
     if (d.kind === "data") {
@@ -2231,7 +2295,7 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       const already = alreadyFail ? [`件.${fn} != ${lit} を確認 または 失敗("すでに${f.type === "真偽" ? fn : v}")`] : [];
       const guard = cancelLike ? extra.splice(0, 1) : already;
       return [`件 = ${dn}を取得(${dn}ID)`, ...guard, `件.${fn} = ${lit}`, ...extra, `${dn}ID を返す`];
-    }, seqWhen(o, dn, fn, v) || (cancelLike ? `${dn}の${fn}が${v}でないとき` : ""), fe || alreadyFail);
+    }, seqWhen(o, dn, fn, v) || (cancelLike || stateLike(o, dn, fn) ? `${dn}の${fn}が${/^(はい|真|済|オン)$/.test(v) ? "真" : v}でないとき` : ""), fe || alreadyFail);
   }
   // 取り消し: 予約を取り消せるようにしたい(第 9 回評価: 読めず、取り消しを作れなかった)
   //   状態の項目(取消・キャンセルの値を持つ列挙)が無ければ作る。登録の動作には最初の値を入れる。
@@ -2899,6 +2963,14 @@ function changed(before: any, done: string): any {
   return { ok: false, errors: added.slice(0, 3).map((d: any) => ({ code: d.code, message: `${d.file}:${d.span?.line} ${d.message_ja}`, hints: d.hints ?? [] })), suggestions: [] };
 }
 /** 登録のときに自動で入れる値(操作をした人 → 本人、登録日時 → 現在日時()、状況 → 最初の値)。無ければ null */
+/** 状態を表す項目(真偽・選択肢)か。そうなら、その値にするボタンは、もうその値のときは出さない
+ *  (返したあとも「返す」ボタンが出たまま。第 18・19 回評価) */
+function stateLike(o: any, dn: string, fn: string): boolean {
+  const f = decl(o, "data", dn)?.fields.find((x: any) => x.name === fn);
+  if (!f) return false;
+  const t = String(f.type).replace(/^選択<(.+)>$/, "$1");
+  return t === "真偽" || !!o.enums?.[t];
+}
 /** お店・先生の側の役割らしい名前 */
 const STAFF_ROLE = /(係|店長|店員|スタッフ|先生|講師|管理|主催|指導|監督|院長|会計|役員|運営|ガイド|厨房|部長|編集|事務|職員|担当者?|オーナー|社長|医師|トレーナー|窯係)$/;
 /** 登録した順に振る通し番号の項目の名前 */

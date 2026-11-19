@@ -21,6 +21,13 @@ const seed = process.env.KOTONOHA_SEED && existsSync(process.env.KOTONOHA_SEED) 
 // 役割のあるアプリでは、本番(役割の権限 + 認証基盤が直接渡す権限)に合わせて、どの役割にも書いていない権限だけ(ADR-0140)
 const roleCaps = new Set<string>(Object.values((api.roles ?? {}) as Record<string, string[]>).flat());
 const hasRoles = Object.keys(api.roles ?? {}).length > 0;
+/** その動作ができる役割(直し方の案内に出す。先頭の役割を出していて、日報を書けない「所長」を勧めた。第 19 回評価) */
+function roleFor(action: string): string {
+  const e = api.endpoints.find((x: any) => x.path === `/api/actions/${action}`);
+  const roles = Object.entries((api.roles ?? {}) as Record<string, string[]>);
+  const fit = e && roles.find(([, cs]) => (e.access.grant && cs.includes(e.access.grant)) || (e.access.capabilities ?? []).every((c: string) => cs.includes(c)));
+  return (fit ?? roles[0])[0];
+}
 const general = new Set<string>();
 for (const e of api.endpoints) {
   const caps: string[] = e.access.capabilities ?? [];
@@ -90,7 +97,7 @@ for (const sc of scenarios) {
         got = r.status === 200 ? "成功" : r.status === 422 ? `失敗(${show(b?.value)})` : r.status === 409 && b?.error === "invalid_transition" ? `順番が違う(${b?.message ?? ""})` : r.status === 409 ? `重複(${b?.message ?? ""})` : `${r.status} ${b?.message ?? ""}`.trim();
         // 役割を書かなかった人が権限で断られたとき: 役割のあるアプリでは、役割の権限を持たない(ADR-0140)
         if (!ok && r.status === 403 && st.who.sub && !st.who.role && hasRoles)
-          got += `。役割を書かない人は、どの役割にも書いていない権限だけを持ちます(本番と同じ)。「${st.who.sub}(${Object.keys(api.roles)[0]})が …」のように役割を書きます`;
+          got += `。役割を書かない人は、どの役割にも書いていない権限だけを持ちます(本番と同じ)。「${st.who.sub}(${roleFor(st.action)})が …」のように役割を書きます`;
       } else if (st.kind === "count") {
         const t = token(st.who);
         const r = await fetch(`${url}/api/data/${enc(st.data)}?limit=1000`, { headers: t ? { Authorization: `Bearer ${t}` } : {} });

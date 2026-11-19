@@ -112,7 +112,8 @@ test("課題 A の道筋(ペルソナがする順): 名前を変える・項目�
     await say("取り寄せを一覧表示", "イベント一覧");
     await say("「発注した」で取り寄せの段階を「発注済み」にする");
     await say("「入荷した」で取り寄せの段階を「入荷済み」にする");
-    assert.match(readFileSync(join(d2, "src/app.koto"), "utf8"), /\n    「入荷した」を押すと 入荷した\(取り寄せ\.ID\)/);
+    // 状態にするボタンは、もうその状態のときは出さない(返したあとも「返す」が出たまま。第 19 回評価)
+    assert.match(readFileSync(join(d2, "src/app.koto"), "utf8"), /\n    取り寄せの段階が入荷済みでないとき「入荷した」を押すと 入荷した\(取り寄せ\.ID\)/);
     await say("取り寄せの段階は 受付 → 発注済み → 入荷済み の順");
     {
       const t = readFileSync(join(d2, "src/app.koto"), "utf8");
