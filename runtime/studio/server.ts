@@ -3116,6 +3116,11 @@ function detailScreen(dn: string): { d: any; made: boolean } | null {
 function actionTemplate(o: any, text: string, act: string, dn: string, body: (D: any) => string[], when = "", fail = ""): any {
   const D = decl(o, "data", dn);
   if (!D) throw new Error(`データ「${dn}」はありません(データ: ${(o.decls ?? []).filter((d: any) => d.kind === "data").map((d: any) => d.name).join("、")})`);
+  // 数字で始まる「1回分足す」は、ボタンの文字はそのまま、動作の名前は「回数券に1回分足す」にする
+  // (名前に数字で始まるものは書けず、通らなかった。第 20 回評価)
+  const label = act;
+  if (/^[0-9０-９]/.test(act)) act = `${dn}に${act}`;
+  const lbNote = label !== act ? `(ボタンの文字は「${label}」。名前は数字で始められないので、動作の名前は「${act}」にしました)` : "";
   const at = apply({ op: "add_action", name: act, params: [{ name: `${dn}ID`, type: "識別子" }], body: body(D), ...(fail ? { fail } : {}) });
   // 役割の人に D.更新 が無ければボタンが出ないので知らせる(取消ボタンが出ず、理由が分からなかった。第 14 回評価)
   const lack = (outline().decls ?? []).filter((d: any) => d.kind === "role" && !(d.caps ?? []).includes(`${dn}.更新`)).map((d: any) => d.name);
@@ -3125,8 +3130,8 @@ function actionTemplate(o: any, text: string, act: string, dn: string, body: (D:
   // 詳細画面(「D の…を表示」がある画面)にボタンを出す。無ければ作る
   const ds = detailScreen(dn);
   const detail = ds?.d;
-  if (detail) apply({ op: "add_line", kind: "screen", name: detail.name, text: `${when}「${act}」を押すと ${act}(${dn}.ID)` });
-  return checked(at, `動作「${act}」を作りました${when ? `(${when.replace(/とき$/, "")}ときだけボタンを出します)` : ""}${detail ? `(${ds!.made ? `詳細の画面「${detail.name}」を作り、` : `画面「${detail.name}」に`}ボタンを出しました)` : `。ボタンを出すには、${dn}の詳細の画面を作ります(画面「${dn}詳細」を作る(${dn}の…を表示))`}${capNote}`, o, text);
+  if (detail) apply({ op: "add_line", kind: "screen", name: detail.name, text: `${when}「${label}」を押すと ${act}(${dn}.ID)` });
+  return checked(at, `動作「${act}」を作りました${lbNote}${when ? `(${when.replace(/とき$/, "")}ときだけボタンを出します)` : ""}${detail ? `(${ds!.made ? `詳細の画面「${detail.name}」を作り、` : `画面「${detail.name}」に`}ボタンを出しました)` : `。ボタンを出すには、${dn}の詳細の画面を作ります(画面「${dn}詳細」を作る(${dn}の…を表示))`}${capNote}`, o, text);
 }
 
 /** 詳細画面の「表示する X がどれか決まりません」: X を一覧表示している画面に「X を選ぶと 詳細画面 へ」を足す
