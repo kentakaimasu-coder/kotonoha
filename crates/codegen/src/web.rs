@@ -528,12 +528,18 @@ pub fn generate(ir: &AppIr) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
                 }
             }
         }
-        // 1 件を出す画面は、見出しをその 1 件の名前(最初の文字列の項目)にする
+        // 1 件を出す画面は、見出しをその 1 件の名前にする。名前らしい項目(名前・…名・題名・件名・タイトル)を先に、
+        // 無ければ最初の文字列の項目(発注の見出しが品名でなく部署名になった。第 19・20 回評価)
         let record = s
             .input
             .as_ref()
             .and_then(|d| ir.entities.iter().find(|e| &e.name == d))
-            .and_then(|e| e.fields.iter().find(|(n, t)| n != "ID" && matches!(t, Type::Str)))
+            .and_then(|e| {
+                let strs = || e.fields.iter().filter(|(n, t)| n != "ID" && matches!(t, Type::Str));
+                strs()
+                    .find(|(n, _)| n.ends_with('名') || n.ends_with("名前") || ["題名", "件名", "タイトル", "表題"].contains(&n.as_str()))
+                    .or_else(|| strs().next())
+            })
             .map(|(n, _)| {
                 format!(
                     ", record: (p.data[{}]?.body as any)?.[{}]",
