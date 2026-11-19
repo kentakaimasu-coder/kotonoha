@@ -1333,6 +1333,17 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       text = sp[2].trim();
     }
   }
+  // かぎかっこの無い「2名で予約のボタンを追加」、ボタンのことと分かる「2名で予約できるようにしたい」(数字だけ違うボタンがあるとき)も(第 19・20 回評価)
+  {
+    const bare = /^([^「」\s、,]*\d[^「」\s、,]*?)(?:の)?ボタンを(.+)$/.exec(text);
+    if (bare) text = `「${bare[1]}」のボタンを${bare[2]}`;
+    const can = /^「?([^「」\s、,]*\d[^「」\s、,]*?)」?(?:が)?できるように(?:する|したい|して)$/.exec(text);
+    if (can) {
+      const shape = can[1].replace(/\d+/g, "#");
+      const hit = srcFiles(o).some((f) => [...read(f).matchAll(/「([^」]+)」を押すと/g)].some((x) => x[1].replace(/\d+/g, "#") === shape));
+      if (hit) text = `「${can[1]}」のボタンを付けたい`;
+    }
+  }
   if ((m = cmd(/^「(.+?)」(?:の)?ボタンを(?:足す|足したい|付ける|付けたい|つける|つけたい|追加(?:する|したい)?|作る|作りたい|出す|出したい)$/.exec(text) ?? /^(?:画面に)?ボタン「(.+?)」を(?:足す|足したい|付ける|付けたい|つける|つけたい|追加(?:する|したい)?|作る|作りたい|出す|出したい)$/.exec(text)))) {
     const label = m[1].trim();
     const screens = (o.decls ?? []).filter((d: any) => d.kind === "screen");

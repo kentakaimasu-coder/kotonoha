@@ -340,3 +340,13 @@ test("項目の順番・ボタンを消す・ボタンの文字を変えるを�
   assert.match(r.done, /ボタン「お試しボタン」を消しました/);
   assert.doesNotMatch(src(), /お試しボタン/);
 });
+
+test("かぎかっこの無い「3名で予約のボタンを追加」、「4名で予約できるようにしたい」でもボタンを足す(第 20 回評価)", async () => {
+  const lbl = /「(\D*)\d+(\D*)」を押すと/.exec(src());
+  assert.ok(lbl, "数を含むボタンがある");
+  let r = await ok(`${lbl![1]}7${lbl![2]}のボタンを追加`);
+  assert.match(r.done, /のボタンを足しました/);
+  r = await ok(`${lbl![1]}8${lbl![2]}できるようにしたい`);
+  assert.match(r.done, /のボタンを足しました/);
+  assert.match(src(), new RegExp(`「${lbl![1]}8${lbl![2]}」を押すと`));
+});
