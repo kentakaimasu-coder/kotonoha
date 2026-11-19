@@ -852,7 +852,11 @@ function apply(op: Op): { file: string; line: number } | null {
           const ps = a.params ?? [];
           if (ps.length !== 1 || ps[0].name !== `${one}ID`) continue;
           if (new RegExp(`を押すと\\s*${reEsc(a.name)}\\(`).test(all)) continue;
-          btns.push(`「${a.name}」を押すと ${a.name}(${one}.ID)`);
+          // 状態を変える動作は、その状態にできるときだけ出す(押した後も出たままだった。第 20 回評価)
+          const body = lines(a.file).slice(a.line, a.end).join("\n");
+          const mv = /\.(\S+?) = "([^"]+)"/.exec(body) ?? /\.(\S+?) = (真|偽)(?:\s|$)/.exec(body);
+          const when = mv && body.includes(`${one}を取得(`) ? seqWhen(o, one, mv[1], mv[2]) || (stateLike(o, one, mv[1]) ? `${one}の${mv[1]}が${mv[2]}でないとき` : "") : "";
+          btns.push(`${when}「${a.name}」を押すと ${a.name}(${one}.ID)`);
         }
       }
       return addDecl(o, ["screen"], [`画面 ${name}:`, ...[...ls, ...btns].map((l: string) => "    " + l)]);
@@ -1706,6 +1710,8 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
               if (enumVals) return enumVals.includes(v.replace(/^"|"$/g, "")) ? v : sampleValue(o, t);
               if (/^(整数|金額)/.test(t)) return /^-?\d+$/.test(v) ? v : "0";
               if (t === "文字列") return /^".*"$/.test(v) ? v : `"${v.replace(/"/g, "")}"`;
+              // 識別子は初期データの 1 件目の ID(「メニューID」を必須にすると "" が入り、確かめるが 6 件 ✗ になった。第 20 回評価)
+              if (t === "識別子") return /^"[^"]+"$/.test(v) ? v : seedIdOf(fn.replace(/ID$/, "")) ?? `"${fn}の例"`;
               return sampleValue(o, t);
             });
         }
@@ -1754,6 +1760,8 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       convertSeed(o, D.name, fn, t);
       // 「…にする」は型を変える。名前を変えたかった人に分かるように添える(名前ではなく選択肢の種類が変わり紛らわしかった。第 18 回評価)
       const renameHint = o.enums?.[t] ? `。項目の名前を「${t}」に変えたいときは「${D.name}の「${fn}」を「${t}」に変える」と書きます(「1 つ前に戻す」で戻せます)` : "";
+      // 空でもよい(選択<T>)を T にしただけなら「必須にした」と伝える(型の言葉が分からなかった。第 20 回評価)
+      if (old === `選択<${t}>`) return changed(o, `「${D.name}」の「${fn}」を必須の項目にしました(確かめるの呼び出しにも仮の値を入れました)${fixedNote}`);
       return changed(o, `「${D.name}」の「${fn}」の種類(型)を ${t} にしました${fixedNote}${renameHint}`);
     }
   }
@@ -2111,8 +2119,23 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
         return { ...r, done: `${r.done}(画面「${m[1].trim()}」に置きました)` };
       }
     }
+    // 詳細の画面(「注文の卓番号と状況を表示」)は一覧から開くので、一覧の画面が無ければ先に作る。
+    // 先に作っておいた状態を変える動作のボタンも、条件つきで置く
+    // (詳細の画面を作ると問題が 3 件出て、ボタンは押した後も出たままだった。第 20 回評価)
+    let extra = "";
+    const dd = ls.map((l) => /^(\S+?)の(.+)を表示$/.exec(l)).find((x) => x && !/フォーム/.test(x[2]) && decl(o, "data", x[1]));
+    const dn = dd?.[1];
+    if (dn && !decl(o, "screen", m[1].trim())) {
+      const listed = (o.decls ?? []).some((d: any) => d.kind === "screen" && (d.lines ?? []).some((l: any) => new RegExp(`^${reEsc(dn)}(を|のうち).*一覧表示`).test(l.text)));
+      if (!listed && !ls.some((l) => /一覧表示/.test(l))) {
+        let ln = `${dn}一覧`;
+        for (let k = 2; decl(outline(), "screen", ln); k++) ln = `${dn}一覧${k}`;
+        apply({ op: "add_screen", name: ln, lines: [`${dn}を一覧表示`] });
+        extra += `。一覧から開く画面なので、画面「${ln}」も作りました`;
+      }
+    }
     const at = apply({ op: "add_screen", name: m[1], lines: ls });
-    return checked(at, `画面「${m[1]}」を作りました`, o, text);
+    return checked(at, `画面「${m[1]}」を作りました${extra}`, o, text);
   }
   if ((m = cmd(/^(?:色|テーマ色|テーマの色)を「?(.+?)」?に(?:する|変える)$/.exec(text)))) {
     apply({ op: "set_theme", color: m[1] });
@@ -2614,6 +2637,15 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   }
   const at = apply({ op: "add_line", kind: "screen", name: target.name, text });
   return checked(at, `画面「${target.name}」に入れました${guessed ? "(別の画面に入れたいときは、左の一覧で画面を選んでから送ってください)" : ""}`, o, text);
+}
+/** 初期データにある D の 1 件目の ID(確かめるで使う仮の値)。無ければ null */
+function seedIdOf(dn: string): string | null {
+  try {
+    const id = JSON.parse(readFileSync(join(PROJECT, "seed.json"), "utf8"))?.[dn]?.[0]?.ID;
+    return id ? JSON.stringify(String(id)) : null;
+  } catch {
+    return null;
+  }
 }
 /** 必須の項目を足したら、初期データの行に型に合った仮の値を入れる(入れないとアプリが起動できなかった。第 7 回評価) */
 function fillSeed(o: any, dn: string, fn: string, t: string): void {
