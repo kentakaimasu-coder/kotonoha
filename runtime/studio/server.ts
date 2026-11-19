@@ -2600,6 +2600,21 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
       guessed = true;
     }
   }
+  // ボタンの行(「2名で予約」を押すと 予約する(イベント.ID, 2))は、同じ動作のボタンがある画面、無ければそのデータの詳細の画面に入れる
+  // (画面を選ばずに書くと聞き返された。第 20 回評価で 18 人)
+  if (!target) {
+    const bm = /「[^」]+」を押すと\s*(\S+?)\((\S+?)\.ID/.exec(text);
+    if (bm) {
+      const all = (o.decls ?? []).filter((d: any) => d.kind === "screen");
+      const same = all.filter((d: any) => (d.lines ?? []).some((l: any) => new RegExp(`を押すと\\s*${reEsc(bm[1])}\\(`).test(l.text)));
+      const det = all.filter((d: any) => (d.lines ?? []).some((l: any) => l.text.startsWith(`${bm[2]}の`) && /を表示$/.test(l.text) && !/フォーム/.test(l.text)));
+      const pick = same.length === 1 ? same[0] : det.length === 1 ? det[0] : null;
+      if (pick) {
+        target = pick;
+        guessed = true;
+      }
+    }
+  }
   if (!target) return { ok: false, need: "screen", screens, message: "どの画面に入れますか? 下の画面の名前を押すと、そこに入れます" };
   // 同じデータ・同じ絞り込みの一覧があるなら、並び方だけを変える(一覧が 2 つになった。第 7 回評価)
   // 「注文の品名と数量と状態を表示」: 同じデータの項目を表示する行があれば置き換える(古い行が残り、二重に出た。第 16 回評価)
