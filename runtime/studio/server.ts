@@ -1263,14 +1263,17 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
     //   (ボタンのままで入力欄が無く、ソースで直した・ボタンを消してフォームに替えた。第 15 回評価で 3 人)
     const act = m[1].trim();
     const forms: string[] = [];
-    for (const sc of (outline().decls ?? []).filter((d: any) => d.kind === "screen")) {
+    // ボタンからは入れられない値(文字・選択肢・日付)なら、その画面に入力できるフォームも足す
+    //   (選択肢の値を足したときにフォームが出なかった。第 19 回評価)。数・真偽はボタンにも意味のある値が入るので足さない
+    const pt = ((decl(outline(), "action", act)?.params ?? []).find((p: any) => p.name === m![2].trim())?.type ?? "") as string;
+    for (const sc of (outline().decls ?? []).filter((d: any) => d.kind === "screen" && !/^(選択<)?(整数|金額|真偽)/.test(pt))) {
       const ls = lines(sc.file).slice(sc.line, sc.end);
-      const hasBtn = ls.some((l) => /を押すと/.test(l) && l.includes(` ${act}(`) && /, ""\)\s*$/.test(l));
+      const hasBtn = ls.some((l) => /を押すと/.test(l) && l.includes(` ${act}(`));
       if (!hasBtn || ls.some((l) => l.trim() === `${act}のフォームを表示`)) continue;
       apply({ op: "add_line", kind: "screen", name: sc.name, text: `${act}のフォームを表示` });
       forms.push(sc.name);
     }
-    const hint = forms.length ? `。ボタンからは「${m[2].trim()}」を入れられないので、画面「${forms.join("」「")}」に入力できるフォームも足しました(ボタンはそのままです。いらなければボタンの行を消します)` : "";
+    const hint = forms.length ? `。ボタンからは「${m[2].trim()}」を入れられないので、画面「${forms.join("」「")}」に入力できるフォームも足しました(ボタンはそのままです。いらなければボタンの行の「消す」を押します)` : "";
     return checked(at, `動作「${m[1].trim()}」に受け取る値「${m[2].trim()}」を足しました(ボタン・確かめるの呼び出しにも仮の値を入れました)${hint}`, o, text);
   }
   // 画面を役割だけにする: この画面は店長だけ / 画面「管理」は店長だけ(上の欄では読めなかった。第 8 回評価)
