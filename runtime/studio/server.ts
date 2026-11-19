@@ -2457,7 +2457,13 @@ function instruct(text0: string, ctx: { screen?: string; scenario?: string }): a
   // 「来店」で予約の人数を1増やす / 減らす
   if ((m = cmd(/^「(.+?)」で(.+?)の(.+?)を(\d*)(増やす|減らす)$/.exec(text)))) {
     const [, act, dn, fn, n, dir] = m.map((x) => x?.trim());
-    return actionTemplate(o, text, act, dn, () => [`件 = ${dn}を取得(${dn}ID)`, `件.${fn} = 件.${fn} ${dir === "増やす" ? "+" : "-"} ${n || 1}`, `${dn}ID を返す`]);
+    // 減らすときは足りなければ「…不足」で断る(在庫が 0 でも借りられた。第 20 回評価)
+    return actionTemplate(o, text, act, dn, () => [
+      `件 = ${dn}を取得(${dn}ID)`,
+      ...(dir === "減らす" ? [`件.${fn} >= ${n || 1} を確認 または 失敗("${fn}不足")`] : []),
+      `件.${fn} = 件.${fn} ${dir === "増やす" ? "+" : "-"} ${n || 1}`,
+      `${dn}ID を返す`,
+    ]);
   }
   // 「受け付ける」で問い合わせを登録する / 配車を登録できるようにする
   const regText = text.replace(/^(?:もう\s*1\s*つ|もうひとつ|別に)[、\s]*/, "");
